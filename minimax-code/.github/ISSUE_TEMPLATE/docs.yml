@@ -1,0 +1,31 @@
+name: Documentation issue
+description: Report missing, incorrect, or unclear documentation.
+title: "[Docs] "
+labels: ["documentation", "needs-triage"]
+body:
+  - type: dropdown
+    id: product
+    attributes:
+      label: Product or interface
+      description: Desktop app and interactive TUI reports automatically receive the desktop or tui label.
+      options:
+        - Desktop app
+        - CLI - interactive TUI
+        - CLI - headless
+        - CLI - ACP
+        - Source build or repository tooling
+    validations:
+      required: true
+  - type: input
+    id: location
+    attributes:
+      label: Documentation URL or path
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and suggested improvement
+      description: Which step was unclear, or which command failed? Remove keys and account details.
+    validations:
+      required: true

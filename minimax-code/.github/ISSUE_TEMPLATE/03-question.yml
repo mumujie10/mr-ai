@@ -1,0 +1,44 @@
+name: Usage or repository policy question
+description: Ask about the Desktop app, CLI, source builds, or contribution policy.
+title: "[Question]: "
+labels: ["question", "needs-triage"]
+body:
+  - type: dropdown
+    id: product
+    attributes:
+      label: Product or interface
+      description: Leave blank if unsure or asking about repository policy. Desktop app and interactive TUI reports automatically receive the desktop or tui label.
+      options:
+        - Desktop app
+        - CLI - interactive TUI
+        - CLI - headless
+        - CLI - ACP
+        - Source build or repository tooling
+    validations:
+      required: false
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Leave blank if unknown or not applicable.
+      options:
+        - macOS
+        - Windows
+        - Linux
+        - WSL
+        - Multiple platforms
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Version or policy context
+      description: For usage questions, include your version and what you tried. For policy questions, link the relevant policy. Do not include keys or account data.
+    validations:
+      required: true

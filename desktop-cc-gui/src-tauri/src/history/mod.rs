@@ -1,0 +1,661 @@
+mod agy;
+mod codex_titles;
+pub(crate) mod discovery;
+mod extract;
+pub mod reader;
+pub mod scanner;
+pub mod search;
+
+pub use extract::{
+    internal_frame_hash, parse_session_file, recordable_internal_frame_hash, scan_summary_file,
+    ParsedSession, ScanSummary,
+};
+
+use crate::engine::TodosPayload;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Message {
+    pub seq: i64,
+    pub role: String,
+    pub text: String,
+    pub ts: Option<String>,
+    /// Target file of a tool call (read/edit/write/...); drives the file
+    /// chip in the timeline. None for non-tool rows and path-less tools.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// Full tool-call arguments (object / array / string). Rendered in the
+    /// expandable tool-call panel. None when the engine only recorded a name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<Value>,
+    /// Tool execution result/output (string / object / array).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<Value>,
+    /// Todo-list snapshot/patch from a todo tool call (claude TodoWrite,
+    /// omp todo op); feeds the run-status strip's task pill.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub todos: Option<TodosPayload>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<i64>,
+    /// Image attachments on user messages: data URLs (claude/pi/omp) or
+    /// absolute paths (kimi/codex). Empty for every other row.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionMeta {
+    pub engine: String,
+    pub session_id: String,
+    pub workspace_path: String,
+    pub file_path: String,
+    pub file_size: i64,
+    pub file_mtime_ms: i64,
+    pub title: String,
+    pub preview: String,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
+    pub message_count: i64,
+    pub pinned: bool,
+    pub custom_title: Option<String>,
+    /// Model id this app sent for the session last ("provider/model", as the
+    /// picker spells it). Kept in our own table because the engine's own
+    /// transcript records only the bare model name — a session reopened in
+    /// another window, on the phone, or after a restart would otherwise have
+    /// nothing to recover its provider and model from.
+    pub model: Option<String>,
+    /// Reasoning effort the session last ran. Kept beside the model for the
+    /// same reason: a reopened session has to keep its level, wherever it is
+    /// opened from.
+    pub effort: Option<String>,
+    /// In-app channel this session last ran. Spawn injects that channel's env
+    /// onto the child; native CLI files stay official. Absent until a send
+    /// remembers one — the engine default `current` then applies.
+    pub provider: Option<String>,
+    /// Plugin-fed remote sessions have no local transcript. Archive snapshots
+    /// preserve their route so Settings can restore or delete them too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_path: Option<String>,
+}
+
+/// A native session file discovered on disk, matched to a workspace.
+pub struct SessionFile {
+    pub engine: &'static str,
+    pub session_id: String,
+    pub workspace_path: String,
+    pub file_path: PathBuf,
+}
+
+pub fn stat_signature(path: &Path) -> Option<(i64, i64)> {
+    // OpenCode ≥1.18 keeps every session in one SQLite file; the virtual
+    // address below carries the session id, so stat the shared database.
+    let target = split_opencode_db_path(path).map(|(db, _)| db);
+    let path = target.as_deref().unwrap_or(path);
+    let meta = std::fs::metadata(path).ok()?;
+    let mtime_ms = meta
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_millis() as i64;
+    Some((meta.len() as i64, mtime_ms))
+}
+
+/// Separator between the OpenCode SQLite database path and the session id in
+/// a history row's `file_path`. The record separator is illegal in filenames
+/// on Windows and vanishingly rare elsewhere, so it cannot collide with a
+/// real on-disk path — the virtual address is never opened directly.
+const OPENCODE_DB_SEP: char = '\u{1f}';
+
+/// Virtual history address for one SQLite-backed OpenCode session:
+/// `<…/opencode.db>\u{1f}<sessionId>`. Keeps the path-keyed scan/read/delete
+/// pipeline working while the transcript itself lives in one shared db.
+pub(crate) fn opencode_db_session_path(db: &Path, session_id: &str) -> PathBuf {
+    let mut address = db.to_string_lossy().into_owned();
+    address.push(OPENCODE_DB_SEP);
+    address.push_str(session_id);
+    PathBuf::from(address)
+}
+
+/// Split a virtual address back into `(db_path, session_id)`. None for every
+/// real on-disk path (the OpenCode storage-tree layout included).
+pub(crate) fn split_opencode_db_path(path: &Path) -> Option<(PathBuf, String)> {
+    let text = path.to_str()?;
+    let (db, session_id) = text.split_once(OPENCODE_DB_SEP)?;
+    if db.is_empty() || session_id.is_empty() {
+        return None;
+    }
+    Some((PathBuf::from(db), session_id.to_string()))
+}
+
+/// &str entry point: skips the `Value::String` wrapper allocation the
+/// timestamp hot path used to pay per call.
+pub fn parse_ts_ms_str(text: &str) -> Option<i64> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Ok(n) = trimmed.parse::<i64>() {
+        return Some(if n.abs() < 10_000_000_000 {
+            n * 1000
+        } else {
+            n
+        });
+    }
+    chrono_like_rfc3339_ms(trimmed)
+}
+
+/// Minimal RFC3339 parse without a chrono dependency: handles
+/// `YYYY-MM-DDTHH:MM:SS[.frac](Z|±HH:MM)`.
+fn chrono_like_rfc3339_ms(s: &str) -> Option<i64> {
+    let (date_part, rest) = s.split_once('T')?;
+    let mut it = date_part.split('-');
+    let year: i64 = it.next()?.parse().ok()?;
+    let month: i64 = it.next()?.parse().ok()?;
+    let day: i64 = it.next()?.parse().ok()?;
+
+    let (time_part, offset_part) = match rest.find(['Z', '+']) {
+        Some(idx) => (&rest[..idx], &rest[idx..]),
+        None => match rest.rfind('-') {
+            Some(idx) if idx > 0 => (&rest[..idx], &rest[idx..]),
+            _ => (rest, "Z"),
+        },
+    };
+    let time_clean = time_part.split('.').next()?;
+    let mut ti = time_clean.split(':');
+    let hour: i64 = ti.next()?.parse().ok()?;
+    let minute: i64 = ti.next()?.parse().ok()?;
+    let second: i64 = ti.next().unwrap_or("0").parse().ok()?;
+
+    let offset_minutes: i64 = if offset_part.starts_with('Z') || offset_part.is_empty() {
+        0
+    } else {
+        let sign = if offset_part.starts_with('-') { -1 } else { 1 };
+        let body = &offset_part[1..];
+        let mut oi = body.split(':');
+        let oh: i64 = oi.next()?.parse().ok()?;
+        let om: i64 = oi.next().unwrap_or("0").parse().ok()?;
+        sign * (oh * 60 + om)
+    };
+
+    Some(civil_to_epoch_ms(year, month, day, hour, minute, second) - offset_minutes * 60_000)
+}
+
+/// Days-from-civil algorithm (Howard Hinnant), no external deps.
+fn civil_to_epoch_ms(year: i64, month: i64, day: i64, hour: i64, minute: i64, second: i64) -> i64 {
+    let y = if month <= 2 { year - 1 } else { year };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (month + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    days * 86_400_000 + hour * 3_600_000 + minute * 60_000 + second * 1000
+}
+
+pub fn same_or_child(candidate: &Path, workspace: &Path) -> bool {
+    candidate == workspace || candidate.starts_with(workspace)
+}
+
+/// Claude encodes a workspace path: all non-alphanumeric except '-' become '-'.
+pub fn claude_encode_project_path(path: &str) -> String {
+    path.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+/// Extract display text from a message `content` value that may be a string
+/// or an array of typed parts.
+pub fn content_text(value: Option<&Value>) -> String {
+    match value {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter(|p| {
+                let t = p.get("type").and_then(Value::as_str);
+                t == Some("text") || t.is_none()
+            })
+            .filter_map(|p| p.get("text").and_then(Value::as_str).or_else(|| p.as_str()))
+            .collect::<Vec<_>>()
+            .join(""),
+        Some(Value::Object(map)) => {
+            if let Some(parts) = map.get("parts").and_then(Value::as_array) {
+                parts
+                    .iter()
+                    .filter_map(|p| p.get("text").and_then(Value::as_str).or_else(|| p.as_str()))
+                    .collect::<Vec<_>>()
+                    .join("")
+            } else {
+                map.get("text")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            }
+        }
+        _ => String::new(),
+    }
+}
+
+pub fn truncate_chars(text: &str, max: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.chars().count() <= max {
+        return trimmed.to_string();
+    }
+    trimmed.chars().take(max).collect()
+}
+
+/// Injected runtime-context turns, not typed input. Shared across engines so
+/// a new CLI that reuses these envelopes does not need a per-engine title patch.
+pub(crate) fn is_injected_user_context(text: &str) -> bool {
+    let t = text.trim_start();
+    t.starts_with("<user_info>")
+        || t.starts_with("<system-reminder>")
+        || t.starts_with("<ide_selection>")
+        || t.starts_with("<opened_file>")
+        || t.starts_with("<workspace_path>")
+}
+
+/// Prefer the `<user_query>` body when the turn is a Grok-style envelope.
+/// Only the prefix is an envelope — a typed body that *mentions*
+/// `<user_query>` must stay intact.
+pub(crate) fn unwrap_user_turn(text: &str) -> String {
+    const OPEN: &str = "<user_query>";
+    const CLOSE: &str = "</user_query>";
+    let source = if text.trim_start().starts_with("<image_files>") {
+        strip_leading_named_block(text, "image_files")
+    } else {
+        text.trim_start()
+    };
+    if let Some(inner) = source.strip_prefix(OPEN) {
+        let body = match inner.find(CLOSE) {
+            Some(end) => &inner[..end],
+            None => inner,
+        };
+        return body.trim().to_string();
+    }
+    source.trim().to_string()
+}
+
+/// Strip one leading `<tag>…</tag>`. An unterminated block is left intact
+/// so a following `<user_query>` is not swallowed.
+fn strip_leading_named_block<'a>(text: &'a str, tag: &str) -> &'a str {
+    let trimmed = text.trim_start();
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let Some(inner) = trimmed.strip_prefix(&open) else {
+        return trimmed;
+    };
+    match inner.find(&close) {
+        Some(end) => inner[end + close.len()..].trim_start(),
+        None => trimmed,
+    }
+}
+/// Claude Code slash-command envelope: the CLI logs the typed command as
+/// `<command-message>/<command-name>/<command-args>` tags and the expanded
+/// prompt as a separate `isMeta` user turn. Rebuild what was typed
+/// (`/name args`) so neither the tags nor the expansion are shown.
+/// Tag order varies between versions; both machine tags must be present so
+/// a typed body merely mentioning one tag stays intact.
+pub(crate) fn slash_command_display(text: &str) -> Option<String> {
+    tagged_body(text, "command-message")?;
+    let name = tagged_body(text, "command-name")?;
+    if !name.starts_with('/') {
+        return None;
+    }
+    let args = tagged_body(text, "command-args").unwrap_or("");
+    Some(if args.is_empty() {
+        name.to_string()
+    } else {
+        format!("{name} {args}")
+    })
+}
+
+/// The turn is nothing but the command tags. Extra typed text stays a real
+/// user message even when it mentions the tags.
+pub(crate) fn slash_command_envelope_only(text: &str) -> bool {
+    if slash_command_display(text).is_none() {
+        return false;
+    }
+    let mut rest = text.to_string();
+    for tag in ["command-message", "command-name", "command-args"] {
+        rest = strip_one_tag_pair(&rest, tag);
+    }
+    rest.trim().is_empty()
+}
+
+fn strip_one_tag_pair(text: &str, tag: &str) -> String {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let Some(start) = text.find(&open) else {
+        return text.to_string();
+    };
+    let after = start + open.len();
+    let Some(rel) = text[after..].find(&close) else {
+        return text.to_string();
+    };
+    let end = after + rel + close.len();
+    let mut out = String::with_capacity(text.len() - (end - start));
+    out.push_str(&text[..start]);
+    out.push_str(&text[end..]);
+    out
+}
+
+/// Body of the first `<tag>…</tag>` pair, trimmed. None when absent or
+/// unterminated.
+fn tagged_body<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = text.find(&open)? + open.len();
+    let rest = &text[start..];
+    let end = rest.find(&close)?;
+    Some(rest[..end].trim())
+}
+/// Codex-style first-turn injections: the CLI prepends its instructions,
+/// environment context, and skill envelopes to (or ahead of) the typed
+/// body. Stripped from the front of a user turn; a typed tail after the
+/// last block is real user text and stays.
+const INJECTED_LEADING_TAGS: &[&str] = &[
+    "INSTRUCTIONS",
+    "environment_context",
+    "agents-instructions",
+    "user_instructions",
+    "skill",
+    "recommended_plugins",
+];
+
+/// Clean a user turn down to the typed body: drop leading injected blocks
+/// (codex instructions / environment / skills), then unwrap the Grok-style
+/// `<user_query>` envelope. Noise-only turns come back empty.
+pub(crate) fn clean_user_turn(text: &str) -> String {
+    let mut rest = text.trim_start();
+    if let Some(display) = slash_command_display(rest) {
+        return display;
+    }
+    loop {
+        let prev_len = rest.len();
+        // The `# AGENTS.md instructions` heading precedes the `<INSTRUCTIONS>`
+        // block; drop it only when that block actually follows.
+        if let Some(after) = rest.strip_prefix("# AGENTS.md instructions") {
+            let after = after.trim_start();
+            // Codex appends the workspace path: `# AGENTS.md instructions for
+            // <path>\n\n<INSTRUCTIONS>` — skip the heading line first.
+            let after = match after.strip_prefix("for ") {
+                Some(tail) => match tail.find('\n') {
+                    Some(nl) => tail[nl + 1..].trim_start(),
+                    None => after,
+                },
+                None => after,
+            };
+            if after.starts_with("<INSTRUCTIONS>") {
+                rest = after;
+            }
+        }
+        for tag in INJECTED_LEADING_TAGS {
+            let open = format!("<{tag}>");
+            if rest.starts_with(&open) {
+                rest = strip_leading_named_block(rest, tag);
+            }
+        }
+        if rest.len() == prev_len {
+            break;
+        }
+    }
+    unwrap_user_turn(rest)
+}
+
+fn strip_title_noise(text: &str) -> String {
+    // Remove every `<file …>…</file>` envelope; an unterminated one loses
+    // just its opening tag (truncated content is still user-visible text).
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("<file ") {
+        out.push_str(&rest[..start]);
+        let after = &rest[start..];
+        if let Some(end) = after.find("</file>") {
+            rest = &after[end + "</file>".len()..];
+        } else if let Some(gt) = after.find('>') {
+            rest = &after[gt + 1..];
+        } else {
+            rest = "";
+        }
+    }
+    out.push_str(rest);
+    // Drop `[Image #N, WxH]` placeholders wherever they appear — they sit
+    // inline before the typed body. A `[Image #` run whose bracket body is
+    // neither dimension digits nor a `#N: path` payload is user text and
+    // stays.
+    let mut cleaned = String::with_capacity(out.len());
+    let mut rest = out.as_str();
+    const MARK: &str = "[Image #";
+    while let Some(start) = rest.find(MARK) {
+        let after = &rest[start + MARK.len()..];
+        let placeholder = after
+            .find(']')
+            .map(|e| {
+                let body = &after[..e];
+                let digits =
+                    body.len() - body.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+                if digits == 0 {
+                    return false;
+                }
+                let tail = &body[digits..];
+                // `[Image #N, WxH]` dimensions, or the composer's
+                // `[Image #N: /path/to/file]` form.
+                tail.chars()
+                    .all(|c| c.is_ascii_digit() || matches!(c, ',' | ' ' | 'x'))
+                    || tail.strip_prefix(": ").is_some_and(|p| !p.is_empty())
+            })
+            .unwrap_or(false);
+        if placeholder {
+            cleaned.push_str(&rest[..start]);
+            rest = &after[after.find(']').unwrap() + 1..];
+        } else {
+            cleaned.push_str(&rest[..start + MARK.len()]);
+            rest = after;
+        }
+    }
+    cleaned.push_str(rest);
+    let unwrapped = clean_user_turn(&cleaned);
+    if is_injected_user_context(&unwrapped) {
+        return String::new();
+    }
+    unwrapped
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Title derivation = strip noise, then truncate (mirrors ScanAcc::accept).
+    fn stripped(text: &str) -> String {
+        truncate_chars(&strip_title_noise(text), 80)
+    }
+
+    #[test]
+    fn title_strips_file_envelope() {
+        assert_eq!(
+            stripped("<file name=\"/Users/x/README.md\"># readme body</file>\nMD渲染有点问题"),
+            "MD渲染有点问题"
+        );
+    }
+
+    #[test]
+    fn title_strips_inline_image_placeholder() {
+        assert_eq!(
+            stripped("[Image #1, 1222x848] 历史记录怎么对应不上?"),
+            "历史记录怎么对应不上?"
+        );
+    }
+    #[test]
+    fn title_strips_image_path_placeholder() {
+        assert_eq!(
+            stripped("[Image #1: /var/folders/qj/T/cc-gui-images/abc-pasted-image-1787459160234.png] 这个报错"),
+            "这个报错"
+        );
+    }
+
+    #[test]
+    fn title_keeps_typed_image_bracket_without_digits() {
+        let text = "[Image #abc: foo] 不是占位符";
+        assert_eq!(stripped(text), text);
+    }
+
+    #[test]
+    fn title_noise_only_message_strips_to_empty() {
+        assert_eq!(stripped("<file name=\"/a/b.ts\">code</file>"), "");
+    }
+
+    #[test]
+    fn title_tolerates_unterminated_envelope() {
+        assert_eq!(
+            stripped("<file name=\"/a/b.ts\">code without close\n后续正文"),
+            "code without close\n后续正文"
+        );
+    }
+
+    #[test]
+    fn title_skips_injected_user_info() {
+        assert_eq!(
+            strip_title_noise("<user_info>\nOS Version: macos\nShell: /bin/zsh\n</user_info>"),
+            ""
+        );
+    }
+
+    #[test]
+    fn title_uses_user_query_after_image_files() {
+        assert_eq!(
+            stripped("<image_files>\n1. /tmp/a.png\n</image_files>\n\n<user_query>这个鼠标移动上去，有小手的样式</user_query>"),
+            "这个鼠标移动上去，有小手的样式"
+        );
+    }
+
+    #[test]
+    fn unwrap_keeps_literal_user_query_in_typed_body() {
+        let text = "Review the typed `<user_query>` body. Grok injects context.";
+        assert_eq!(unwrap_user_turn(text), text);
+    }
+
+    #[test]
+    fn unwrap_is_idempotent_after_envelope() {
+        let once = unwrap_user_turn(
+            "<image_files>\n1. /tmp/a.png\n</image_files>\n\n<user_query>正文里也可以写 <user_query> 标签</user_query>",
+        );
+        assert_eq!(once, "正文里也可以写 <user_query> 标签");
+        assert_eq!(unwrap_user_turn(&once), once);
+    }
+    #[test]
+    fn clean_drops_codex_instructions_and_environment_turn() {
+        let text = "# AGENTS.md instructions\n\n<INSTRUCTIONS>\nYOU ARE AN AUTONOMOUS AGENT\n</INSTRUCTIONS>\n<environment_context>\n  <cwd>/tmp/ws</cwd>\n</environment_context>";
+        assert_eq!(clean_user_turn(text), "");
+    }
+    #[test]
+    fn clean_drops_codex_instructions_with_path_heading() {
+        let text = "# AGENTS.md instructions for /Users/x/ws\n\n<INSTRUCTIONS>\nYOU ARE AN AUTONOMOUS AGENT\n</INSTRUCTIONS>";
+        assert_eq!(clean_user_turn(text), "");
+    }
+
+    #[test]
+    fn clean_keeps_typed_tail_after_path_heading_instructions() {
+        let text = "# AGENTS.md instructions for /Users/x/ws\n\n<INSTRUCTIONS>\n…\n</INSTRUCTIONS>\n\n帮我看看这个 bug";
+        assert_eq!(clean_user_turn(text), "帮我看看这个 bug");
+    }
+
+    #[test]
+    fn clean_keeps_typed_tail_after_agents_instructions() {
+        let text = "<agents-instructions>\n# Global Instructions\n</agents-instructions>\n\n你好啊";
+        assert_eq!(clean_user_turn(text), "你好啊");
+    }
+
+    #[test]
+    fn clean_drops_skill_envelope() {
+        let text = "<skill>\n<name>plan</name>\n<body>…</body>\n</skill>";
+        assert_eq!(clean_user_turn(text), "");
+    }
+    #[test]
+    fn clean_repeated_context_blocks_before_typed_body() {
+        let context = "<recommended_plugins>plugins</recommended_plugins># AGENTS.md instructions for /tmp/ws\n\n<INSTRUCTIONS>rules</INSTRUCTIONS><environment_context>env</environment_context>";
+        assert_eq!(clean_user_turn(context), "");
+        assert_eq!(
+            clean_user_turn(&format!("{context}{context}\n修复标题")),
+            "修复标题"
+        );
+        let typed = "# AGENTS.md instructions 是什么意思？";
+        assert_eq!(clean_user_turn(&format!("{context}{typed}")), typed);
+    }
+
+    #[test]
+    fn clean_drops_recommended_plugins_envelope() {
+        let text = "<recommended_plugins>Here is a list of plugins that are available but not installed. …</recommended_plugins>";
+        assert_eq!(clean_user_turn(text), "");
+    }
+    #[test]
+    fn clean_rebuilds_typed_slash_command() {
+        let text = "<command-message>aimax:code-review</command-message>\n<command-name>/aimax:code-review</command-name>\n<command-args>审查1772</command-args>";
+        assert_eq!(clean_user_turn(text), "/aimax:code-review 审查1772");
+    }
+
+    #[test]
+    fn clean_rebuilds_indented_envelope_without_args() {
+        let text = "<command-name>/clear</command-name>\n            <command-message>clear</command-message>\n            <command-args></command-args>";
+        assert_eq!(clean_user_turn(text), "/clear");
+    }
+
+    #[test]
+    fn clean_keeps_typed_body_mentioning_one_command_tag() {
+        let text = "帮我看看 <command-name> 这个标签是什么意思";
+        assert_eq!(clean_user_turn(text), text);
+    }
+
+    #[test]
+    fn envelope_only_requires_both_command_tags() {
+        let text = "<command-name>/model</command-name>\n            <command-message>model</command-message>\n            <command-args></command-args>";
+        assert!(slash_command_envelope_only(text));
+        assert!(!slash_command_envelope_only(
+            "帮我看看 <command-name> 这个标签是什么意思"
+        ));
+        let with_tail = format!("{text}\n然后再看看这个报错");
+        assert!(!slash_command_envelope_only(&with_tail));
+    }
+
+    #[test]
+    fn clean_keeps_typed_tail_after_recommended_plugins() {
+        let text =
+            "<recommended_plugins>Here is a list of plugins…</recommended_plugins>\n继续定位一下";
+        assert_eq!(clean_user_turn(text), "继续定位一下");
+    }
+
+    #[test]
+    fn clean_leaves_unterminated_environment_context_intact() {
+        let text = "<environment_context>\n  <cwd>/tmp/ws</cwd>";
+        assert_eq!(clean_user_turn(text), text);
+    }
+
+    #[test]
+    fn title_strips_codex_injections_to_empty() {
+        assert_eq!(
+            strip_title_noise("# AGENTS.md instructions\n\n<INSTRUCTIONS>\n…\n</INSTRUCTIONS>\n<environment_context>\n  <cwd>/tmp/ws</cwd>\n</environment_context>"),
+            ""
+        );
+        assert_eq!(
+            strip_title_noise("<skill>\n<name>plan</name>\n</skill>"),
+            ""
+        );
+    }
+}

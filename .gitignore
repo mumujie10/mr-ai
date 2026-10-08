@@ -1,0 +1,6 @@
+# 根级 OS / 编辑器杂项。两个子项目各自的 .gitignore 已覆盖 node_modules、
+# dist、src-tauri/target、.env 等，且 git 只对所在子树生效，这里不重复。
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

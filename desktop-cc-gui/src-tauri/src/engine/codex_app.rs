@@ -1,0 +1,3147 @@
+//! Codex **app-server** transport (`codex app-server`), the codex path that can
+//! actually ask the user a question mid-turn.
+//!
+//! The exec transport (`codex.rs`) launches the same CLI one-shot: it resolves
+//! its own `requestUserInput` prompts from the defaults baked into the run, so a
+//! question never reaches the app's card UI. The app-server is a resident
+//! JSON-RPC peer instead — it *asks* by sending a server→client request and
+//! parks the turn until an answer arrives on stdin. This module owns that
+//! channel: the pump that reads stdout, the projection of the protocol's items
+//! onto the app's event kinds, and `answer_frame`, the response the shared
+//! answer command writes when the user picks an option.
+//!
+//! Wire (verified against the installed CLI, whose shipped JSON schema is the
+//! source of truth here): `initialize {clientInfo}` → `thread/start
+//! {cwd, sandbox, approvalPolicy}` (or `thread/resume {threadId, excludeTurns}`
+//! for a session the app already holds) → `turn/start {threadId, input}`, which
+//! acknowledges immediately with `{turn:{id}}`; the work then streams as `item/*` and
+//! `item/agentMessage/delta` notifications and only `turn/completed` ends the
+//! turn. Two schema facts shape the code below: `turn/completed` carries no
+//! usage (it arrives earlier via `thread/tokenUsage/updated`), and there is no
+//! `turn/failed` notification — a failed turn is a `turn/completed` whose
+//! `turn.status` is `failed` with an explanatory `turn.error.message`. Both
+//! shapes are terminal so a newer CLI cannot hang the pump until the prompt
+//! timeout.
+//!
+//! Approvals are declined, never granted: the CLI runs with
+//! `approvalPolicy: "never"` and the sandbox is the enforced boundary, exactly
+//! as the exec transport's auto-decline behaves, so answering "approve" here
+//! would hand the model a privilege the app never offered.
+//!
+//! Plan approval (next_turn): a `permission == "plan"` run starts its turn
+//! with `collaborationMode {mode:"plan"}` (EXPERIMENTAL in the 0.154.0
+//! schema, so the client opts into `experimentalApi` at initialize). The plan
+//! streams as `item/plan/delta` previews — drafts only, the schema warns the
+//! concatenation need not match the final text — and the authoritative body
+//! is the completed `type:"plan"` item, which becomes a next_turn PlanReview.
+//! The plan turn then just ENDS (`turn/completed`): the thread idles while
+//! the user reviews, and [`run_plan_decision`] later re-attaches, re-fetches
+//! the final plan item to prove it is unchanged, and atomically starts one
+//! execution (`mode:"default"`) or follow-up planning turn.
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use rusqlite::OptionalExtension;
+
+use serde_json::{json, Map, Value};
+use tokio::io::{AsyncWriteExt, BufReader};
+use tokio::process::{Child, ChildStdin, ChildStdout, Command};
+use tokio::sync::Mutex as TokioMutex;
+use tokio::time::{timeout, Instant};
+
+use super::codex_read_only;
+use super::images;
+use super::qoder_session::{
+    encode_ndjson, jsonrpc_id_key, jsonrpc_request, jsonrpc_result_response, teardown, KILL_POLL,
+    PROMPT_TIMEOUT, RPC_HANDSHAKE_TIMEOUT,
+};
+use super::plan_review::{self, PlanDecision, PlanReview, PlanReviewKind};
+use super::{
+    assistant_message, read_line_capped, spawn_stderr_capture, tool_call_message,
+    tool_result_patch, BuiltCommand, ChildEntry, Engine, EngineEvent, LineRead, SendRequest,
+    TurnCore, TurnState, VirtualRunGuard, MAX_LINE_BYTES,
+};
+
+/// Terminal marker for a kill-interrupted turn. The driver swallows it (the
+/// killed flag already said why) and lets the turn settle as an interruption,
+/// the same contract as the sibling drivers.
+const CANCELLED: &str = "codex turn cancelled";
+
+/// `thread/start` builds the thread's context before it can answer — on a large
+/// workspace that is the expensive call of the whole turn, so it gets far more
+/// headroom than a plain RPC.
+const THREAD_TIMEOUT: Duration = Duration::from_secs(90);
+/// `thread/resume` only re-attaches an existing thread.
+const RESUME_TIMEOUT: Duration = Duration::from_secs(30);
+/// Grace for the CLI to react to `turn/interrupt` with its own terminal
+/// notification before the process tree is killed anyway.
+const INTERRUPT_SETTLE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// What a pump call is waiting for.
+enum Expect<'a> {
+    /// The reply to the request whose id key is carried here.
+    Reply(&'a str),
+    /// No reply — the turn's own terminal notification ends this pump.
+    Turn,
+}
+
+/// How the pump should treat one decoded line.
+enum Handled {
+    /// Nothing for the turn; keep reading.
+    Ignore,
+    /// Answer this server→client request now.
+    Answer(Value),
+    /// The request was parked for the user: do not answer it here, the answer
+    /// command writes the response on the shared stdin later.
+    Parked,
+    /// The turn is over.
+    Ended,
+}
+
+/// Per-run projection state: what streamed, and what to report at settle time.
+#[derive(Default)]
+struct TurnView {
+    /// Item id whose text already streamed as deltas. A completed
+    /// `agentMessage` repeats that text in full, and a `message` row appends as
+    /// a settled snapshot (the UI collapses the live row first), so replaying
+    /// it would print the answer twice. Same for reasoning.
+    streamed_message: Option<String>,
+    streamed_reasoning: Option<String>,
+    /// Turn id from the `turn/start` reply — the handle `turn/interrupt` needs.
+    turn_id: Option<String>,
+    /// Last `thread/tokenUsage/updated` payload, folded into this turn's Done:
+    /// the terminal notification itself carries no usage.
+    last_usage: Option<Value>,
+    exit_unconfirmed: bool,
+    isolated_home: Option<std::path::PathBuf>,
+    /// This run is a human-approved planning turn (`permission == "plan"`):
+    /// only then do plan deltas/items feed the approval backbone — a plan
+    /// item in an ordinary turn must never become an approvable review.
+    plan_mode: bool,
+    /// Workspace snapshot for the review record (the turn handlers have no
+    /// access to the request, so the driver seeds it here).
+    workspace: String,
+}
+
+/// A turn's JSON-RPC channel to one `codex app-server` child.
+struct AppServer {
+    /// Shared with the registry: the answer command writes a parked question's
+    /// response on this same pipe, so the lock is the only serialization point
+    /// between the two writers.
+    stdin: Arc<TokioMutex<Option<ChildStdin>>>,
+    stdout: BufReader<ChildStdout>,
+    line_buf: Vec<u8>,
+    next_id: u64,
+}
+
+impl AppServer {
+    fn new(stdin: Arc<TokioMutex<Option<ChildStdin>>>, stdout: ChildStdout) -> Self {
+        Self {
+            stdin,
+            stdout: BufReader::new(stdout),
+            line_buf: Vec::new(),
+            next_id: 1,
+        }
+    }
+
+    async fn write(&self, value: &Value) -> Result<(), String> {
+        let bytes = encode_ndjson(value)?;
+        let mut guard = self.stdin.lock().await;
+        let Some(stdin) = guard.as_mut() else {
+            return Err("codex stdin is already closed".to_string());
+        };
+        stdin
+            .write_all(&bytes)
+            .await
+            .map_err(|error| format!("codex stdin write failed: {error}"))?;
+        stdin
+            .flush()
+            .await
+            .map_err(|error| format!("codex stdin flush failed: {error}"))
+    }
+
+    /// Send a request and return the id key its reply will carry.
+    async fn request(&mut self, method: &str, params: Value) -> Result<String, String> {
+        let id = self.next_id;
+        self.next_id += 1;
+        self.write(&jsonrpc_request(id, method, params)).await?;
+        Ok(id.to_string())
+    }
+
+    /// Read until this pump's expectation is met.
+    ///
+    /// `Ok(Some(result))` is the awaited reply; `Ok(None)` means the turn ended
+    /// first — a fast turn can finish before its `turn/start` reply is read, and
+    /// the turn pump ends on `turn/completed` rather than on any reply. Lines
+    /// are classified locally (method+id is a server→client request, method
+    /// alone a notification, id alone a reply) because codex speaks plain
+    /// JSON-RPC, unlike the ACP framing the sibling drivers parse.
+    async fn pump(
+        &mut self,
+        label: &str,
+        expect: Expect<'_>,
+        deadline: Instant,
+        killed: &AtomicBool,
+        interrupt: Option<(&str, &str)>,
+        // `Send` is required: the driver runs inside a spawned task, and a
+        // bare trait object would make the whole turn future non-Send.
+        on_message: &mut (dyn FnMut(&Value) -> Handled + Send),
+    ) -> Result<Option<Value>, String> {
+        let mut interrupted = false;
+        let mut deadline = deadline;
+        loop {
+            if killed.load(Ordering::SeqCst) {
+                match interrupt {
+                    // Ask the CLI to stop the turn itself: its `interrupted`
+                    // completion is what lets it persist the rollout before the
+                    // tree dies, so it gets a bounded window to do that instead
+                    // of a pipe yanked out from under it. This must carry an id
+                    // — measured against this CLI, a bare notification is
+                    // ignored and the turn runs on to completion — and its own
+                    // reply is dropped by the pump, which is waiting on the
+                    // completion, not on the acknowledgement.
+                    Some((thread_id, turn_id)) if !interrupted => {
+                        interrupted = true;
+                        deadline = deadline.min(Instant::now() + INTERRUPT_SETTLE_TIMEOUT);
+                        self.request(
+                            "turn/interrupt",
+                            json!({ "threadId": thread_id, "turnId": turn_id }),
+                        )
+                        .await?;
+                    }
+                    // Already asked: read on until the window closes.
+                    Some(_) => {}
+                    // Nothing to interrupt, so there is no turn left to settle.
+                    // The answer command still needs the registry entry, so
+                    // this returns rather than tearing the child down here.
+                    None => return Err(CANCELLED.to_string()),
+                }
+            }
+            // Poll in short slices instead of blocking on the socket, so a kill
+            // is honored within KILL_POLL rather than at the next line.
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(if interrupted {
+                    CANCELLED.to_string()
+                } else {
+                    format!("{label} timed out")
+                });
+            }
+            let line = match timeout(
+                remaining.min(KILL_POLL),
+                read_line_capped(&mut self.stdout, &mut self.line_buf),
+            )
+            .await
+            {
+                // Idle tick with no complete line yet.
+                Err(_) => continue,
+                Ok(Err(error)) => return Err(format!("{label}: reading codex stdout: {error}")),
+                Ok(Ok(LineRead::Eof)) => {
+                    return Err(format!("{label}: the codex app-server closed stdout"))
+                }
+                Ok(Ok(LineRead::TooLong)) => {
+                    // Mirrors the host reader's own terminal message: a line
+                    // this large is a stuck CLI, not an event.
+                    return Err(format!(
+                        "codex emitted a line over {} MiB without a newline; run terminated",
+                        MAX_LINE_BYTES / (1024 * 1024),
+                    ));
+                }
+                Ok(Ok(LineRead::Line(line))) => line,
+            };
+            let text = String::from_utf8_lossy(&line);
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+                // Not JSON-RPC at all (a stray banner): nothing to answer, and
+                // no peer is blocked on it.
+                continue;
+            };
+            let id = value.get("id").filter(|id| !id.is_null());
+            if value.get("method").is_none() {
+                // A reply. Anything we are not waiting for is dropped: a resume
+                // can deliver a leftover frame for an earlier request.
+                let Expect::Reply(key) = expect else {
+                    continue;
+                };
+                if jsonrpc_id_key(id.unwrap_or(&Value::Null)).as_deref() != Some(key) {
+                    continue;
+                }
+                if let Some(error) = value.get("error") {
+                    // Label-free so `terminal_message` surfaces the CLI's own
+                    // words instead of this driver's.
+                    return Err(format!(
+                        "rpc:{}:{}",
+                        error.get("code").and_then(Value::as_i64).unwrap_or(0),
+                        error
+                            .get("message")
+                            .and_then(Value::as_str)
+                            .unwrap_or("codex reported an error"),
+                    ));
+                }
+                return Ok(Some(value.get("result").cloned().unwrap_or(Value::Null)));
+            }
+            match on_message(&value) {
+                Handled::Ended => return Ok(None),
+                // Only a request (method + id) expects a response; a
+                // notification that routed to an answer has no peer waiting.
+                Handled::Answer(frame) if id.is_some() => self.write(&frame).await?,
+                // Parked (the user answers later) or nothing to do.
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Classify and project one decoded frame.
+fn route(core: &TurnCore, state: &mut TurnState, view: &mut TurnView, value: &Value) -> Handled {
+    let Some(method) = value.get("method").and_then(Value::as_str) else {
+        return Handled::Ignore;
+    };
+    let params = value.get("params").cloned().unwrap_or(Value::Null);
+    match value.get("id").filter(|id| !id.is_null()) {
+        Some(id) => handle_server_request(core, state, method, id, &params),
+        None => handle_notification(core, state, view, method, &params),
+    }
+}
+
+/// A server→client request: the CLI is blocked until this is answered.
+fn handle_server_request(
+    core: &TurnCore,
+    state: &mut TurnState,
+    method: &str,
+    id: &Value,
+    params: &Value,
+) -> Handled {
+    match method {
+        // The reason this transport exists: the model's own multiple-choice
+        // question becomes an app card and the turn stays parked until the user
+        // picks. `answer_frame` writes the response later, on this same pipe.
+        "item/tool/requestUserInput" => {
+            let (cards, ids) = question_cards(params);
+            if cards.is_empty() {
+                // A question the card UI cannot render must not wedge the turn:
+                // an empty answer reads as "no answer" and lets the model go on.
+                return Handled::Answer(jsonrpc_result_response(id, json!({ "answers": {} })));
+            }
+            park_question(core, state, id, params, cards, ids);
+            Handled::Parked
+        }
+        // Always declined: `approvalPolicy` is pinned to "never" and the
+        // sandbox is the boundary this app chose, so approving here would be a
+        // privilege escalation the exec transport never allowed either.
+        "item/commandExecution/requestApproval" | "item/fileChange/requestApproval" => {
+            Handled::Answer(jsonrpc_result_response(
+                id,
+                json!({ "decision": "decline" }),
+            ))
+        }
+        // An empty profile grants nothing, and still settles the request.
+        "item/permissions/requestApproval" => {
+            Handled::Answer(jsonrpc_result_response(id, json!({ "permissions": {} })))
+        }
+        "mcpServer/elicitation/request" => {
+            Handled::Answer(jsonrpc_result_response(id, json!({ "action": "decline" })))
+        }
+        // Unknown ask: only the peer knows the shape. An empty result still
+        // settles its request — silence is what would deadlock the turn.
+        _ => Handled::Answer(jsonrpc_result_response(id, json!({}))),
+    }
+}
+
+/// A notification: no reply is expected, so anything unknown is ignorable.
+fn handle_notification(
+    core: &TurnCore,
+    state: &mut TurnState,
+    view: &mut TurnView,
+    method: &str,
+    params: &Value,
+) -> Handled {
+    match method {
+        "item/agentMessage/delta" => {
+            if let Some(delta) = params.get("delta").and_then(Value::as_str) {
+                if !delta.is_empty() {
+                    // The text streams as deltas and the completed item is then
+                    // skipped by the de-dup below, because a `message` row is a
+                    // settled snapshot the UI appends on top of the live one.
+                    if let Some(item_id) = params.get("itemId").and_then(Value::as_str) {
+                        view.streamed_message = Some(item_id.to_string());
+                    }
+                    core.dispatch_event(state, EngineEvent::Delta(delta.to_string()));
+                }
+            }
+        }
+        "item/reasoning/textDelta" | "item/reasoning/summaryTextDelta" => {
+            if let Some(delta) = params.get("delta").and_then(Value::as_str) {
+                if !delta.is_empty() {
+                    if let Some(item_id) = params.get("itemId").and_then(Value::as_str) {
+                        view.streamed_reasoning = Some(item_id.to_string());
+                    }
+                    core.dispatch_event(state, EngineEvent::Thinking(delta.to_string()));
+                }
+            }
+        }
+        "item/started" | "item/completed" => {
+            if let Some(item) = params.get("item") {
+                let thread_id = params.get("threadId").and_then(Value::as_str);
+                handle_item(core, state, view, item, method == "item/completed", thread_id);
+            }
+        }
+        // Plan body streaming (EXPERIMENTAL): draft preview only. The schema
+        // warns the concatenated deltas need not match the completed plan
+        // item, so the review text below comes from the item, never from
+        // accumulating these.
+        "item/plan/delta" => {
+            if view.plan_mode {
+                if let (Some(thread_id), Some(delta)) = (
+                    params.get("threadId").and_then(Value::as_str),
+                    params.get("delta").and_then(Value::as_str),
+                ) {
+                    if !delta.is_empty() {
+                        core.dispatch_event(
+                            state,
+                            EngineEvent::PlanDraft {
+                                plan_id: plan_id_for(thread_id),
+                                text: delta.to_string(),
+                                replace: false,
+                            },
+                        );
+                    }
+                }
+            }
+        }
+        // `turn/plan/updated` is the update_plan tool's task checklist (step
+        // statuses), not the proposed plan body: it must never trigger a
+        // review, and it has no timeline row of its own.
+        "thread/tokenUsage/updated" => {
+            if let Some(usage) = params.get("tokenUsage") {
+                if let Some(payload) = usage_payload(usage, params.get("modelContextWindow")) {
+                    view.last_usage = Some(payload);
+                }
+            }
+        }
+        "thread/started" => {
+            if let Some(thread_id) = params.pointer("/thread/id").and_then(Value::as_str) {
+                core.dispatch_event(state, EngineEvent::SessionId(thread_id.to_string()));
+            }
+        }
+        // The server moved this turn to another model (safety reroute): the
+        // response's own account of what is answering, so the check flags it
+        // instead of leaving the launch selection looking confirmed.
+        "model/rerouted" => {
+            if let Some(to) = params
+                .get("toModel")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|to| !to.is_empty())
+            {
+                core.dispatch_event(
+                    state,
+                    EngineEvent::Served {
+                        model: Some(to.to_string()),
+                        effort: None,
+                    },
+                );
+            }
+        }
+        // Terminal. A failed turn arrives here as a completion whose status is
+        // `failed` with an explanatory message, so both shapes are read the
+        // same; `turn/failed` is handled defensively in case a newer CLI emits
+        // a notification this schema does not know.
+        "turn/completed" | "turn/failed" => {
+            let turn = params.get("turn");
+            let failed = turn
+                .and_then(|turn| turn.get("status"))
+                .and_then(Value::as_str)
+                == Some("failed");
+            let message = turn
+                .and_then(|turn| turn.pointer("/error/message"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            if failed || !message.is_empty() {
+                core.dispatch_event(
+                    state,
+                    EngineEvent::Error(if message.is_empty() {
+                        "codex reported a failed turn".to_string()
+                    } else {
+                        message.to_string()
+                    }),
+                );
+            }
+            return Handled::Ended;
+        }
+        // Non-terminal by contract (`willRetry`): the CLI is retrying an
+        // upstream call, so the turn keeps running and the UI shows a notice.
+        "error" => {
+            let message = params
+                .pointer("/error/message")
+                .and_then(Value::as_str)
+                .unwrap_or("codex reported an error");
+            core.dispatch_event(state, EngineEvent::Warn(message.to_string()));
+        }
+        _ => {}
+    }
+    Handled::Ignore
+}
+
+/// Project one item lifecycle event. Tool work opens a row on start (the
+/// app-server reports the command up front, unlike exec) and the same row is
+/// patched with its result on completion; assistant and reasoning text comes
+/// from deltas, with the completed item as the fallback for a CLI that streams
+/// none.
+fn handle_item(
+    core: &TurnCore,
+    state: &mut TurnState,
+    view: &mut TurnView,
+    item: &Value,
+    completed: bool,
+    thread_id: Option<&str>,
+) {
+    let Some(kind) = item.get("type").and_then(Value::as_str) else {
+        return;
+    };
+    let item_id = item.get("id").and_then(Value::as_str);
+    match kind {
+        "agentMessage" => {
+            if !completed || view.streamed_message.as_deref() == item_id {
+                return;
+            }
+            let text = item.get("text").and_then(Value::as_str).unwrap_or("");
+            if !text.trim().is_empty() {
+                core.dispatch_event(state, assistant_message(text.to_string()));
+            }
+        }
+        // The completed plan item is the AUTHORITATIVE plan body (the schema
+        // says so verbatim) — it replaces, never extends, the streamed
+        // deltas. In a plan run it becomes the review the user approves; the
+        // turn then ends normally and the thread idles until the decision.
+        "plan" => {
+            if !completed || !view.plan_mode {
+                return;
+            }
+            let (Some(plan_item_id), Some(text)) = (
+                item.get("id").and_then(Value::as_str),
+                item.get("text").and_then(Value::as_str),
+            ) else {
+                return;
+            };
+            if text.trim().is_empty() {
+                return;
+            }
+            // No stable thread id, no approvable identity: fail closed.
+            let Some(thread_id) = thread_id
+                .map(str::to_string)
+                .or_else(|| state.native_session_id.clone())
+            else {
+                return;
+            };
+            let record = PlanReview {
+                plan_id: plan_id_for(&thread_id),
+                engine: core.engine_id.clone(),
+                session_id: thread_id.clone(),
+                workspace_path: view.workspace.clone(),
+                run_id: Some(core.run_id.clone()),
+                // Assigned by record_review on dispatch.
+                revision: 0,
+                title: plan_title(text),
+                content: text.to_string(),
+                content_hash: plan_review::content_hash(text),
+                complete: true,
+                review_kind: PlanReviewKind::NextTurn,
+                native_plan_id: Some(plan_item_id.to_string()),
+                // The execution turn inherits the thread's sandbox, which the
+                // plan run derived exactly like an "auto" run (workspace-write).
+                exec_permission: "auto".to_string(),
+                status: plan_review::PlanStatus::AwaitingReview,
+                execution: plan_review::PlanExecution::NotStarted,
+                decision: None,
+                decision_intent_at: None,
+                applied_at: None,
+                created_at: 0,
+                updated_at: 0,
+                superseded_by: None,
+            };
+            // next_turn does not park: the plan turn ended on its own, and
+            // approval means starting a fresh execution turn. The context is
+            // Null — the backbone only parks native_request reviews.
+            core.dispatch_event(
+                state,
+                EngineEvent::PlanReviewReady {
+                    record: Box::new(record),
+                    context: Value::Null,
+                },
+            );
+        }
+        "reasoning" => {
+            if !completed || view.streamed_reasoning.as_deref() == item_id {
+                return;
+            }
+            // Both arrays are optional, and often only one is populated: the
+            // summary is the model's rendering, the content the raw trace.
+            let mut parts: Vec<String> = Vec::new();
+            for key in ["summary", "content"] {
+                if let Some(entries) = item.get(key).and_then(Value::as_array) {
+                    parts.extend(
+                        entries
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_string)
+                            .filter(|part| !part.trim().is_empty()),
+                    );
+                }
+            }
+            let text = parts.join("\n");
+            if !text.is_empty() {
+                core.dispatch_event(state, EngineEvent::Thinking(text));
+            }
+        }
+        "commandExecution" => {
+            let command = item.get("command").and_then(Value::as_str).unwrap_or("");
+            let name = row_name(command);
+            if completed {
+                core.dispatch_event(
+                    state,
+                    tool_result_patch(name, Some(&pick(item, &["aggregatedOutput", "exitCode"]))),
+                );
+            } else {
+                core.dispatch_event(
+                    state,
+                    tool_call_message(name, Some(&pick(item, &["command", "cwd"]))),
+                );
+            }
+        }
+        "fileChange" => {
+            if completed {
+                // The per-file rows were opened on start; the completion only
+                // carries the item's own status.
+                core.dispatch_event(
+                    state,
+                    tool_result_patch("apply_patch", Some(&pick(item, &["status"]))),
+                );
+            } else if let Some(changes) = item.get("changes").and_then(Value::as_array) {
+                // One row per file: the UI resolves `path` out of the args for
+                // its file chip, and the diff gets an expandable panel.
+                for change in changes {
+                    core.dispatch_event(
+                        state,
+                        tool_call_message(
+                            "apply_patch",
+                            Some(&pick(change, &["path", "kind", "diff"])),
+                        ),
+                    );
+                }
+            }
+        }
+        "mcpToolCall" => {
+            let name = item
+                .get("tool")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| "mcp".to_string());
+            if completed {
+                core.dispatch_event(
+                    state,
+                    tool_result_patch(name, Some(&pick(item, &["result", "error", "status"]))),
+                );
+            } else {
+                core.dispatch_event(
+                    state,
+                    tool_call_message(name, Some(&pick(item, &["server", "tool", "arguments"]))),
+                );
+            }
+        }
+        "dynamicToolCall" => {
+            let name = item
+                .get("tool")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| "tool".to_string());
+            if completed {
+                core.dispatch_event(
+                    state,
+                    tool_result_patch(name, Some(&pick(item, &["success", "contentItems"]))),
+                );
+            } else {
+                core.dispatch_event(
+                    state,
+                    tool_call_message(name, Some(&pick(item, &["namespace", "tool", "arguments"]))),
+                );
+            }
+        }
+        "webSearch" => {
+            if completed {
+                core.dispatch_event(
+                    state,
+                    tool_result_patch("web_search", Some(&pick(item, &["results"]))),
+                );
+            } else {
+                core.dispatch_event(
+                    state,
+                    tool_call_message("web_search", Some(&pick(item, &["query", "action"]))),
+                );
+            }
+        }
+        "imageGeneration" => {
+            if completed {
+                core.dispatch_event(
+                    state,
+                    tool_result_patch(
+                        "image_generation",
+                        Some(&pick(item, &["status", "savedPath", "failure"])),
+                    ),
+                );
+            } else {
+                core.dispatch_event(
+                    state,
+                    tool_call_message("image_generation", Some(&pick(item, &["revisedPrompt"]))),
+                );
+            }
+        }
+        // Plans, sub-agent activity, review mode and compaction have no row of
+        // their own in this client's timeline; what they contain is outside
+        // what the app renders, not lost by a missing arm.
+        _ => {}
+    }
+}
+
+/// Park a user-input request: publish the card, then remember how to answer it.
+fn park_question(
+    core: &TurnCore,
+    state: &mut TurnState,
+    id: &Value,
+    params: &Value,
+    cards: Vec<Value>,
+    ids: Value,
+) {
+    // The registry key is the string form of the rpc id — the same key
+    // `QuestionSettled` removes and the run's question map is keyed by.
+    let request_id = id.to_string();
+    let tool_use_id = params
+        .get("itemId")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    core.dispatch_event(
+        state,
+        EngineEvent::Question {
+            request_id: request_id.clone(),
+            tool_use_id,
+            input: json!({ "questions": cards }),
+        },
+    );
+    // `dispatch_event` parked the raw event input; replace it with the context
+    // the answer command needs — the rpc id to answer plus the question-text →
+    // question-id map its response is keyed by. The cards themselves are
+    // already in the UI's hands, so only the protocol half is kept here.
+    if let Some(entry) = core.registry.get(&core.run_id) {
+        entry.questions.lock().unwrap().insert(
+            request_id,
+            json!({ "codexApp": { "rpcId": id, "ids": ids } }),
+        );
+    }
+}
+
+/// Build the CLI's response to a parked question.
+///
+/// `parked` is the context stored by `park_question`; `answers` is the raw
+/// frontend map (question text → chosen label, or a list of labels for a
+/// multi-select). `None` means the user dismissed the card — that must settle
+/// the CLI's request with an empty answer so the model can carry on, never an
+/// error. A mismatch between what the frontend answered and what the server
+/// asked is an error instead: it means the card and the request drifted, and
+/// silently dropping the answer would park the turn forever.
+pub(super) fn answer_frame(parked: &Value, answers: Option<&Value>) -> Result<Value, String> {
+    let id = parked
+        .get("rpcId")
+        .ok_or_else(|| "parked question lost its rpc id".to_string())?;
+    let ids = parked.get("ids").and_then(Value::as_object);
+    let mut out = Map::new();
+    if let Some(answers) = answers {
+        let answers = answers
+            .as_object()
+            .ok_or_else(|| "codex answers must be an object".to_string())?;
+        for (text, choice) in answers {
+            let Some(question_id) = ids.and_then(|ids| ids.get(text)).and_then(Value::as_str)
+            else {
+                return Err(format!("codex did not ask a question titled {text:?}"));
+            };
+            // A single-select arrives as a bare label; the wire only has the
+            // list form, so both are normalized into it.
+            let labels = match choice {
+                Value::String(label) => vec![Value::String(label.clone())],
+                Value::Array(labels) => labels.clone(),
+                Value::Null => Vec::new(),
+                other => return Err(format!("unsupported codex answer for {text:?}: {other}")),
+            };
+            out.insert(question_id.to_string(), json!({ "answers": labels }));
+        }
+    }
+    Ok(jsonrpc_result_response(id, json!({ "answers": out })))
+}
+
+/// Project the protocol's `questions` onto the app's card spec, building the
+/// question-text → question-id map in the same pass so the two cannot drift:
+/// the card the user picks is keyed by its text, while the response the CLI
+/// needs is keyed by the server's own id.
+fn question_cards(params: &Value) -> (Vec<Value>, Value) {
+    let mut cards = Vec::new();
+    let mut ids = Map::new();
+    let Some(questions) = params.get("questions").and_then(Value::as_array) else {
+        return (cards, Value::Object(ids));
+    };
+    for (index, question) in questions.iter().enumerate() {
+        let (Some(id), Some(text)) = (
+            question.get("id").and_then(Value::as_str),
+            question.get("question").and_then(Value::as_str),
+        ) else {
+            continue;
+        };
+        let text = text.trim();
+        if text.is_empty() {
+            continue;
+        }
+        // The card's header is a short chip and the protocol's is optional, so
+        // a missing one falls back to the question's position.
+        let header = question
+            .get("header")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|header| !header.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("Q{}", index + 1));
+        let options: Vec<Value> = question
+            .get("options")
+            .and_then(Value::as_array)
+            .map(|options| {
+                options
+                    .iter()
+                    .filter_map(|option| {
+                        let label = option.get("label").and_then(Value::as_str)?;
+                        let mut card = Map::new();
+                        card.insert("label".to_string(), json!(label));
+                        if let Some(description) = option
+                            .get("description")
+                            .and_then(Value::as_str)
+                            .map(str::trim)
+                            .filter(|description| !description.is_empty())
+                        {
+                            card.insert("description".to_string(), json!(description));
+                        }
+                        Some(Value::Object(card))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        // `multiSelect` is omitted: codex questions are single-choice, and an
+        // absent flag is what the card already reads as. `isOther`/`isSecret`
+        // have no place in the card spec.
+        cards.push(json!({ "question": text, "header": header, "options": options }));
+        ids.insert(text.to_string(), json!(id));
+    }
+    (cards, Value::Object(ids))
+}
+
+/// Sandbox mode for the run's permission. Mirrors `codex.rs`, whose `_` arm is
+/// also what `resolve_permission`'s first-supported fallback lands on, so an
+/// unsupported mode here behaves exactly like it does on the exec path.
+fn sandbox_for(permission: Option<&str>) -> &'static str {
+    match permission {
+        Some("bypass") => "danger-full-access",
+        Some("manual") => "read-only",
+        Some(codex_read_only::PERMISSION) => "read-only",
+        _ => "workspace-write",
+    }
+}
+
+/// The turn's input blocks: the prompt, then one local-image block per
+/// attachment. `localImage` (not `image`, which wants a URL) makes the CLI read
+/// the file from disk; the path is absolutized against the workspace exactly as
+/// the exec transport's `-i` argument is.
+fn turn_input(req: &SendRequest) -> Vec<Value> {
+    let mut input = vec![json!({ "type": "text", "text": req.prompt })];
+    for raw in &req.images {
+        if let Some(path) = images::absolutize_image_path(raw, &req.workspace) {
+            input.push(json!({ "type": "localImage", "path": path.to_string_lossy() }));
+        }
+    }
+    input
+}
+
+/// Project token usage onto the shape the app's usage panel parses. `last` is
+/// the most recent response's occupancy — what the context meter shows — while
+/// `total` is the billed-session cumulative. Returns None when the report
+/// carries nothing usable, so a bare Done keeps its previous numbers.
+fn usage_payload(usage: &Value, context_window: Option<&Value>) -> Option<Value> {
+    let last = usage.get("last")?;
+    let mut out = Map::new();
+    for (from, to) in [
+        ("inputTokens", "input_tokens"),
+        ("cachedInputTokens", "cached_input_tokens"),
+        ("cacheWriteInputTokens", "cache_write_input_tokens"),
+        ("outputTokens", "output_tokens"),
+        ("reasoningOutputTokens", "reasoning_output_tokens"),
+        ("totalTokens", "total_tokens"),
+    ] {
+        if let Some(field) = last.get(from).filter(|field| !field.is_null()) {
+            out.insert(to.to_string(), field.clone());
+        }
+    }
+    if let Some(window) = context_window.filter(|window| !window.is_null()) {
+        out.insert("model_context_window".to_string(), window.clone());
+    }
+    if out.is_empty() {
+        return None;
+    }
+    Some(Value::Object(out))
+}
+
+/// Tool rows are keyed by name — a result patch updates the newest row with the
+/// same name — so both halves of one execution must derive it identically. The
+/// command string is the only stable handle the protocol gives a command.
+fn row_name(command: &str) -> String {
+    let name = command.trim();
+    if name.is_empty() {
+        return "tool".to_string();
+    }
+    name.chars().take(120).collect()
+}
+
+/// Copy the named keys of `value` into a fresh object, dropping absent and null
+/// ones so a tool row's args or result panel never shows empty slots.
+fn pick(value: &Value, keys: &[&str]) -> Value {
+    let mut out = Map::new();
+    for key in keys {
+        if let Some(field) = value.get(*key).filter(|field| !field.is_null()) {
+            out.insert((*key).to_string(), field.clone());
+        }
+    }
+    Value::Object(out)
+}
+
+// ==================== plan review (next_turn) ====================
+
+/// The fixed execution instruction carried by an approval: the decision
+/// itself transports no user text, so everything the model needs to start
+/// executing lives in this one constant — any user text on the approve path
+/// would blur what exactly was approved.
+const EXECUTE_PLAN_PROMPT: &str = "The plan has been reviewed and approved. Leave plan mode and implement it exactly as approved: do not rewrite the plan, start executing now.";
+
+/// Card title when the plan body carries no markdown heading.
+const DEFAULT_PLAN_TITLE: &str = "Codex plan";
+
+/// Staleness marker on verification errors: the plan item changed or vanished
+/// while awaiting review, so the claimed revision must be expired (not just
+/// reverted to awaiting_review — it may not keep waiting with a stale body).
+const PLAN_STALE_PREFIX: &str = "codex plan is stale:";
+
+/// Stable review identity: one thread has at most one plan awaiting review at
+/// a time, so thread id + a fixed suffix suffices; a revised plan lands as the
+/// next revision of the same planId (record_review supersedes the old one).
+fn plan_id_for(thread_id: &str) -> String {
+    format!("{thread_id}/plan")
+}
+
+/// Review card title: the first ATX heading of the plan body, else a fixed
+/// default. A `#` not followed by whitespace is not a heading.
+fn plan_title(content: &str) -> String {
+    for line in content.lines() {
+        let line = line.trim_start();
+        let hashes = line.chars().take_while(|c| *c == '#').count();
+        if hashes == 0 || hashes > 6 {
+            continue;
+        }
+        let rest = &line[hashes..];
+        if !rest.starts_with(' ') && !rest.starts_with('\t') {
+            continue;
+        }
+        let title = rest.trim();
+        if !title.is_empty() {
+            return title.chars().take(80).collect();
+        }
+    }
+    DEFAULT_PLAN_TITLE.to_string()
+}
+
+/// `collaborationMode` params (0.154.0 schema, EXPERIMENTAL): `settings.model`
+/// is a REQUIRED field, `reasoning_effort` rides along only when it has a
+/// value. The caller fails closed when it cannot name a model — sending a
+/// settings object without its required field would be an invalid request,
+/// not a negotiation.
+fn collaboration_mode(mode: &str, model: &str, effort: Option<&str>) -> Value {
+    let mut settings = Map::new();
+    settings.insert("model".to_string(), json!(model));
+    if let Some(effort) = effort.map(str::trim).filter(|e| !e.is_empty()) {
+        settings.insert("reasoning_effort".to_string(), json!(effort));
+    }
+    json!({ "mode": mode, "settings": Value::Object(settings) })
+}
+
+/// collaborationMode for the initial planning turn: the request's explicit
+/// model wins, else the thread's reported model; neither is fail-closed.
+fn plan_collaboration(
+    req_model: Option<&str>,
+    thread_model: Option<&str>,
+    effort: Option<&str>,
+) -> Result<Value, String> {
+    let model = req_model
+        .filter(|m| !m.trim().is_empty())
+        .or_else(|| thread_model.filter(|m| !m.trim().is_empty()))
+        .ok_or_else(|| {
+            "codex plan mode needs a model for collaborationMode.settings, but neither the request nor the thread reported one".to_string()
+        })?;
+    Ok(collaboration_mode("plan", model, effort))
+}
+
+/// collaborationMode for a decision turn: the thread metadata carries no
+/// mode field, so the client must restate it explicitly (P0: "模式状态需客户
+/// 端重新断言"); settings inherit the thread's current model/effort as
+/// reported by thread/resume.
+fn decision_collaboration(
+    mode: &'static str,
+    thread_model: Option<&str>,
+    thread_effort: Option<&str>,
+) -> Result<Value, String> {
+    let model = thread_model
+        .filter(|m| !m.trim().is_empty())
+        .ok_or_else(|| {
+            "thread/resume reported no model; cannot restate collaborationMode settings"
+                .to_string()
+        })?;
+    Ok(collaboration_mode(mode, model, thread_effort))
+}
+
+/// What a user decision becomes: the new turn's collaboration mode, input
+/// text and permission, plus the native item id to verify against. Every
+/// check runs before the transport is touched, so the failure paths need no
+/// process at all.
+struct DecisionSpec {
+    mode: &'static str,
+    prompt: String,
+    permission: String,
+    native_plan_id: String,
+}
+
+fn decision_spec(
+    review: &PlanReview,
+    decision: PlanDecision,
+    feedback: Option<&str>,
+) -> Result<DecisionSpec, String> {
+    if review.review_kind != PlanReviewKind::NextTurn {
+        return Err("codex only executes next_turn plan decisions".to_string());
+    }
+    if review.session_id.trim().is_empty() {
+        return Err("the plan review lost its codex thread id".to_string());
+    }
+    let native_plan_id = review
+        .native_plan_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| "the plan review lost its native plan item id".to_string())?
+        .to_string();
+    let (mode, prompt, permission) = match decision {
+        PlanDecision::Approve => {
+            let permission = review.exec_permission.trim();
+            if permission.is_empty() {
+                return Err(
+                    "the plan review lost its execution permission snapshot".to_string()
+                );
+            }
+            ("default", EXECUTE_PLAN_PROMPT.to_string(), permission.to_string())
+        }
+        PlanDecision::RequestChanges => {
+            let feedback = feedback
+                .map(str::trim)
+                .filter(|f| !f.is_empty())
+                .ok_or_else(|| "request_changes requires non-empty feedback".to_string())?;
+            ("plan", feedback.to_string(), "plan".to_string())
+        }
+        PlanDecision::Defer => {
+            return Err("defer is settled locally; it never starts a codex turn".to_string())
+        }
+    };
+    Ok(DecisionSpec {
+        mode,
+        prompt,
+        permission,
+        native_plan_id,
+    })
+}
+
+/// Find the reviewed final plan item inside one `thread/turns/list`
+/// (itemsView=full) page and compare bodies: id AND text hash must match the
+/// record. A mismatch or a missing item is staleness (PLAN_STALE_PREFIX —
+/// the version gets expired); a malformed page is a plain error (the claim
+/// reverts, the version stays open for a retry).
+fn check_plan_item(page: &Value, native_plan_id: &str, expected_hash: &str) -> Result<(), String> {
+    let turns = page
+        .get("data")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "thread/turns/list returned no turn page".to_string())?;
+    for turn in turns {
+        let Some(items) = turn.get("items").and_then(Value::as_array) else {
+            continue;
+        };
+        for item in items {
+            let is_plan = item.get("type").and_then(Value::as_str) == Some("plan");
+            let matches = item.get("id").and_then(Value::as_str) == Some(native_plan_id);
+            if !is_plan || !matches {
+                continue;
+            }
+            let Some(text) = item.get("text").and_then(Value::as_str) else {
+                return Err(format!(
+                    "{PLAN_STALE_PREFIX} the thread's plan item carries no text"
+                ));
+            };
+            return if plan_review::content_hash(text) == expected_hash {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{PLAN_STALE_PREFIX} plan content changed while awaiting review"
+                ))
+            };
+        }
+    }
+    Err(format!(
+        "{PLAN_STALE_PREFIX} the reviewed plan item is no longer in the thread"
+    ))
+}
+
+/// The channel the planning session ran on (recorded per session by the
+/// frontend's session memory): the decision turn must re-attach with the same
+/// credentials, or thread/resume would land on the default backend.
+fn session_provider_id(db: &crate::db::Db, session_id: &str) -> Option<String> {
+    let conn = db.0.lock();
+    conn.query_row(
+        "SELECT provider_id FROM session_providers WHERE engine='codex' AND session_id=?1",
+        rusqlite::params![session_id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+}
+
+struct SpawnedCodex {
+    child: Child,
+    server: AppServer,
+    stderr_buf: Arc<Mutex<String>>,
+    /// Kill-on-close job guard (Windows): drops after teardown, sweeping any
+    /// grandchild the CLI orphaned before `taskkill /T` could see a tree.
+    #[cfg(windows)]
+    _tree_guard: Option<Arc<super::job::KillOnCloseJob>>,
+}
+
+/// Spawn the prepared app-server command as this driver's own child: piped
+/// stdio, own process group (so teardown sweeps the tree) and a drop backstop,
+/// because a dropped driver future must never orphan the CLI. Unlike the ACP
+/// spawn the reader is kept in the struct: this transport answers server
+/// requests on the same pipe while it reads, so both ends stay live.
+fn spawn_app_server(command: &mut Command, workspace: &Path) -> Result<SpawnedCodex, String> {
+    command
+        .current_dir(workspace)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(unix)]
+    command.process_group(0);
+    #[cfg(windows)]
+    super::hide_console(command);
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("failed to spawn codex app-server: {error}"))?;
+    #[cfg(windows)]
+    let tree_guard = super::job::assign_kill_on_close(&child);
+    let (stdin, stdout, stderr) =
+        match (child.stdin.take(), child.stdout.take(), child.stderr.take()) {
+            (Some(stdin), Some(stdout), Some(stderr)) => (stdin, stdout, stderr),
+            _ => {
+                let _ = child.start_kill();
+                return Err("missing stdio pipe after spawn".to_string());
+            }
+        };
+    Ok(SpawnedCodex {
+        child,
+        server: AppServer::new(Arc::new(TokioMutex::new(Some(stdin))), stdout),
+        stderr_buf: spawn_stderr_capture(stderr),
+        #[cfg(windows)]
+        _tree_guard: tree_guard,
+    })
+}
+
+// ==================== turn driver ====================
+
+/// Run one app-server turn and settle it exactly like the sibling drivers: a
+/// question left parked by an interrupted run is resolved first, then the turn
+/// reports either the engine's error or its own Done.
+pub(super) async fn run_app_server_turn(
+    core: TurnCore,
+    req: SendRequest,
+    built: BuiltCommand,
+    killed: Arc<AtomicBool>,
+    virtual_pid: u32,
+) {
+    let mut state = TurnState::new(req.session_id.clone());
+    let mut view = TurnView::default();
+    view.plan_mode = req.permission.as_deref() == Some("plan");
+    view.workspace = req.workspace.to_string_lossy().into_owned();
+    let preassigned_session_id = req.session_id.clone();
+    // Abort-safe backstop: the by-name removals below only run when the task
+    // finishes normally. An abort or a panic would otherwise leave this run's
+    // keys pinning a concurrency slot until app exit.
+    let _registry_guard =
+        VirtualRunGuard::new(Arc::clone(&core.registry), core.run_id.clone(), virtual_pid);
+    let result = turn_inner(&core, &mut state, &mut view, &req, built, &killed, None).await;
+    settle(
+        &core,
+        &mut state,
+        &view,
+        result,
+        &killed,
+        virtual_pid,
+        preassigned_session_id,
+    )
+    .await;
+}
+
+/// Shared settle for every virtual app-server run (ordinary turns and plan
+/// decision turns): parked questions die with the turn, parked plan reviews
+/// expire with it (a no-op for codex — next_turn never parks — kept as the
+/// host-driver contract the sibling drivers follow), then the turn reports
+/// either the engine's error or its own Done.
+async fn settle(
+    core: &TurnCore,
+    state: &mut TurnState,
+    view: &TurnView,
+    result: Result<(), String>,
+    killed: &Arc<AtomicBool>,
+    virtual_pid: u32,
+    preassigned_session_id: Option<String>,
+) {
+    // Pending questions die with the turn: settle their cards BEFORE any
+    // terminal dispatch, or the monotonic saw_done/saw_error guard in
+    // dispatch_event would drop these and leave answerable cards pointing at a
+    // settled turn.
+    for key in [
+        state.native_session_id.clone(),
+        Some(core.run_id.clone()),
+        preassigned_session_id.clone(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        for request_id in core.registry.take_questions(&key) {
+            core.dispatch_event(state, EngineEvent::QuestionSettled { request_id });
+        }
+        super::reader::expire_parked_plans(core, state, &key);
+    }
+    // A killed turn is not an error: it was interrupted on purpose, and the
+    // marker below only exists to end this pump.
+    if let Err(error) = result {
+        if !killed.load(Ordering::SeqCst) {
+            core.dispatch_event(state, EngineEvent::Error(error));
+        }
+    }
+    // An interrupted run commits its partial output as a normal turn end — the
+    // same contract as the SIGKILL'd process path.
+    if !state.saw_done && !state.saw_error {
+        let usage = if killed.load(Ordering::SeqCst) {
+            None
+        } else {
+            view.last_usage.clone()
+        };
+        let session_id = state.native_session_id.clone();
+        core.dispatch_event(state, EngineEvent::Done { session_id, usage });
+    }
+    core.registry.remove_if_pid(&core.run_id, virtual_pid);
+    // Clean up both the native session id (if the CLI reported one) and the
+    // preassigned session id (if we resumed an existing conversation). A
+    // resumed session was keyed at spawn under req.session_id, so that alias
+    // must go even if the native id differs or never arrived.
+    if let Some(session_id) = state.native_session_id.clone() {
+        core.registry.remove_if_pid(&session_id, virtual_pid);
+    }
+    if let Some(session_id) = preassigned_session_id {
+        core.registry.remove_if_pid(&session_id, virtual_pid);
+    }
+    if !view.exit_unconfirmed {
+        state.confirm_exit(core);
+    }
+    core.sink.flush();
+}
+
+async fn turn_inner(
+    core: &TurnCore,
+    state: &mut TurnState,
+    view: &mut TurnView,
+    req: &SendRequest,
+    built: BuiltCommand,
+    killed: &Arc<AtomicBool>,
+    decision: Option<&DecisionCheck>,
+) -> Result<(), String> {
+    let BuiltCommand {
+        mut command,
+        cleanup_files,
+        ..
+    } = built;
+    let _staging_guard = codex_read_only::StagedHomeGuard(cleanup_files);
+    let outcome = drive(&mut command, core, state, view, req, killed, decision).await;
+    // Staged prompt files go on every exit path, including a spawn that never
+    // got off the ground.
+    outcome
+}
+
+/// Spawn, handshake, prompt, then tear the tree down: the app-server is
+/// resident and would otherwise outlive the run.
+async fn drive(
+    command: &mut Command,
+    core: &TurnCore,
+    state: &mut TurnState,
+    view: &mut TurnView,
+    req: &SendRequest,
+    killed: &Arc<AtomicBool>,
+    decision: Option<&DecisionCheck>,
+) -> Result<(), String> {
+    if codex_read_only::requested(req) {
+        view.isolated_home = Some(
+            std::fs::canonicalize(codex_read_only::isolated_home(command)?)
+                .map_err(|_| "Cannot verify isolated Codex home")?,
+        );
+    }
+    let mut spawned = spawn_app_server(command, &req.workspace)?;
+    view.exit_unconfirmed = true;
+    // The answer command writes a parked question's response on this same pipe,
+    // so the registry gets the writer from the first frame on.
+    core.registry
+        .set_stdin(&core.run_id, Arc::clone(&spawned.server.stdin));
+    let result =
+        handshake_and_turn(&mut spawned.server, core, state, view, req, killed, decision).await;
+    teardown(&mut spawned.child).await;
+    view.exit_unconfirmed = !matches!(spawned.child.try_wait(), Ok(Some(_)));
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => Err(terminal_message(error, &spawned.stderr_buf)),
+    }
+}
+
+/// `initialize` → thread → turn, projecting everything through `route`.
+async fn handshake_and_turn(
+    server: &mut AppServer,
+    core: &TurnCore,
+    state: &mut TurnState,
+    view: &mut TurnView,
+    req: &SendRequest,
+    killed: &Arc<AtomicBool>,
+    decision: Option<&DecisionCheck>,
+) -> Result<(), String> {
+    let Some(started) = handshake_and_start(
+        server,
+        core,
+        state,
+        view,
+        req,
+        killed,
+        decision,
+        PROMPT_TIMEOUT,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+    pump_turn_to_end(server, core, state, view, &started, killed).await
+}
+
+/// A turn whose `turn/start` the server has acknowledged.
+struct TurnStarted {
+    thread_id: String,
+    /// None when the ack carried no id (defensive; interrupt then has no
+    /// handle and a kill falls back to ending the pump).
+    turn_id: Option<String>,
+}
+
+/// `initialize` → thread → [plan-item verification] → `turn/start`, up to the
+/// turn's acknowledgement. `decision` marks a plan-decision turn: the reviewed
+/// plan item is re-fetched and compared first, and the turn starts in the
+/// decision's collaboration mode instead of the request's plain model/effort.
+/// `Ok(None)` means the turn already ended inside the ack window.
+async fn handshake_and_start(
+    server: &mut AppServer,
+    core: &TurnCore,
+    state: &mut TurnState,
+    view: &mut TurnView,
+    req: &SendRequest,
+    killed: &Arc<AtomicBool>,
+    decision: Option<&DecisionCheck>,
+    ack_timeout: Duration,
+) -> Result<Option<TurnStarted>, String> {
+    let deadline = Instant::now() + RPC_HANDSHAKE_TIMEOUT;
+    // collaborationMode and the plan items are EXPERIMENTAL in the 0.154.0
+    // schema: the client must opt into the experimental API to negotiate
+    // them. If the server then refuses the fields, the rpc error fails the
+    // turn — there is no degraded fallback.
+    // Codex 0.150 requires this opt-in for `thread/resume.excludeTurns`;
+    // the field is stable from 0.151, which also accepts the capability.
+    let experimental = req.session_id.is_some()
+        || codex_read_only::requested(req)
+        || decision.is_some()
+        || req.permission.as_deref() == Some("plan");
+    let key = server
+        .request(
+            "initialize",
+            json!({ "clientInfo": {
+                "name": "ccgui",
+                "version": env!("CARGO_PKG_VERSION"),
+            }, "capabilities": {"experimentalApi": experimental}}),
+        )
+        .await?;
+    let initialized = server
+        .pump(
+            "initialize",
+            Expect::Reply(&key),
+            deadline,
+            killed,
+            None,
+            &mut |value| route(core, state, view, value),
+        )
+        .await?
+        .ok_or_else(|| "the codex app-server ended before initialize was answered".to_string())?;
+    if codex_read_only::requested(req) {
+        codex_read_only::validate_version(&initialized)?;
+        for (method, params) in [
+            ("configRequirements/read", json!({})),
+            (
+                "config/read",
+                json!({"cwd":req.workspace.to_string_lossy(),"includeLayers":true}),
+            ),
+        ] {
+            let key = server.request(method, params).await?;
+            let response = server
+                .pump(
+                    method,
+                    Expect::Reply(&key),
+                    Instant::now() + RPC_HANDSHAKE_TIMEOUT,
+                    killed,
+                    None,
+                    &mut |value| route(core, state, view, value),
+                )
+                .await?
+                .ok_or("Codex isolation preflight ended without a response")?;
+            if method == "configRequirements/read" {
+                if response.get("requirements") != Some(&Value::Null) {
+                    return Err(
+                        "Codex read-only planning does not support managed requirements".into(),
+                    );
+                }
+            } else {
+                codex_read_only::validate_config(
+                    &response,
+                    view.isolated_home
+                        .as_deref()
+                        .ok_or("Missing isolated Codex planning home")?,
+                )?;
+            }
+        }
+    }
+    // Resuming re-attaches the conversation the app already holds; starting
+    // opens a new one. Both take the run's sandbox, and approvals stay pinned
+    // off: this client has no approval UI and the sandbox is the boundary.
+    let deadline = Instant::now()
+        + if req.session_id.is_some() {
+            RESUME_TIMEOUT
+        } else {
+            THREAD_TIMEOUT
+        };
+    let (method, mut params) = thread_open_request(req.session_id.as_deref());
+    params["cwd"] = json!(req.workspace.to_string_lossy());
+    params["sandbox"] = json!(sandbox_for(req.permission.as_deref()));
+    params["approvalPolicy"] = json!("never");
+    if codex_read_only::requested(req) {
+        params["ephemeral"] = json!(true);
+        params["dynamicTools"] = json!([]);
+        params["selectedCapabilityRoots"] = json!([]);
+        params["environments"] =
+            json!([{"environmentId":"local","cwd":req.workspace.to_string_lossy()}]);
+    }
+    if let Some(model) = req.model.as_deref() {
+        params["model"] = json!(model);
+    }
+    if !codex_read_only::requested(req) {
+        if let Some(effort) = req.effort.as_deref() {
+            if let Some(obj) = params.as_object_mut() {
+                if !obj.contains_key("config") || obj["config"].is_null() {
+                    obj.insert("config".to_string(), json!({}));
+                }
+                if let Some(config) = obj.get_mut("config").and_then(Value::as_object_mut) {
+                    config.insert("model_reasoning_effort".to_string(), json!(effort));
+                }
+            }
+        }
+    }
+    let key = server.request(method, params).await?;
+    let result = server
+        .pump(
+            method,
+            Expect::Reply(&key),
+            deadline,
+            killed,
+            None,
+            &mut |value| route(core, state, view, value),
+        )
+        .await?
+        .ok_or_else(|| format!("the codex app-server ended before {method} was answered"))?;
+    if codex_read_only::requested(req) {
+        codex_read_only::validate_thread(&result)?;
+    }
+    let thread_id = result
+        .pointer("/thread/id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| req.session_id.clone())
+        .ok_or_else(|| format!("{method} returned no thread id"))?;
+    core.dispatch_event(state, EngineEvent::SessionId(thread_id.clone()));
+    // The request side of the response check: what this client asked for,
+    // before the thread's own settings are known.
+    if req.model.is_some() || req.effort.is_some() {
+        core.dispatch_event(
+            state,
+            EngineEvent::Launch {
+                model: req.model.clone(),
+                effort: req.effort.clone(),
+            },
+        );
+    }
+    let thread_model = result.get("model").and_then(Value::as_str).map(str::to_string);
+    if let Some(model) = thread_model.as_deref() {
+        core.dispatch_event(state, EngineEvent::Model(model.to_string()));
+    }
+    let reported_effort = result
+        .get("reasoningEffort")
+        .or_else(|| result.pointer("/thread/reasoningEffort"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    if let Some(effort) = req.effort.as_deref().or(reported_effort.as_deref()) {
+        core.dispatch_event(state, EngineEvent::Effort(effort.to_string()));
+    }
+    // The thread's effective settings are the closest thing codex has to a
+    // served selection: codex can clamp what it cannot honor, and a later
+    // `model/rerouted` notification supersedes them.
+    if thread_model.is_some() || reported_effort.is_some() {
+        core.dispatch_event(
+            state,
+            EngineEvent::Served {
+                model: thread_model.clone(),
+                effort: reported_effort.clone(),
+            },
+        );
+    }
+    // A decision turn may only start once the reviewed plan is proven live and
+    // unchanged: re-fetch the final plan item from the thread and compare id +
+    // body hash against the record. Changed or gone → the whole decision fails
+    // here, before any turn exists.
+    if let Some(check) = decision {
+        verify_plan_item(server, core, state, view, &thread_id, check, killed).await?;
+    }
+    let mut turn_params = json!({ "threadId": thread_id, "input": turn_input(req) });
+    if codex_read_only::requested(req) {
+        turn_params["approvalPolicy"] = json!("never");
+        turn_params["sandboxPolicy"] = json!({"type":"readOnly","networkAccess":false});
+    }
+    if let Some(check) = decision {
+        // Approve → one execution turn (mode "default"); RequestChanges → a
+        // fresh planning turn carrying the feedback. The thread metadata has
+        // no mode field, so the mode is restated explicitly and the settings
+        // inherit the thread's current model/effort.
+        turn_params["collaborationMode"] = decision_collaboration(
+            check.mode,
+            thread_model.as_deref(),
+            reported_effort.as_deref(),
+        )?;
+    } else if req.permission.as_deref() == Some("plan") {
+        // Planning turn (EXPERIMENTAL): collaborationMode takes precedence
+        // over the top-level model/effort fields, so only one of the two
+        // shapes is sent. A missing model is schema-invalid — fail closed.
+        turn_params["collaborationMode"] =
+            plan_collaboration(req.model.as_deref(), thread_model.as_deref(), req.effort.as_deref())?;
+    } else {
+        if let Some(effort) = req.effort.as_deref() {
+            turn_params["effort"] = json!(effort);
+        }
+        if let Some(model) = req.model.as_deref() {
+            turn_params["model"] = json!(model);
+        }
+    }
+    let key = server.request("turn/start", turn_params).await?;
+    // A fast turn can be over before its own acknowledgement is read, so an
+    // ended pump here is a settled turn and not a missing reply.
+    let Some(result) = server
+        .pump(
+            "turn/start",
+            Expect::Reply(&key),
+            Instant::now() + ack_timeout,
+            killed,
+            None,
+            &mut |value| route(core, state, view, value),
+        )
+        .await?
+    else {
+        return Ok(None);
+    };
+    let turn_id = result
+        .pointer("/turn/id")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    Ok(Some(TurnStarted { thread_id, turn_id }))
+}
+
+/// A resume reply is one NDJSON frame. Asking Codex to hydrate every prior
+/// turn can make that otherwise valid frame exceed the host's safety bound.
+/// `excludeTurns` only omits history from the reply; Codex still resumes its
+/// own persisted context for the next turn.
+fn thread_open_request(session_id: Option<&str>) -> (&'static str, Value) {
+    match session_id {
+        Some(thread_id) => (
+            "thread/resume",
+            json!({ "threadId": thread_id, "excludeTurns": true }),
+        ),
+        None => ("thread/start", json!({})),
+    }
+}
+
+/// Everything after the `turn/start` ack: stream the turn to its terminal
+/// notification. A kill first asks the CLI to interrupt (so it can persist
+/// the rollout), exactly like the ordinary turn path.
+async fn pump_turn_to_end(
+    server: &mut AppServer,
+    core: &TurnCore,
+    state: &mut TurnState,
+    view: &mut TurnView,
+    started: &TurnStarted,
+    killed: &Arc<AtomicBool>,
+) -> Result<(), String> {
+    // The turn id is needed to interrupt a cancelled turn, so it must be known
+    // before the turn pump starts.
+    view.turn_id = started.turn_id.clone();
+    let interrupt = started
+        .turn_id
+        .clone()
+        .map(|turn_id| (started.thread_id.clone(), turn_id));
+    server
+        .pump(
+            "turn",
+            Expect::Turn,
+            Instant::now() + PROMPT_TIMEOUT,
+            killed,
+            interrupt
+                .as_ref()
+                .map(|(thread_id, turn_id)| (thread_id.as_str(), turn_id.as_str())),
+            &mut |value| route(core, state, view, value),
+        )
+        .await?;
+    Ok(())
+}
+
+/// Verification handle for a plan-decision turn.
+struct DecisionCheck {
+    /// "default" (approve → execute) | "plan" (request changes → keep planning).
+    mode: &'static str,
+    /// The completed plan item id recorded at review time.
+    native_plan_id: String,
+    /// Hash of the reviewed body; the re-fetched item must match it.
+    content_hash: String,
+}
+
+/// `thread/turns/list` (itemsView=full) → [`check_plan_item`]: the reviewed
+/// final plan item must still be in the thread with an identical body.
+async fn verify_plan_item(
+    server: &mut AppServer,
+    core: &TurnCore,
+    state: &mut TurnState,
+    view: &mut TurnView,
+    thread_id: &str,
+    check: &DecisionCheck,
+    killed: &Arc<AtomicBool>,
+) -> Result<(), String> {
+    let key = server
+        .request(
+            "thread/turns/list",
+            json!({
+                "threadId": thread_id,
+                "itemsView": "full",
+                // The plan turn is the latest one; a small newest-first page
+                // covers it without walking history.
+                "limit": 16,
+                "sortDirection": "desc",
+            }),
+        )
+        .await?;
+    let page = server
+        .pump(
+            "thread/turns/list",
+            Expect::Reply(&key),
+            Instant::now() + RESUME_TIMEOUT,
+            killed,
+            None,
+            &mut |value| route(core, state, view, value),
+        )
+        .await?
+        .ok_or_else(|| "the codex app-server ended before thread/turns/list was answered".to_string())?;
+    check_plan_item(&page, &check.native_plan_id, &check.content_hash)
+}
+
+/// Codex next_turn plan approval executor — the backbone's respond_plan_review
+/// NextTurn branch calls this AFTER the CAS claimed the submission.
+///
+/// Semantics: re-attach to the review's thread, prove the reviewed final plan
+/// item is still there with an identical body (thread/resume +
+/// thread/turns/list itemsView=full), then atomically start ONE new turn —
+/// Approve: collaborationMode "default" with the fixed execution instruction;
+/// RequestChanges: collaborationMode "plan" with the feedback text. `Ok(())`
+/// means the server acknowledged the new turn (its streaming finishes in a
+/// detached task, registered as a new run under the same session id). Any
+/// `Err` means no turn was created: a stale plan expires the claimed revision
+/// here (it may not keep waiting with a stale body); every other failure is
+/// the backbone's revert_submission case, decision intent preserved.
+pub(crate) async fn run_plan_decision(
+    state: &crate::AppState,
+    review: &PlanReview,
+    decision: PlanDecision,
+    feedback: Option<&str>,
+) -> Result<(), String> {
+    let spec = decision_spec(review, decision, feedback)?;
+    let thread_id = review.session_id.trim().to_string();
+    let check = DecisionCheck {
+        mode: spec.mode,
+        native_plan_id: spec.native_plan_id,
+        content_hash: review.content_hash.clone(),
+    };
+
+    // Rebuild the launch exactly like a send on this session would: same
+    // binary, same channel (the decision turn re-attaches to the thread, and
+    // the thread's backend only answers with the planning session's
+    // credentials), same service tier.
+    crate::config::ensure_engine_enabled("codex")?;
+    let settings = crate::settings::read_settings().unwrap_or_default();
+    let bin = super::engine_bin(&settings, "codex");
+    let provider_id = session_provider_id(&state.db, &thread_id);
+    let provider = crate::config::resolve_provider("codex", provider_id.as_deref())?;
+    let channel_env = provider
+        .as_ref()
+        .map(|provider| crate::provider_files::channel_env("codex", provider))
+        .transpose()?
+        .unwrap_or_default();
+    let req = SendRequest {
+        session_id: Some(thread_id.clone()),
+        workspace: PathBuf::from(&review.workspace_path),
+        prompt: spec.prompt,
+        // 内部校验 spawn:不属于任何插件回合,没有可注入的贡献。
+        prompt_contributions: Vec::new(),
+        native_compact: false,
+        images: Vec::new(),
+        // Settings inherit the thread's reported model/effort instead.
+        model: None,
+        effort: None,
+        service_tier: settings.codex_service_tier.clone(),
+        permission: Some(spec.permission),
+        additional_dirs: state.db.granted_roots().unwrap_or_default(),
+        provider_id,
+        computer_use: None,
+        memory_bot: None,
+        allowed_tools: None,
+    };
+    let mut built = super::codex::CodexEngine.host_command(&req, &bin)?;
+    built.command.current_dir(&req.workspace);
+    for (key, value) in &channel_env {
+        built.command.env(key, value);
+    }
+    if let Some(provider) = provider.as_ref() {
+        super::codex::apply_channel(&mut built.command, provider, &channel_env, &req)?;
+    }
+    super::codex_provider_env::apply(&mut built.command).await;
+
+    // Register like send_host_stream does: the entry routes interrupts and
+    // question answers for the new run; the session alias lets the frontend
+    // stop it by conversation id. Registration precedes the spawn so a Stop
+    // landing inside the start window still settles the turn.
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let killed = Arc::new(AtomicBool::new(false));
+    let reader_abort = Arc::new(std::sync::OnceLock::new());
+    let pid = super::next_virtual_pid();
+    let entry = ChildEntry {
+        child: None,
+        pid,
+        run_id: run_id.clone(),
+        killed: Arc::clone(&killed),
+        reader_abort: Arc::clone(&reader_abort),
+        stdin: None,
+        questions: Arc::new(Mutex::new(HashMap::new())),
+        plans: Arc::new(Mutex::new(HashMap::new())),
+    };
+    {
+        let mut map = state.processes.0.lock().map_err(|e| e.to_string())?;
+        if super::registry::active_run_count(&map) >= super::MAX_CONCURRENT_RUNS {
+            return Err(format!(
+                "too many concurrent runs ({}); wait for one to finish",
+                super::MAX_CONCURRENT_RUNS
+            ));
+        }
+        map.insert(run_id.clone(), entry.clone());
+    }
+    state.processes.insert_alias(thread_id.clone(), entry);
+
+    let core = TurnCore {
+        sink: Arc::clone(&state.sink),
+        registry: Arc::clone(&state.processes),
+        engine_id: "codex".to_string(),
+        run_id: run_id.clone(),
+        db: Some(Arc::clone(&state.db)),
+    };
+    let mut turn_state = TurnState::new(Some(thread_id.clone()));
+    let mut view = TurnView::default();
+    // A RequestChanges turn plans again: its new plan item becomes the next
+    // revision of the same planId. An execution turn must never produce one.
+    view.plan_mode = decision == PlanDecision::RequestChanges;
+    view.workspace = review.workspace_path.clone();
+
+    // Phase A (synchronous): spawn → initialize → resume → verify → one
+    // atomic turn/start. Only a server-acknowledged turn returns Ok.
+    let spawned = match start_decision_turn(
+        &core,
+        &mut turn_state,
+        &mut view,
+        &req,
+        built,
+        &killed,
+        pid,
+        &check,
+    )
+    .await
+    {
+        Ok(spawned) => spawned,
+        Err(error) => {
+            if error.starts_with(PLAN_STALE_PREFIX) {
+                // The reviewed body is gone or changed: the claimed revision
+                // may not survive this. Expire it here — the backbone's
+                // revert_submission then no-ops on the non-submitting status.
+                let _ = plan_review::expire_reviews(
+                    &state.db,
+                    &[(review.plan_id.clone(), review.revision)],
+                );
+            }
+            return Err(error);
+        }
+    };
+
+    // Phase B (detached): the turn exists — stream it to its end and settle
+    // like any other app-server run.
+    let task = tokio::spawn(finish_decision_turn(
+        core,
+        req.session_id.clone(),
+        killed,
+        pid,
+        spawned.0,
+        spawned.1,
+        turn_state,
+        view,
+    ));
+    let _ = reader_abort.set(task.abort_handle());
+    Ok(())
+}
+
+/// Decision turn, phase A: everything up to and including the `turn/start`
+/// acknowledgement. On error the process tree is torn down, the run is
+/// settled (so its events end honestly) and the registry keys are gone.
+#[allow(clippy::too_many_arguments)]
+async fn start_decision_turn(
+    core: &TurnCore,
+    state: &mut TurnState,
+    view: &mut TurnView,
+    req: &SendRequest,
+    built: BuiltCommand,
+    killed: &Arc<AtomicBool>,
+    virtual_pid: u32,
+    check: &DecisionCheck,
+) -> Result<(SpawnedCodex, Option<TurnStarted>), String> {
+    let BuiltCommand {
+        mut command,
+        cleanup_files,
+        ..
+    } = built;
+    let _staging_guard = codex_read_only::StagedHomeGuard(cleanup_files);
+    let mut spawned = match spawn_app_server(&mut command, &req.workspace) {
+        Ok(spawned) => spawned,
+        Err(error) => {
+            // Nothing was ever emitted for this run, so there is nothing to
+            // settle — just drop the registrations made above.
+            core.registry.remove_if_pid(&core.run_id, virtual_pid);
+            if let Some(session_id) = req.session_id.as_deref() {
+                core.registry.remove_if_pid(session_id, virtual_pid);
+            }
+            return Err(error);
+        }
+    };
+    view.exit_unconfirmed = true;
+    core.registry
+        .set_stdin(&core.run_id, Arc::clone(&spawned.server.stdin));
+    // The ack is immediate by protocol; bound it like a resume, not like a
+    // turn — the caller (an IPC handler) is waiting on this phase.
+    let started = handshake_and_start(
+        &mut spawned.server,
+        core,
+        state,
+        view,
+        req,
+        killed,
+        Some(check),
+        RESUME_TIMEOUT,
+    )
+    .await;
+    let started = match started {
+        Ok(started) => started,
+        Err(error) => {
+            let error = terminal_message(error, &spawned.stderr_buf);
+            teardown(&mut spawned.child).await;
+            view.exit_unconfirmed = !matches!(spawned.child.try_wait(), Ok(Some(_)));
+            settle(
+                core,
+                state,
+                view,
+                Err(error.clone()),
+                killed,
+                virtual_pid,
+                req.session_id.clone(),
+            )
+            .await;
+            return Err(error);
+        }
+    };
+    Ok((spawned, started))
+}
+
+/// Decision turn, phase B: the turn was created — stream it to its terminal
+/// notification, tear the tree down and settle exactly like an ordinary run.
+#[allow(clippy::too_many_arguments)]
+async fn finish_decision_turn(
+    core: TurnCore,
+    preassigned_session_id: Option<String>,
+    killed: Arc<AtomicBool>,
+    virtual_pid: u32,
+    mut spawned: SpawnedCodex,
+    started: Option<TurnStarted>,
+    mut state: TurnState,
+    mut view: TurnView,
+) {
+    let _registry_guard =
+        VirtualRunGuard::new(Arc::clone(&core.registry), core.run_id.clone(), virtual_pid);
+    let result = match started {
+        Some(started) => {
+            pump_turn_to_end(
+                &mut spawned.server,
+                &core,
+                &mut state,
+                &mut view,
+                &started,
+                &killed,
+            )
+            .await
+        }
+        // The turn ended inside its own ack window.
+        None => Ok(()),
+    };
+    teardown(&mut spawned.child).await;
+    view.exit_unconfirmed = !matches!(spawned.child.try_wait(), Ok(Some(_)));
+    let result = result.map_err(|error| terminal_message(error, &spawned.stderr_buf));
+    settle(
+        &core,
+        &mut state,
+        &view,
+        result,
+        &killed,
+        virtual_pid,
+        preassigned_session_id,
+    )
+    .await;
+}
+
+/// Reduce a failure to what the user should read: the CLI's own rpc message,
+/// else its stderr tail (a crash or a rejected launch speaks there), else the
+/// driver's own words.
+fn terminal_message(raw: String, stderr_buf: &Mutex<String>) -> String {
+    if let Some(rest) = raw.strip_prefix("rpc:") {
+        if let Some((_, message)) = rest.split_once(':') {
+            if !message.trim().is_empty() {
+                return message.to_string();
+            }
+        }
+    }
+    let stderr = stderr_buf.lock().map(|buf| buf.clone()).unwrap_or_default();
+    let stderr = stderr.trim();
+    if stderr.is_empty() {
+        return raw;
+    }
+    format!("{raw}\n{stderr}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::registry::ChildEntry;
+    use crate::engine::ProcessRegistry;
+    use crate::event_sink::{Emit, EventSink};
+    use std::collections::HashMap;
+
+    /// Test emitter collecting flushed event JSON for assertions.
+    struct CollectingEmitter(Mutex<Vec<String>>);
+
+    impl Emit for CollectingEmitter {
+        fn emit_json(&self, _name: &str, raw_json: &str) {
+            self.0.lock().unwrap().push(raw_json.to_string());
+        }
+    }
+
+    /// A TurnCore with a registry entry under its run id (so question parking
+    /// has somewhere to land) plus the collected flushes for assertions.
+    fn test_core() -> (TurnCore, Arc<ProcessRegistry>, Arc<CollectingEmitter>) {
+        let emitter = Arc::new(CollectingEmitter(Mutex::new(Vec::new())));
+        let registry = Arc::new(ProcessRegistry::default());
+        registry.insert(
+            "test-run".to_string(),
+            ChildEntry {
+                child: None,
+                pid: 4_000_000_099,
+                run_id: "test-run".to_string(),
+                killed: Arc::new(AtomicBool::new(false)),
+                reader_abort: Arc::new(std::sync::OnceLock::new()),
+                stdin: None,
+                questions: Arc::new(Mutex::new(HashMap::new())),
+                plans: Arc::new(Mutex::new(HashMap::new())),
+            },
+        );
+        let core = TurnCore {
+            sink: EventSink::new(emitter.clone()),
+            registry: Arc::clone(&registry),
+            engine_id: "codex".to_string(),
+            run_id: "test-run".to_string(),
+            db: None,
+        };
+        (core, registry, emitter)
+    }
+
+    /// Flush the sink and return `(kind, data)` for every event emitted.
+    fn flushed(core: &TurnCore, emitter: &Arc<CollectingEmitter>) -> Vec<(String, Value)> {
+        core.sink.flush();
+        let mut out = Vec::new();
+        for raw in emitter.0.lock().unwrap().iter() {
+            let parsed: Value = serde_json::from_str(raw).expect("flushed batch must be JSON");
+            let batch = parsed.as_array().cloned().unwrap_or_else(|| vec![parsed]);
+            for value in batch {
+                out.push((
+                    value
+                        .get("kind")
+                        .and_then(Value::as_str)
+                        .unwrap_or("")
+                        .to_string(),
+                    value.get("data").cloned().unwrap_or(Value::Null),
+                ));
+            }
+        }
+        out
+    }
+
+    fn parked(rpc_id: Value, ids: Value) -> Value {
+        json!({ "rpcId": rpc_id, "ids": ids })
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    #[ignore = "requires CCGUI_CODEX_READ_ONLY_TEST_BIN pointing to audited Codex 0.154.0 on macOS; no model calls"]
+    async fn installed_codex_isolated_planner_blocks_writes_and_external_tools() {
+        use crate::engine::Engine;
+        let bin = std::env::var("CCGUI_CODEX_READ_ONLY_TEST_BIN").unwrap();
+        let root =
+            std::env::temp_dir().join(format!("ccgui-codex-isolation-{}", uuid::Uuid::new_v4()));
+        let _root_guard = codex_read_only::StagedHomeGuard(vec![root.clone()]);
+        let native = root.join("native");
+        let workspace = root.join("workspace");
+        std::fs::create_dir_all(&native).unwrap();
+        std::fs::create_dir_all(workspace.join(".codex")).unwrap();
+        let marker = root.join("MCP_STARTED");
+        let malicious = format!(
+            "[mcp_servers.fixture]\ncommand=\"/bin/sh\"\nargs=[\"-c\",\"touch {}\"]\n",
+            marker.display()
+        );
+        std::fs::write(native.join("config.toml"),format!("model=\"probe\"\nmodel_provider=\"probe\"\nnotify=[\"/bin/sh\",\"-c\",\"touch {}\"]\n[model_providers.probe]\nname=\"probe\"\nbase_url=\"http://127.0.0.1:9/v1\"\nwire_api=\"responses\"\n{malicious}",marker.display())).unwrap();
+        std::fs::write(workspace.join(".codex/config.toml"), &malicious).unwrap();
+        let request = SendRequest {
+            session_id: None,
+            workspace: workspace.clone(),
+            prompt: "not sent".into(),
+            prompt_contributions: Vec::new(),
+            native_compact: false,
+            images: vec![],
+            model: Some("probe".into()),
+            effort: None,
+            service_tier: None,
+            permission: Some(codex_read_only::PERMISSION.into()),
+            additional_dirs: vec![],
+            provider_id: None,
+            computer_use: None,
+            memory_bot: None,
+            allowed_tools: None,
+        };
+        assert!(crate::engine::codex::CodexEngine
+            .build_command(&request, &bin)
+            .is_err());
+        let mut built = crate::engine::codex::CodexEngine
+            .host_command(&request, &bin)
+            .unwrap();
+        codex_read_only::stage(&request, &mut built, &native, &root.join("staging")).unwrap();
+        let home =
+            std::fs::canonicalize(codex_read_only::isolated_home(&built.command).unwrap()).unwrap();
+        assert!(!std::fs::read_to_string(home.join("config.toml"))
+            .unwrap()
+            .contains("mcp_servers"));
+        let mut spawned = spawn_app_server(&mut built.command, &workspace).unwrap();
+        let killed = AtomicBool::new(false);
+        let result: Result<(),String> = async {
+            for (method,params) in [
+                ("initialize",json!({"clientInfo":{"name":"ccgui_probe","version":"1"},"capabilities":{"experimentalApi":true}})),
+                ("configRequirements/read",json!({})),
+                ("config/read",json!({"cwd":workspace,"includeLayers":true})),
+                ("thread/start",json!({"cwd":workspace,"model":"probe","sandbox":"read-only","approvalPolicy":"never","ephemeral":true,"dynamicTools":[],"selectedCapabilityRoots":[],"environments":[{"environmentId":"local","cwd":workspace}]})),
+                ("command/exec",json!({"command":["/bin/sh","-c","cat .codex/config.toml"],"cwd":workspace,"sandboxPolicy":{"type":"readOnly","networkAccess":false},"timeoutMs":3000})),
+                ("command/exec",json!({"command":["/bin/sh","-c","touch DENIED_WRITE"],"cwd":workspace,"sandboxPolicy":{"type":"readOnly","networkAccess":false},"timeoutMs":3000})),
+            ] {
+                let writing=params.pointer("/command/2")==Some(&json!("touch DENIED_WRITE"));
+                let key=spawned.server.request(method,params).await?;
+                let response=spawned.server.pump(method,Expect::Reply(&key),Instant::now()+Duration::from_secs(10),&killed,None,&mut |_| Handled::Ignore).await?
+                    .ok_or("Probe ended without a response")?;
+                match method {
+                    "initialize"=>codex_read_only::validate_version(&response).map_err(|error| format!("{error}; reported user agent: {}",response["userAgent"]))?,
+                    "configRequirements/read"=>assert_eq!(response["requirements"],Value::Null),
+                    "config/read"=>codex_read_only::validate_config(&response,&home)?,
+                    "thread/start"=>codex_read_only::validate_thread(&response)?,
+                    "command/exec" if writing=>assert_ne!(response["exitCode"],json!(0)),
+                    "command/exec"=>assert_eq!(response["exitCode"],json!(0)),
+                    _=>unreachable!(),
+                }
+            }
+            Ok(())
+        }.await;
+        teardown(&mut spawned.child).await;
+        result.unwrap();
+        assert!(!marker.exists());
+        assert!(!workspace.join("DENIED_WRITE").exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn plugin_codex_interrupt_during_handshake_waits_for_process_exit() {
+        let (mut core, registry, emitter) = test_core();
+        let mut entry = registry.get("test-run").unwrap();
+        registry.remove_if_pid("test-run", entry.pid);
+        core.run_id = "pa-relay-codex-interrupt".into();
+        entry.run_id = core.run_id.clone();
+        let killed = entry.killed.clone();
+        let virtual_pid = entry.pid;
+        registry.insert(core.run_id.clone(), entry);
+        let directory =
+            std::env::temp_dir().join(format!("ccgui-codex-interrupt-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let pid_file = directory.join("pid");
+        let mut command = Command::new("sh");
+        command.args([
+            "-c",
+            &format!(
+                "echo $$ > '{}'; read ignored; exec sleep 30",
+                pid_file.display()
+            ),
+        ]);
+        let request = SendRequest {
+            session_id: None,
+            workspace: directory.clone(),
+            prompt: "hi".into(),
+            prompt_contributions: Vec::new(),
+            native_compact: false,
+            images: vec![],
+            model: None,
+            effort: None,
+            service_tier: None,
+            permission: None,
+            additional_dirs: vec![],
+            provider_id: None,
+            computer_use: None,
+            memory_bot: None,
+            allowed_tools: None,
+        };
+        let built = BuiltCommand {
+            command,
+            stdin_payload: None,
+            keep_stdin_open: true,
+            cleanup_files: vec![],
+            mcp_restore: None,
+            preassigned_session_id: None,
+        };
+        let run_id = core.run_id.clone();
+        let sink = core.sink.clone();
+        let task = tokio::spawn(run_app_server_turn(
+            core,
+            request,
+            built,
+            killed,
+            virtual_pid,
+        ));
+        timeout(Duration::from_secs(3), async {
+            while !pid_file.exists() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let child_pid: i32 = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        assert!(registry.kill(&run_id));
+        timeout(Duration::from_secs(3), task)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(unsafe { libc::kill(child_pid, 0) }, -1);
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ESRCH)
+        );
+        assert_eq!(registry.active_run_count(), 0);
+        sink.flush();
+        let events: Vec<Value> = emitter
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .flat_map(|raw| serde_json::from_str::<Vec<Value>>(raw).unwrap())
+            .collect();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event["kind"].as_str(), Some("done" | "error")))
+                .count(),
+            1
+        );
+        assert_eq!(events.last().unwrap()["kind"], "done");
+        std::fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn answer_frame_keys_a_single_choice_by_the_servers_question_id() {
+        let frame = answer_frame(
+            &parked(json!(7), json!({ "Which one?": "q1" })),
+            Some(&json!({ "Which one?": "Alpha" })),
+        )
+        .unwrap();
+        assert_eq!(frame["jsonrpc"], json!("2.0"));
+        assert_eq!(frame["id"], json!(7));
+        assert_eq!(
+            frame["result"],
+            json!({ "answers": { "q1": { "answers": ["Alpha"] } } })
+        );
+    }
+
+    #[test]
+    fn answer_frame_keeps_every_label_of_a_multi_select() {
+        let frame = answer_frame(
+            &parked(json!("rpc-9"), json!({ "Layers?": "q9" })),
+            Some(&json!({ "Layers?": ["ui", "engine"] })),
+        )
+        .unwrap();
+        // The id is echoed verbatim: the CLI correlates on its own token, which
+        // may be a string or a number.
+        assert_eq!(frame["id"], json!("rpc-9"));
+        assert_eq!(
+            frame["result"]["answers"]["q9"]["answers"],
+            json!(["ui", "engine"])
+        );
+    }
+
+    #[test]
+    fn answer_frame_rejects_an_answer_to_a_question_that_was_never_asked() {
+        let error = answer_frame(
+            &parked(json!(1), json!({ "Which one?": "q1" })),
+            Some(&json!({ "Something else?": "Alpha" })),
+        )
+        .unwrap_err();
+        assert!(error.contains("Something else?"), "{error}");
+    }
+
+    #[test]
+    fn answer_frame_rejects_a_non_object_answer_map() {
+        let error =
+            answer_frame(&parked(json!(1), json!({})), Some(&json!(["Alpha"]))).unwrap_err();
+        assert!(error.contains("object"), "{error}");
+    }
+
+    #[test]
+    fn answer_frame_settles_a_dismissed_card_with_an_empty_answer() {
+        // A dismissal is not an error: the model must be able to move on, and
+        // an empty answer map is the protocol's way of saying "nothing chosen".
+        let frame = answer_frame(&parked(json!(3), json!({ "Which one?": "q1" })), None).unwrap();
+        assert_eq!(frame["id"], json!(3));
+        assert_eq!(frame["result"], json!({ "answers": {} }));
+    }
+
+    #[test]
+    fn answer_frame_reports_a_single_question_answered_with_null_as_empty() {
+        let frame = answer_frame(
+            &parked(json!(3), json!({ "Which one?": "q1" })),
+            Some(&json!({ "Which one?": null })),
+        )
+        .unwrap();
+        assert_eq!(frame["result"]["answers"]["q1"], json!({ "answers": [] }));
+    }
+
+    #[test]
+    fn question_cards_synthesise_missing_headers_and_options() {
+        let params = json!({
+            "itemId": "item-1",
+            "questions": [
+                {
+                    "id": "q1",
+                    "question": "Which one?",
+                    "options": [
+                        { "label": "Alpha" },
+                        { "label": "Beta", "description": "the second one" },
+                    ],
+                },
+                { "id": "q2", "question": "  And then?  " },
+            ],
+        });
+        let (cards, ids) = question_cards(&params);
+        assert_eq!(cards.len(), 2);
+        assert_eq!(cards[0]["question"], json!("Which one?"));
+        assert_eq!(cards[0]["header"], json!("Q1"));
+        assert_eq!(cards[0]["options"][0], json!({ "label": "Alpha" }));
+        assert_eq!(
+            cards[0]["options"][1],
+            json!({ "label": "Beta", "description": "the second one" })
+        );
+        // Codex asks single-choice questions: an absent flag is what the card
+        // already reads as, so it must not be synthesised.
+        assert!(cards[0].get("multiSelect").is_none());
+        assert_eq!(cards[1]["question"], json!("And then?"));
+        assert_eq!(cards[1]["header"], json!("Q2"));
+        assert_eq!(cards[1]["options"], json!([]));
+        assert_eq!(ids, json!({ "Which one?": "q1", "And then?": "q2" }));
+    }
+
+    #[test]
+    fn question_cards_skip_questions_the_card_cannot_ask() {
+        let params = json!({
+            "questions": [
+                { "id": "q1", "question": "   " },
+                { "question": "no id" },
+                { "id": "q3", "question": "Real?" },
+            ],
+        });
+        let (cards, ids) = question_cards(&params);
+        assert_eq!(cards.len(), 1);
+        // The header stays tied to the question's position in the request, so a
+        // skipped one still shifts the numbering the protocol implies.
+        assert_eq!(cards[0]["header"], json!("Q3"));
+        assert_eq!(ids, json!({ "Real?": "q3" }));
+    }
+
+    #[test]
+    fn sandbox_for_mirrors_the_exec_permission_mapping() {
+        assert_eq!(sandbox_for(Some("bypass")), "danger-full-access");
+        assert_eq!(sandbox_for(Some("manual")), "read-only");
+        assert_eq!(sandbox_for(Some("auto")), "workspace-write");
+        // Anything the exec path's fallback would land on resolves to the same
+        // default here.
+        assert_eq!(sandbox_for(Some("plan")), "workspace-write");
+        assert_eq!(sandbox_for(None), "workspace-write");
+    }
+
+    #[test]
+    fn resumed_threads_skip_full_history_hydration() {
+        let (method, params) = thread_open_request(Some("thread-123"));
+        assert_eq!(method, "thread/resume");
+        assert_eq!(params["threadId"], json!("thread-123"));
+        assert_eq!(params["excludeTurns"], json!(true));
+
+        let (method, params) = thread_open_request(None);
+        assert_eq!(method, "thread/start");
+        assert!(params.get("excludeTurns").is_none());
+    }
+
+    #[tokio::test]
+    async fn metadata_only_resume_preserves_the_turn_and_plan_verification_handshake() {
+        // Exercise the real pipe, request builder and reply parser. The peer
+        // enforces the older experimental gate and sends no hydrated turns.
+        let peer = r#"
+const assert = require('node:assert/strict');
+const mode = process.argv[1];
+const resumed = mode !== 'new';
+const methods = ['initialize', resumed ? 'thread/resume' : 'thread/start'];
+if (mode === 'decision') methods.push('thread/turns/list');
+methods.push('turn/start');
+let step = 0;
+require('node:readline').createInterface({input: process.stdin}).on('line', line => {
+  const {id, method, params} = JSON.parse(line);
+  assert.equal(method, methods[step++]);
+  let result;
+  if (method === 'initialize') {
+    assert.equal(params.capabilities.experimentalApi, resumed);
+    result = {};
+  } else if (method === 'thread/resume' || method === 'thread/start') {
+    assert.equal(params.approvalPolicy, 'never');
+    assert.equal(params.sandbox, 'workspace-write');
+    assert.equal(params.excludeTurns, resumed ? true : undefined);
+    assert.equal(params.threadId, resumed ? 'thread-123' : undefined);
+    assert.equal(params.history, undefined);
+    result = {thread: {id: 'thread-123', turns: []}, model: 'test-model', reasoningEffort: 'high'};
+  } else if (method === 'thread/turns/list') {
+    assert.equal(params.threadId, 'thread-123');
+    assert.equal(params.itemsView, 'full');
+    result = {data: [{id: 'plan-turn', items: [{id: 'plan-1', type: 'plan', text: '# Plan'}]}]};
+  } else {
+    assert.equal(params.threadId, 'thread-123');
+    assert.equal(params.input[0].text, 'Continue the conversation');
+    assert.equal(params.history, undefined);
+    if (mode === 'decision') {
+      assert.equal(params.collaborationMode.mode, 'default');
+      assert.equal(params.collaborationMode.settings.model, 'test-model');
+      assert.equal(params.collaborationMode.settings.reasoning_effort, 'high');
+    }
+    result = {turn: {id: 'next-turn'}};
+  }
+  process.stdout.write(JSON.stringify({jsonrpc: '2.0', id, result}) + '\n', () => {
+    if (method === 'turn/start') process.exit(0);
+  });
+});
+"#;
+        for mode in ["new", "resume", "decision"] {
+            let mut child = Command::new("node")
+                .args(["-e", peer, mode])
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .kill_on_drop(true)
+                .spawn()
+                .expect("protocol test requires the project's Node runtime");
+            let stdin = Arc::new(TokioMutex::new(child.stdin.take()));
+            let mut server = AppServer::new(stdin, child.stdout.take().unwrap());
+            let req = SendRequest {
+                session_id: (mode != "new").then(|| "thread-123".into()),
+                workspace: std::env::temp_dir(),
+                prompt: "Continue the conversation".into(),
+                prompt_contributions: Vec::new(),
+                native_compact: false,
+                images: Vec::new(),
+                model: None,
+                effort: None,
+                service_tier: None,
+                permission: Some("auto".into()),
+                additional_dirs: Vec::new(),
+                provider_id: None,
+                computer_use: None,
+                memory_bot: None,
+                allowed_tools: None,
+            };
+            let decision = (mode == "decision").then(|| DecisionCheck {
+                mode: "default",
+                native_plan_id: "plan-1".into(),
+                content_hash: plan_review::content_hash("# Plan"),
+            });
+            let (core, _registry, _emitter) = test_core();
+            let result = handshake_and_start(
+                &mut server,
+                &core,
+                &mut TurnState::new(req.session_id.clone()),
+                &mut TurnView::default(),
+                &req,
+                &Arc::new(AtomicBool::new(false)),
+                decision.as_ref(),
+                Duration::from_secs(5),
+            )
+            .await;
+            let status = timeout(Duration::from_secs(5), child.wait())
+                .await
+                .expect("protocol peer must exit")
+                .unwrap();
+            assert!(status.success(), "{mode}: peer rejected the handshake");
+            let started = result.expect(mode).expect("turn must be acknowledged");
+            assert_eq!(started.thread_id, "thread-123");
+            assert_eq!(started.turn_id.as_deref(), Some("next-turn"));
+        }
+    }
+
+    #[test]
+    fn usage_payload_projects_the_protocol_fields_onto_snake_case() {
+        let usage = json!({
+            "last": {
+                "inputTokens": 120,
+                "cachedInputTokens": 100,
+                "cacheWriteInputTokens": 5,
+                "outputTokens": 30,
+                "reasoningOutputTokens": 7,
+                "totalTokens": 150,
+            },
+            "total": { "inputTokens": 1, "outputTokens": 2, "totalTokens": 3 },
+        });
+        let payload = usage_payload(&usage, Some(&json!(128_000))).unwrap();
+        assert_eq!(payload["input_tokens"], json!(120));
+        assert_eq!(payload["cached_input_tokens"], json!(100));
+        assert_eq!(payload["cache_write_input_tokens"], json!(5));
+        assert_eq!(payload["output_tokens"], json!(30));
+        assert_eq!(payload["reasoning_output_tokens"], json!(7));
+        assert_eq!(payload["total_tokens"], json!(150));
+        assert_eq!(payload["model_context_window"], json!(128_000));
+    }
+
+    #[test]
+    fn usage_payload_omits_what_the_report_does_not_carry() {
+        assert!(usage_payload(&json!({ "total": { "totalTokens": 3 } }), None).is_none());
+        assert!(usage_payload(&json!({ "last": {} }), None).is_none());
+        let payload = usage_payload(&json!({ "last": { "totalTokens": 3 } }), None).unwrap();
+        assert_eq!(payload, json!({ "total_tokens": 3 }));
+    }
+
+    // Every test below drives the router, so each needs a runtime: the sink
+    // schedules its batch flush with `tokio::spawn`, and an error dispatch
+    // kills the run through `spawn_blocking`.
+
+    #[tokio::test]
+    async fn model_reroute_reports_the_served_model() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(None);
+        let mut view = TurnView::default();
+        route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "jsonrpc": "2.0",
+                "method": "model/rerouted",
+                "params": {
+                    "fromModel": "gpt-5.6-luna",
+                    "reason": "highRiskCyberActivity",
+                    "threadId": "t-1",
+                    "toModel": "gpt-5.6-cyber",
+                    "turnId": "u-1",
+                },
+            }),
+        );
+        let events = flushed(&core, &emitter);
+        assert!(
+            events.iter().any(|(kind, data)| {
+                kind == "served" && data.get("model").and_then(Value::as_str) == Some("gpt-5.6-cyber")
+            }),
+            "{events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn route_parks_a_question_and_the_answer_frame_reads_what_it_parked() {
+        let (core, registry, emitter) = test_core();
+        let mut state = TurnState::new(None);
+        let mut view = TurnView::default();
+        let handled = route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 12,
+                "method": "item/tool/requestUserInput",
+                "params": {
+                    "itemId": "item-1",
+                    "questions": [{
+                        "id": "q1",
+                        "question": "Which one?",
+                        "options": [{ "label": "Alpha" }],
+                    }],
+                },
+            }),
+        );
+        // Parked, not answered: the card waits for the user and the rpc id is
+        // what the answer command writes back on.
+        assert!(matches!(handled, Handled::Parked));
+        let events = flushed(&core, &emitter);
+        let question = events
+            .iter()
+            .find(|(kind, _)| kind == "question")
+            .expect("the card must reach the UI");
+        assert_eq!(question.1["requestId"], json!("12"));
+        assert_eq!(question.1["toolUseId"], json!("item-1"));
+        assert_eq!(question.1["input"]["questions"][0]["header"], json!("Q1"));
+        let entry = registry.get("test-run").expect("registry entry");
+        let parked = entry
+            .questions
+            .lock()
+            .unwrap()
+            .get("12")
+            .cloned()
+            .expect("the answer context must be parked under the rpc id");
+        // The two halves of the round trip must agree: what `route` parked is
+        // exactly what `answer_frame` (called by the answer command) consumes.
+        let frame = answer_frame(
+            parked.get("codexApp").expect("codexApp context"),
+            Some(&json!({ "Which one?": "Alpha" })),
+        )
+        .unwrap();
+        assert_eq!(frame["id"], json!(12));
+        assert_eq!(
+            frame["result"],
+            json!({ "answers": { "q1": { "answers": ["Alpha"] } } })
+        );
+    }
+
+    #[tokio::test]
+    async fn route_answers_an_unrenderable_question_instead_of_wedging_the_turn() {
+        let (core, registry, _emitter) = test_core();
+        let mut state = TurnState::new(None);
+        let mut view = TurnView::default();
+        let handled = route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 8,
+                "method": "item/tool/requestUserInput",
+                "params": { "questions": [] },
+            }),
+        );
+        let Handled::Answer(frame) = handled else {
+            panic!("a question the card cannot show must still be answered");
+        };
+        assert_eq!(frame["id"], json!(8));
+        assert_eq!(frame["result"], json!({ "answers": {} }));
+        let entry = registry.get("test-run").expect("registry entry");
+        assert!(
+            entry.questions.lock().unwrap().is_empty(),
+            "nothing may be left waiting for an answer"
+        );
+    }
+
+    #[tokio::test]
+    async fn route_declines_an_approval_that_was_never_going_to_be_granted() {
+        let (core, _registry, _emitter) = test_core();
+        let mut state = TurnState::new(None);
+        let mut view = TurnView::default();
+        let handled = route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "jsonrpc": "2.0",
+                "id": 4,
+                "method": "item/commandExecution/requestApproval",
+                "params": { "command": "rm -rf build" },
+            }),
+        );
+        let Handled::Answer(frame) = handled else {
+            panic!("an approval request must always be answered");
+        };
+        assert_eq!(frame["id"], json!(4));
+        assert_eq!(frame["result"], json!({ "decision": "decline" }));
+    }
+
+    #[tokio::test]
+    async fn a_streamed_message_is_not_repeated_by_its_completed_item() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(None);
+        let mut view = TurnView::default();
+        route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "item/agentMessage/delta",
+                "params": { "itemId": "m1", "delta": "Hel" },
+            }),
+        );
+        route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "item/completed",
+                "params": { "item": { "id": "m1", "type": "agentMessage", "text": "Hello" } },
+            }),
+        );
+        let events = flushed(&core, &emitter);
+        assert_eq!(
+            events
+                .iter()
+                .map(|(kind, _)| kind.as_str())
+                .collect::<Vec<_>>(),
+            ["delta"]
+        );
+        assert_eq!(events[0].1, json!("Hel"));
+    }
+
+    #[tokio::test]
+    async fn an_unstreamed_message_still_arrives_from_its_completed_item() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(None);
+        let mut view = TurnView::default();
+        route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "item/completed",
+                "params": { "item": { "id": "m2", "type": "agentMessage", "text": "Hello" } },
+            }),
+        );
+        let events = flushed(&core, &emitter);
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].0, "message");
+        assert_eq!(events[0].1["role"], json!("assistant"));
+        assert_eq!(events[0].1["text"], json!("Hello"));
+    }
+
+    #[tokio::test]
+    async fn a_token_usage_notification_is_held_for_the_turn_end() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(None);
+        let mut view = TurnView::default();
+        route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "thread/tokenUsage/updated",
+                "params": {
+                    "threadId": "t1",
+                    "turnId": "turn-1",
+                    "tokenUsage": { "last": { "totalTokens": 42 } },
+                    "modelContextWindow": 1000,
+                },
+            }),
+        );
+        assert_eq!(
+            view.last_usage,
+            Some(json!({ "total_tokens": 42, "model_context_window": 1000 }))
+        );
+        // The run reports usage once, with its Done: a mid-turn frame would
+        // make the UI's context meter jump between turns.
+        assert!(flushed(&core, &emitter).is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_failed_turn_settles_the_run_with_the_engines_own_message() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(None);
+        let mut view = TurnView::default();
+        let handled = route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "turn/completed",
+                "params": {
+                    "threadId": "t1",
+                    "turn": {
+                        "id": "turn-1",
+                        "status": "failed",
+                        "error": { "message": "stream disconnected" },
+                    },
+                },
+            }),
+        );
+        assert!(matches!(handled, Handled::Ended));
+        let events = flushed(&core, &emitter);
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].0, "error");
+        assert_eq!(events[0].1, json!("stream disconnected"));
+    }
+
+    #[tokio::test]
+    async fn a_clean_turn_ends_without_erroring() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(None);
+        let mut view = TurnView::default();
+        let handled = route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "turn/completed",
+                "params": { "threadId": "t1", "turn": { "id": "turn-1", "status": "completed" } },
+            }),
+        );
+        assert!(matches!(handled, Handled::Ended));
+        // The driver settles the turn itself; a mid-turn error here would make
+        // a perfectly good run look failed.
+        assert!(flushed(&core, &emitter).is_empty());
+    }
+
+    // ==================== plan approval (next_turn) ====================
+
+    fn plan_view() -> TurnView {
+        TurnView {
+            plan_mode: true,
+            workspace: "/tmp/ws".to_string(),
+            ..TurnView::default()
+        }
+    }
+
+    fn next_turn_review() -> PlanReview {
+        PlanReview {
+            plan_id: "thread-1/plan".into(),
+            engine: "codex".into(),
+            session_id: "thread-1".into(),
+            workspace_path: "/tmp/ws".into(),
+            run_id: Some("run-1".into()),
+            revision: 1,
+            title: "Plan".into(),
+            content: "# Plan\n- a".into(),
+            content_hash: plan_review::content_hash("# Plan\n- a"),
+            complete: true,
+            review_kind: PlanReviewKind::NextTurn,
+            native_plan_id: Some("item-9".into()),
+            exec_permission: "auto".into(),
+            status: plan_review::PlanStatus::Submitting,
+            execution: plan_review::PlanExecution::NotStarted,
+            decision: None,
+            decision_intent_at: None,
+            applied_at: None,
+            created_at: 0,
+            updated_at: 0,
+            superseded_by: None,
+        }
+    }
+
+    #[test]
+    fn collaboration_mode_carries_only_the_fields_that_have_values() {
+        assert_eq!(
+            collaboration_mode("plan", "gpt-5", Some("high")),
+            json!({"mode": "plan", "settings": {"model": "gpt-5", "reasoning_effort": "high"}})
+        );
+        // 没有 effort:settings 只带 schema 必填的 model。
+        assert_eq!(
+            collaboration_mode("default", "gpt-5", None),
+            json!({"mode": "default", "settings": {"model": "gpt-5"}})
+        );
+        // 空白 effort 等同于没有。
+        assert_eq!(
+            collaboration_mode("plan", "gpt-5", Some("  ")),
+            json!({"mode": "plan", "settings": {"model": "gpt-5"}})
+        );
+    }
+
+    #[test]
+    fn plan_collaboration_prefers_the_request_and_fails_closed_without_a_model() {
+        // 显式模型优先于线程报告值;effort 仅在有值时携带。
+        assert_eq!(
+            plan_collaboration(Some("gpt-5"), Some("thread-model"), Some("low")).unwrap(),
+            json!({"mode": "plan", "settings": {"model": "gpt-5", "reasoning_effort": "low"}})
+        );
+        // 请求没选模型:沿用线程当前模型。
+        assert_eq!(
+            plan_collaboration(None, Some("thread-model"), None).unwrap(),
+            json!({"mode": "plan", "settings": {"model": "thread-model"}})
+        );
+        // 两者都没有:settings.model 是必填,缺了就是 schema 级非法参数。
+        let error = plan_collaboration(None, None, None).unwrap_err();
+        assert!(error.contains("model"), "{error}");
+        let error = plan_collaboration(Some("  "), Some(" "), None).unwrap_err();
+        assert!(error.contains("model"), "{error}");
+    }
+
+    #[test]
+    fn decision_collaboration_restates_mode_and_inherits_thread_settings() {
+        assert_eq!(
+            decision_collaboration("default", Some("thread-model"), Some("high")).unwrap(),
+            json!({"mode": "default", "settings": {"model": "thread-model", "reasoning_effort": "high"}})
+        );
+        assert_eq!(
+            decision_collaboration("plan", Some("thread-model"), None).unwrap(),
+            json!({"mode": "plan", "settings": {"model": "thread-model"}})
+        );
+        // 线程模型未知就不能重建 settings——恢复后必须显式断言模式。
+        assert!(decision_collaboration("default", None, None).is_err());
+    }
+
+    #[tokio::test]
+    async fn plan_deltas_stream_as_drafts_only_in_a_plan_run() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(Some("thread-1".into()));
+        let mut view = plan_view();
+        for delta in ["# Dra", "ft"] {
+            route(
+                &core,
+                &mut state,
+                &mut view,
+                &json!({
+                    "method": "item/plan/delta",
+                    "params": {"threadId": "thread-1", "turnId": "turn-1", "itemId": "item-9", "delta": delta},
+                }),
+            );
+        }
+        let events = flushed(&core, &emitter);
+        assert_eq!(
+            events,
+            vec![
+                ("plan_draft".to_string(), json!({"planId": "thread-1/plan", "text": "# Dra", "replace": false})),
+                ("plan_draft".to_string(), json!({"planId": "thread-1/plan", "text": "ft", "replace": false})),
+            ]
+        );
+        // 非计划轮:同样的 delta 一律忽略,永不进入审批主干。
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(Some("thread-1".into()));
+        let mut view = TurnView::default();
+        route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "item/plan/delta",
+                "params": {"threadId": "thread-1", "turnId": "turn-1", "itemId": "item-9", "delta": "# Dra"},
+            }),
+        );
+        assert!(flushed(&core, &emitter).is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_completed_plan_item_is_the_authoritative_review_content() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(Some("thread-1".into()));
+        let mut view = plan_view();
+        route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "item/plan/delta",
+                "params": {"threadId": "thread-1", "turnId": "turn-1", "itemId": "item-9", "delta": "# Draft that does not match"},
+            }),
+        );
+        route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "item/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "completedAtMs": 1,
+                    "item": {"id": "item-9", "type": "plan", "text": "# Final plan\n- step one"},
+                },
+            }),
+        );
+        let events = flushed(&core, &emitter);
+        let kinds: Vec<&str> = events.iter().map(|(kind, _)| kind.as_str()).collect();
+        assert_eq!(kinds, ["plan_draft", "plan_review"]);
+        let review = &events[1].1;
+        // 最终 item 权威替换:正文不是 delta 拼接,而是 completed item 的全文。
+        assert_eq!(review["content"], json!("# Final plan\n- step one"));
+        assert_eq!(
+            review["contentHash"],
+            json!(plan_review::content_hash("# Final plan\n- step one"))
+        );
+        assert_eq!(review["complete"], json!(true));
+        assert_eq!(review["reviewKind"], json!("next_turn"));
+        assert_eq!(review["planId"], json!("thread-1/plan"));
+        assert_eq!(review["sessionId"], json!("thread-1"));
+        assert_eq!(review["nativePlanId"], json!("item-9"));
+        assert_eq!(review["title"], json!("Final plan"));
+        assert_eq!(review["status"], json!("awaiting_review"));
+        assert_eq!(review["execPermission"], json!("auto"));
+        assert_eq!(review["workspacePath"], json!("/tmp/ws"));
+        assert_eq!(review["engine"], json!("codex"));
+        assert_eq!(review["runId"], json!("test-run"));
+    }
+
+    #[tokio::test]
+    async fn a_plan_item_outside_a_plan_run_never_becomes_a_review() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(Some("thread-1".into()));
+        let mut view = TurnView::default();
+        view.workspace = "/tmp/ws".into();
+        route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "item/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "completedAtMs": 1,
+                    "item": {"id": "item-9", "type": "plan", "text": "# Plan"},
+                },
+            }),
+        );
+        assert!(flushed(&core, &emitter).is_empty());
+    }
+
+    #[tokio::test]
+    async fn non_plan_items_and_the_task_checklist_never_trigger_a_review() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(Some("thread-1".into()));
+        let mut view = plan_view();
+        // turn/plan/updated:update_plan 工具的任务清单(步骤状态),不是方案正文。
+        route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "turn/plan/updated",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "plan": [{"step": "do a", "status": "inProgress"}],
+                },
+            }),
+        );
+        // 普通 agentMessage 完成项:走消息投影,与审批无关。
+        route(
+            &core,
+            &mut state,
+            &mut view,
+            &json!({
+                "method": "item/completed",
+                "params": {
+                    "threadId": "thread-1",
+                    "turnId": "turn-1",
+                    "completedAtMs": 1,
+                    "item": {"id": "m1", "type": "agentMessage", "text": "working on it"},
+                },
+            }),
+        );
+        let events = flushed(&core, &emitter);
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].0, "message");
+        assert_eq!(events[0].1["text"], json!("working on it"));
+    }
+
+    #[tokio::test]
+    async fn an_empty_or_idless_plan_item_is_not_a_review() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(Some("thread-1".into()));
+        let mut view = plan_view();
+        for item in [
+            json!({"id": "item-9", "type": "plan", "text": "   "}),
+            json!({"type": "plan", "text": "# Plan"}),
+        ] {
+            route(
+                &core,
+                &mut state,
+                &mut view,
+                &json!({
+                    "method": "item/completed",
+                    "params": {"threadId": "thread-1", "turnId": "turn-1", "completedAtMs": 1, "item": item},
+                }),
+            );
+        }
+        assert!(flushed(&core, &emitter).is_empty());
+    }
+
+    #[test]
+    fn check_plan_item_accepts_only_the_unchanged_final_item() {
+        let page = json!({"data": [
+            {"id": "turn-1", "itemsView": "full", "status": "completed", "items": [
+                {"id": "m1", "type": "agentMessage", "text": "done"},
+                {"id": "item-9", "type": "plan", "text": "# Plan\n- a"},
+            ]},
+        ], "nextCursor": null});
+        let hash = plan_review::content_hash("# Plan\n- a");
+        assert!(check_plan_item(&page, "item-9", &hash).is_ok());
+        // 正文变了:staleness,版本必须 expire。
+        let error = check_plan_item(&page, "item-9", "0123456789abcdef").unwrap_err();
+        assert!(error.starts_with(PLAN_STALE_PREFIX), "{error}");
+        // item 没了:同上。
+        let error = check_plan_item(&page, "item-404", &hash).unwrap_err();
+        assert!(error.starts_with(PLAN_STALE_PREFIX), "{error}");
+        // 空页找不到 item 也是 staleness。
+        let error = check_plan_item(&json!({"data": []}), "item-9", &hash).unwrap_err();
+        assert!(error.starts_with(PLAN_STALE_PREFIX), "{error}");
+        // 畸形响应不是 staleness:普通错误,提交回退、版本保留。
+        let error = check_plan_item(&json!({}), "item-9", &hash).unwrap_err();
+        assert!(!error.starts_with(PLAN_STALE_PREFIX), "{error}");
+    }
+
+    #[test]
+    fn plan_title_takes_the_first_atx_heading() {
+        assert_eq!(plan_title("# 实施方案\n- a"), "实施方案");
+        assert_eq!(plan_title("intro\n## Steps\n- a"), "Steps");
+        // `#` 后不跟空白不是标题。
+        assert_eq!(plan_title("#tag\nbody"), DEFAULT_PLAN_TITLE);
+        assert_eq!(plan_title("no heading here"), DEFAULT_PLAN_TITLE);
+        assert_eq!(plan_title(""), DEFAULT_PLAN_TITLE);
+    }
+
+    #[test]
+    fn decision_spec_builds_the_turn_from_the_record() {
+        let review = next_turn_review();
+        let spec = decision_spec(&review, PlanDecision::Approve, None).unwrap();
+        assert_eq!(spec.mode, "default");
+        assert_eq!(spec.prompt, EXECUTE_PLAN_PROMPT);
+        assert_eq!(spec.permission, "auto");
+        assert_eq!(spec.native_plan_id, "item-9");
+
+        let spec =
+            decision_spec(&review, PlanDecision::RequestChanges, Some("  收紧范围 ")).unwrap();
+        assert_eq!(spec.mode, "plan");
+        assert_eq!(spec.prompt, "收紧范围");
+        assert_eq!(spec.permission, "plan");
+    }
+
+    #[test]
+    fn decision_spec_rejects_before_touching_the_transport() {
+        let review = next_turn_review();
+        // 修改必须带非空反馈(CAS 已保证,这里是传输层之前的最后一道)。
+        assert!(decision_spec(&review, PlanDecision::RequestChanges, None).is_err());
+        assert!(decision_spec(&review, PlanDecision::RequestChanges, Some("  ")).is_err());
+        // Defer 是本地落定,从不创建 turn。
+        assert!(decision_spec(&review, PlanDecision::Defer, None).is_err());
+        // 非 next_turn 记录不该走到这里。
+        let mut wrong_kind = next_turn_review();
+        wrong_kind.review_kind = PlanReviewKind::NativeRequest;
+        assert!(decision_spec(&wrong_kind, PlanDecision::Approve, None).is_err());
+        // 缺原生 item id / 执行权限快照:没法核对、没法沿用,拒绝。
+        let mut no_item = next_turn_review();
+        no_item.native_plan_id = None;
+        assert!(decision_spec(&no_item, PlanDecision::Approve, None).is_err());
+        let mut no_permission = next_turn_review();
+        no_permission.exec_permission = "  ".into();
+        assert!(decision_spec(&no_permission, PlanDecision::Approve, None).is_err());
+        // 批准携带的固定执行指令不含任何用户文本。
+        let spec = decision_spec(&review, PlanDecision::Approve, Some("ignored")).unwrap();
+        assert_eq!(spec.prompt, EXECUTE_PLAN_PROMPT);
+    }
+
+    #[tokio::test]
+    async fn a_retryable_error_does_not_settle_the_turn() {
+        let (core, _registry, emitter) = test_core();
+        let mut state = TurnState::new(None);
+        let mut view = TurnView::default();
+        assert!(matches!(
+            route(
+                &core,
+                &mut state,
+                &mut view,
+                &json!({
+                    "method": "error",
+                    "params": { "error": { "message": "upstream 502" }, "willRetry": true },
+                }),
+            ),
+            Handled::Ignore
+        ));
+        let events = flushed(&core, &emitter);
+        assert_eq!(events.len(), 1, "{events:?}");
+        assert_eq!(events[0].0, "warn");
+        assert_eq!(events[0].1, json!("upstream 502"));
+        assert!(!state.saw_error, "a retry must not settle the run");
+    }
+}
