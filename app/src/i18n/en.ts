@@ -26,7 +26,7 @@ export const en: Messages = {
     renderPanelDetail: "Developer-level tool for local diagnostics only. Note: packaged (production) builds only show re-render highlights and counts, not per-render timings — use a development build (pnpm dev) for timings.",
   },
   crash: {
-    title: "CC GUI hit a problem",
+    title: "MireAI hit a problem",
     description: "The interface crashed. The reason is below — copy it to report, or reload to recover.",
     reasonLabel: "Reason",
     details: "Technical details",
@@ -51,7 +51,7 @@ export const en: Messages = {
     refresh: "Refresh",
     copied: "Copied",
     confirmCloseApp:
-      "Quit CC GUI? All running sessions and terminals will be terminated.",
+      "Quit MireAI? All running sessions and terminals will be terminated.",
   },
   chat: {
     processHistoryPages: "Process history pages",
@@ -740,7 +740,7 @@ export const en: Messages = {
     petActivityWithSession: "{{session}}: {{status}}",
     proxy: "Network Proxy",
     proxyDesc:
-      "When enabled, CC GUI and the networked child processes it launches will prefer this proxy.",
+      "When enabled, MireAI and the networked child processes it launches will prefer this proxy.",
     proxyEnabled: "Enable network proxy",
     proxyEnabledDesc:
       "Applies to networked child processes such as CLI engines and terminals.",
@@ -845,17 +845,17 @@ export const en: Messages = {
     webWan: "Internet",
     webWanRiskTitle: "Internet access: read this first",
     webWanRiskBody:
-      "Turning on internet access exposes this machine's CC GUI to the public internet through the relay. Any device that pairs and that you then approve can read and write your files, run terminal commands, and spend your API quota — the same reach you have sitting at this computer, not limited to a project directory.",
+      "Turning on internet access exposes this machine's MireAI to the public internet through the relay. Any device that pairs and that you then approve can read and write your files, run terminal commands, and spend your API quota — the same reach you have sitting at this computer, not limited to a project directory.",
     webWanRiskPoints:
       "So: approve only your own devices, never forward the pairing key, disconnect the relay when you are done, and remove devices you no longer use from the list.",
     webWanRiskAccept: "I understand and accept the risk",
-    webAccessDesc: "Let devices on the same network use CC GUI in a browser",
+    webAccessDesc: "Let devices on the same network use MireAI in a browser",
     webAccessStart: "Start web access",
     webAccessStop: "Stop",
     webAccessRunning: "Running",
     webAccessStopped: "Stopped",
     webAccessAutoStart: "Auto-start on launch",
-    webAccessAutoStartDesc: "Automatically start LAN web access when CC GUI launches",
+    webAccessAutoStartDesc: "Automatically start LAN web access when MireAI launches",
     webAccessHostIp: "Host IP / Interface",
     webAccessHostIpDesc: "Select the host IP address used in the access URL (e.g., Tailscale or LAN adapter)",
     webAccessPort: "Service Port",
@@ -992,7 +992,7 @@ export const en: Messages = {
       "Send /ccgui-cua <task> in the composer, e.g. /ccgui-cua open Calculator and compute 1+1. It applies to that one send only and never stays on.",
     computerUseCursor: "Virtual pointer",
     computerUseCursorDesc:
-      "During a run a pointer follows every action so you can see where the agent acts. CC GUI draws it, keeps it visible for the whole run, and the model cannot turn it off.",
+      "During a run a pointer follows every action so you can see where the agent acts. MireAI draws it, keeps it visible for the whole run, and the model cannot turn it off.",
     computerUseEngines: "Engine support",
     computerUseEnginesDesc:
       "Computer use needs an engine that accepts the driver at launch. Engines without it are refused on send instead of being quietly treated as an ordinary chat.",
@@ -1549,7 +1549,7 @@ export const en: Messages = {
       tierDeclarative: "Lightweight plugin",
       repo: "Repository",
       minAppVersion: "Min. app version",
-      minAppShort: "CC GUI ≥ {{version}}",
+      minAppShort: "MireAI ≥ {{version}}",
       compatibility: "Compatibility",
       sdkVersion: "SDK",
       updatedAt: "Last updated",
