@@ -26,7 +26,6 @@ import type { TuiInteractionFlow } from '../interaction/interaction-flow.js';
 import type { TuiQueueFlow } from '../run/queue-flow.js';
 import { TuiTurnSubmissionRetainer } from '../run/turn-submission-retainer.js';
 import type { TuiSessionFlow } from '../session-flow.js';
-import type { TuiUpdateFlow } from './update-flow.js';
 import type { TuiGoalFlow } from './goal-flow.js';
 import type { TuiPlanModeFlow } from '../interaction/plan-mode-flow.js';
 import type { TuiPermissionModeFlow } from '../interaction/permission-mode-flow.js';
@@ -74,7 +73,6 @@ export interface TuiCommandFlowOptions {
     | 'submitEdit'
     | 'settleEditResubmit'
   >;
-  readonly updateFlow: TuiUpdateFlow;
   readonly goalFlow?: Pick<TuiGoalFlow, 'execute' | 'resumeBlocked'>;
   readonly planModeFlow?: TuiPlanModeFlow;
   readonly permissionModeFlow?: TuiPermissionModeFlow;
@@ -1057,7 +1055,6 @@ export class TuiCommandFlow {
   private createHandlers(): Readonly<Record<string, TuiCommandHandler>> {
     return {
       help: async () => this.options.activeRunFlow.showHelp(),
-      update: async () => this.options.updateFlow.show(),
       changelog: async () => this.options.featureFlow.showChangelog(),
       new: () => this.options.sessionFlow.startNew(),
       sessions: async ({ raw, args }) => {

@@ -36,7 +36,7 @@ import { TuiSurfaceHost } from './shell/surface-host.js';
 import { TuiOverlayRegularFeaturePresenter } from './shell/regular-feature-presenter.js';
 import { TuiTaskPanel } from './shell/task-panel.js';
 import { createTuiWorkspaceStatusLine } from './shell/workspace-status-line.js';
-import { TuiUpdateNotice, TuiWelcome } from './shell/chrome.js';
+import { TuiWelcome } from './shell/chrome.js';
 import { composerText } from './features/composer/copy.js';
 import { TuiDraftLifecycle } from './features/composer/draft-lifecycle.js';
 import { TuiDraftRecoveryError } from './features/composer/draft-recovery.js';
@@ -351,7 +351,6 @@ export function createTuiApplicationWidgets(options: {
         : {}),
     },
   );
-  const updateNotice = new TuiUpdateNotice();
   const status = createTuiWorkspaceStatusLine(options.app, options.requestRender);
   const activity = new TuiActivityLine(
     { phase: 'idle' },
@@ -384,7 +383,6 @@ export function createTuiApplicationWidgets(options: {
   const tasks = new TuiTaskPanel(options.app.keybindings);
   return {
     welcome,
-    updateNotice,
     status,
     activity,
     composer,
@@ -394,22 +392,6 @@ export function createTuiApplicationWidgets(options: {
     tasks,
     imagePreview,
   };
-}
-
-export function checkTuiApplicationUpdate(
-  options: CreateTuiAppOptions,
-  notice: TuiUpdateNotice,
-  isStopped: () => boolean,
-  tui: Pick<TUI, 'requestRender'>,
-): void {
-  void options
-    .checkForUpdate?.()
-    .then((update) => {
-      if (!update || isStopped()) return;
-      notice.setAvailableVersion(update.latestVersion);
-      tui.requestRender();
-    })
-    .catch(() => undefined);
 }
 
 /**
@@ -434,7 +416,7 @@ export function createTuiApplicationSurface(options: {
   readonly switchMode: (mode: TuiMode) => boolean;
   readonly chatMode: TuiMode;
 }) {
-  const { welcome, updateNotice, status, activity, composer, interaction, followUp, goal, tasks } =
+  const { welcome, status, activity, composer, interaction, followUp, goal, tasks } =
     options.widgets;
   const layout = new TuiChatLayout(
     options.terminal,
@@ -449,7 +431,6 @@ export function createTuiApplicationSurface(options: {
           : 'welcome';
       },
       welcome,
-      notice: updateNotice,
       transcript: options.transcriptView,
       interaction,
       goal,

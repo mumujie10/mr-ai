@@ -22,12 +22,15 @@ Keep optional dependencies enabled and allow the native SQLite installation
 script. The tag determines the installed version. GitHub archive installation is
 validated on Linux and macOS; Windows package acceptance is currently not run.
 
-This archive uses the same `@minimax-ai/code` package name, `mcode` command and
-default user data directory as the official npm CLI. Installing it globally into
-the same npm prefix replaces that npm installation. Update to another GitHub
-version by explicitly installing its archive; the built-in updater follows the
-official npm registry channel and does not select GitHub release assets. To remove
-the package, use `npm uninstall --global @minimax-ai/code`. User data remains in place.
+This fork installs as the `mr-cli` package and exposes the `mr` command (with
+`mcode` kept as a transitional alias), so it does not overwrite an official npm
+installation of the upstream CLI.
+
+**There is no self-update channel in this fork.** The agent runtime ships inside
+the desktop application and is replaced only by an application update, so nothing
+in here reaches for an npm registry on its own. That also means an installed
+copy is upgraded by installing a newer app build, and removed with
+`npm uninstall --global mr-cli`; user data stays in place.
 
 ## Install from source
 

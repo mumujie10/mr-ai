@@ -62,7 +62,6 @@ export interface RunTuiCliDependencies {
     lane?: string,
   ) => Promise<string>;
   readonly runLogout?: (region?: MavisRegion) => Promise<string>;
-  readonly runUpdate?: (version: string) => Promise<void>;
   readonly runProvider?: (
     request: McodeProviderCliRequest,
     version: string,
@@ -161,11 +160,6 @@ export async function runTuiCli(dependencies: RunTuiCliDependencies = {}): Promi
         processRef.stdout.write(`${await runLogout(region)}\n`);
         completedCommandExitMode = 'natural';
       },
-      runUpdate: async () => {
-        completedCommandExitMode = 'natural';
-        const runUpdate = dependencies.runUpdate ?? defaultRunUpdate;
-        await runUpdate(MR_CLI_VERSION);
-      },
       runProvider: async (request, lane) => {
         const runProvider = dependencies.runProvider ?? defaultRunProvider;
         processRef.stdout.write(`${await runProvider(request, MR_CLI_VERSION, lane)}\n`);
@@ -221,14 +215,11 @@ async function formatTuiCliError(error: unknown): Promise<string> {
     return diagnostic;
   }
 
-  const { buildMcodePackageManagerCommand } = await import('../update/install-source.js');
-  const command = buildMcodePackageManagerCommand('npm-global', MR_CLI_VERSION);
+  // The runtime ships inside the desktop app, so there is no npm install for a
+  // user to re-run: a missing native module means a damaged bundle.
   return [
-    'MCode could not load its native SQLite dependency.',
-    'If npm reported blocked install scripts, the installation needs explicit script approval.',
-    'Reinstall with the original installer. For npm installations, run:',
-    `  ${command.display} --foreground-scripts`,
-    '',
+    'MR CLI could not load its native SQLite dependency.',
+    'The bundled runtime is incomplete or was modified in place — reinstall the app to replace it.',
     `Original error: ${diagnostic}`,
   ].join('\n');
 }
@@ -294,11 +285,6 @@ async function defaultRunLogin(
 async function defaultRunLogout(region?: MavisRegion): Promise<string> {
   const { runTuiLogout } = await import('./auth-command.js');
   return runTuiLogout({ region });
-}
-
-async function defaultRunUpdate(version: string): Promise<void> {
-  const { runMcodeUpdate } = await import('./update.js');
-  await runMcodeUpdate(version);
 }
 
 async function defaultRunProvider(

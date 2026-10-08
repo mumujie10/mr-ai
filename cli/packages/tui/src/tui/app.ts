@@ -1,6 +1,5 @@
 import { disposeComponents } from './rendering/component.js';
 import {
-  checkTuiApplicationUpdate,
   createTuiApplicationDraftLifecycle,
   createTuiApplicationEditor as createEditor,
   createTuiApplicationRenderer,
@@ -42,8 +41,6 @@ import { TuiInputFlow } from './controller/interaction/input-flow.js';
 import { TuiPermissionModeFlow } from './controller/interaction/permission-mode-flow.js';
 import { TuiPlanModeFlow } from './controller/interaction/plan-mode-flow.js';
 import { createTuiAbortLiveTurn } from './controller/run/abort-live-turn.js';
-import { createTuiUpdateFlow } from './controller/product/update-flow.js';
-import { createTuiUpdateAdmission } from './controller/product/update-admission.js';
 import { resolveTuiProductFeatures } from './product-features.js';
 import { createTuiTranscriptExporter } from '../host/transcript-export.js';
 import type { CreateTuiAppOptions, TuiApp, TuiStopOptions } from '../types/tui-app.js';
@@ -106,7 +103,7 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     editor,
     requestRender: () => (started && !stopped ? tui.requestRender() : undefined),
   });
-  const { welcome, updateNotice, status, activity, composer, interaction, followUp, goal, tasks } =
+  const { welcome, status, activity, composer, interaction, followUp, goal, tasks } =
     widgets;
   const appendLocalCell = createLocalTranscriptAppender({
     transcript,
@@ -333,24 +330,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     (panel) => interactionSurface.close(panel),
     requestInteractionRender,
     () => resolveTuiInteractionMaxRows(terminal.rows),
-  );
-  const admitUpdate = createTuiUpdateAdmission({
-    runtime: options.runtime,
-    snapshot: () => controller.snapshot(),
-    defaultAgentName,
-    queueEnabled: productFeatures.queue,
-  });
-  const updateFlow = createTuiUpdateFlow(
-    options,
-    appendLocalCell,
-    interactionSurface,
-    requestInteractionRender,
-    () => resolveTuiInteractionMaxRows(terminal.rows),
-    async () => {
-      options.requestRestart?.();
-      await leaveUi();
-    },
-    admitUpdate,
   );
   activeRunFlow = new TuiActiveRunFlow({
     runtime: options.runtime,
@@ -628,7 +607,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     featureFlow,
     feedbackFlow,
     sessionMutationFlow,
-    updateFlow,
     goalFlow,
     planModeFlow,
     permissionModeFlow,
@@ -885,7 +863,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     permissionModeFlow.stop();
     planModeFlow.stop();
     feedbackFlow.stop();
-    updateFlow.stop();
     themeController.dispose();
     activity.dispose();
     widgets.imagePreview.dispose();
@@ -966,7 +943,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
         .catch(() => undefined);
       void activeRunFlow.refresh().catch(() => undefined);
       void goalFlow?.refresh().catch(() => undefined);
-      checkTuiApplicationUpdate(options, updateNotice, () => stopped, tui);
     },
     suspend,
     resume,

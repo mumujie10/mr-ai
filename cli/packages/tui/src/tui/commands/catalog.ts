@@ -139,12 +139,6 @@ const COMMAND_SOURCES: readonly TuiCommandSource[] = [
     runAvailability: 'idle',
   },
   {
-    name: 'update',
-    description: 'Check for and install an MCode update',
-    category: 'Application',
-    discoverability: 'search-only',
-  },
-  {
     name: 'changelog',
     description: 'Show the packaged MCode update history',
     category: 'Application',

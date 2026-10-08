@@ -9,7 +9,6 @@ import type {
 import type { ClipboardImageReader } from '../tui/features/composer/clipboard-image-draft.js';
 import type { TuiCommandContribution } from '../tui/commands/catalog.js';
 import type { TuiChatController } from '../tui/controller/chat-controller.js';
-import type { TuiUpdateOptions } from '../tui/controller/product/update-flow.js';
 import type { Terminal, TUI, TuiMode } from '../tui/engine/public.js';
 import type { TuiProductFeatures } from '../tui/product-features.js';
 import type { TuiInlinePanelHost, TuiSurfaceHost, TuiSurface } from '../tui/shell/index.js';
@@ -28,7 +27,9 @@ import type { MavisRegion } from '@mavis/config';
 import type { TuiKeybindingOverride, TuiKeybindingRegistry } from '../tui/shell/keybindings.js';
 import type { FindRecentCodexSession } from '../host/recent-codex-session.js';
 
-export interface CreateTuiAppOptions extends TuiUpdateOptions {
+export interface CreateTuiAppOptions {
+  /** Product version, shown in the welcome panel and used by the packaged changelog lookup. */
+  readonly version: string;
   runtime: TuiRuntime;
   dataDir?: string;
   workspaceDir: string;

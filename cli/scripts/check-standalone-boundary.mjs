@@ -15,7 +15,6 @@ const required = [
   'packages/tui/src/account/matrix-account-client.ts',
   'packages/tui/src/checkin/http-gateway.ts',
   'packages/tui/src/runtime/feedback/service.ts',
-  'packages/tui/src/update/application.ts',
   'packages/local-runtime-v2/src/service/plugin-system/plugin/runtime/registry-client.ts',
   'packages/local-runtime-v2/src/service/plugin-system/app/cloud-client.ts',
   'packages/local-runtime-v2/src/service/model-system/catalog/provider-presets/provider-presets.client.ts',

@@ -23,49 +23,6 @@ export { TuiWelcome } from './welcome/component.js';
 
 type ResolvedStatusLineItem = TuiStatusLineItem | 'lightweight-mode';
 
-export class TuiUpdateNotice implements Component {
-  private availableVersion: string | undefined;
-
-  setAvailableVersion(version: string | undefined): void {
-    this.availableVersion = version?.trim() || undefined;
-  }
-
-  invalidate(): void {}
-
-  render(width: number): string[] {
-    const safeWidth = normalizeWidth(width);
-    if (!this.availableVersion || safeWidth === 0) return [];
-
-    const headline = fitFirstStatusCandidate(
-      [
-        ` ${chalk.bold.hex(colors.signal)('✦ A new version of MCode is available')} ${chalk.hex(
-          colors.text,
-        )('— update for the latest improvements')}`,
-        ` ${chalk.bold.hex(colors.signal)(`✦ MCode ${this.availableVersion} is available`)}`,
-        ` ${chalk.bold.hex(colors.signal)('✦ MCode update available')}`,
-      ],
-      safeWidth,
-    );
-    const action = fitFirstStatusCandidate(
-      [
-        ` ${chalk.hex(colors.muted)("Run '")}${chalk.bold.hex(colors.signal)(
-          '/update',
-        )}${chalk.hex(colors.muted)(`' to install MCode ${this.availableVersion}`)}`,
-        ` ${chalk.hex(colors.muted)('Run ')}${chalk.bold.hex(colors.signal)(
-          '/update',
-        )}${chalk.hex(colors.muted)(` to install ${this.availableVersion}`)}`,
-        ` ${chalk.bold.hex(colors.signal)('/update')}${chalk.hex(colors.muted)(
-          ' · review and install',
-        )}`,
-        ` ${chalk.bold.hex(colors.signal)('/update')}${chalk.hex(colors.muted)(' · install')}`,
-      ],
-      safeWidth,
-    );
-
-    return [fitLine(headline, safeWidth), fitLine(action, safeWidth)];
-  }
-}
-
 export class TuiStatusLine implements Component {
   constructor(
     private state: TuiShellState,

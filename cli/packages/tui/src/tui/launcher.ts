@@ -53,8 +53,6 @@ import {
   resolveTuiManagedBackendLane,
   resolveTuiStartupEnvironmentOption,
 } from '../cli/environment.js';
-import { resolveMcodeStartupUpdateNotice } from '../update/startup-notice.js';
-import type { McodeUpdateApplication } from '../update/application.js';
 import { tuiErrorDiagnostic } from '../user-facing-failure.js';
 import { getConfig, resetConfig, writeTuiStatusLineSetting, type MavisRegion } from '@mavis/config';
 import { markLoginRestartHandoff } from './login-restart-handoff.js';
@@ -64,7 +62,6 @@ import {
   writeTuiModeSetting,
   writeTuiThemeSetting,
 } from '../host/tui-settings.js';
-import { schedulePendingMcodePrefixUpdate } from '../update/prefix-update.js';
 import {
   systemPromptRestartArguments,
   type SystemPromptOverrides,
@@ -131,9 +128,6 @@ export interface LaunchTuiDependencies {
   createObservability?: typeof createTuiObservability;
   installProcessGuards?: typeof installTuiProcessGuards;
   loadRuntimeLifecycle?: () => Promise<RuntimeLifecycleModule>;
-  loadUpdateApplication?: (
-    currentVersion: string,
-  ) => Promise<Pick<McodeUpdateApplication, 'inspect' | 'apply'>>;
   writeExitMessage?: (message: string) => void;
   prepareDataDir?: typeof prepareTuiDataDir;
   restartProcess?: (
@@ -309,17 +303,6 @@ export async function launchTui(
     columns: terminal.columns,
     rows: terminal.rows,
   });
-  const loadUpdateApplication =
-    dependencies.loadUpdateApplication ??
-    (async (currentVersion: string) => {
-      const { McodeUpdateApplication } = await import('../update/application.js');
-      return new McodeUpdateApplication({ currentVersion });
-    });
-  let updateApplicationPromise: ReturnType<typeof loadUpdateApplication> | undefined;
-  const updateApplication = () => {
-    updateApplicationPromise ??= loadUpdateApplication(options.version);
-    return updateApplicationPromise;
-  };
   let resolveProcessStopFailure: (() => void) | undefined;
   const processStopFailure = new Promise<void>((resolve) => {
     resolveProcessStopFailure = resolve;
@@ -486,10 +469,6 @@ export async function launchTui(
           keybindings.manager.setUserBindings({ ...keybindings.hostOverrides, ...next.overrides });
         },
         ...(options.resumeDraftAfterLogin ? { resumeDraftAfterLogin: true } : {}),
-        checkForUpdate: async () =>
-          resolveMcodeStartupUpdateNotice(await (await updateApplication()).inspect()),
-        inspectUpdate: async () => (await updateApplication()).inspect(),
-        applyUpdate: async (plan, progress) => (await updateApplication()).apply(plan, progress),
       });
       // Runtime failure also rejects hydration, which may never reach the await below.
       void app.ready.catch(() => undefined);
@@ -834,17 +813,6 @@ export async function restartTuiProcess(
 ): Promise<void> {
   const args = resolveRestartArguments(process.execPath, process.argv, sessionId, initialPrompt);
   const environment = resolveRestartEnvironment(process.env, region);
-  if (
-    await schedulePendingMcodePrefixUpdate(
-      process.argv[1],
-      process.execPath,
-      process.pid,
-      args,
-      environment,
-    )
-  ) {
-    return;
-  }
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, args, {
       cwd: process.cwd(),

@@ -6,12 +6,11 @@ import {
   configureTuiRuntimeEnvironment,
   resolveTuiStartupEnvironmentOption,
 } from './cli/environment.js';
-import { prepareMcodePrefixProcess } from './update/prefix-update.js';
-import { isInternalMcodePackageName, resolveMcodePackageName } from './update/install-source.js';
+import { MINIMAX_INTERNAL_PACKAGE_NAME, resolveTuiPackageName } from './build-info.js';
 
 async function main(): Promise<void> {
-  const packageName = resolveMcodePackageName(fileURLToPath(import.meta.url));
-  const internalPackage = isInternalMcodePackageName(packageName);
+  const packageName = resolveTuiPackageName(fileURLToPath(import.meta.url));
+  const internalPackage = packageName === MINIMAX_INTERNAL_PACKAGE_NAME;
   let startupBuildEnvironment: ReturnType<typeof resolveTuiStartupEnvironmentOption>;
   try {
     startupBuildEnvironment = resolveTuiStartupEnvironmentOption(
@@ -28,13 +27,8 @@ async function main(): Promise<void> {
     dataDir: getTuiDataDirPath(),
     ...(startupBuildEnvironment ? { startupBuildEnvironment } : {}),
   });
-  const prefixProcess = await prepareMcodePrefixProcess();
-  try {
-    const { runTuiCli } = await import('./cli/main.js');
-    await runTuiCli({ allowStartupEnvironmentSelection: internalPackage });
-  } finally {
-    prefixProcess.remove();
-  }
+  const { runTuiCli } = await import('./cli/main.js');
+  await runTuiCli({ allowStartupEnvironmentSelection: internalPackage });
 }
 
 await main();

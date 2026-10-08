@@ -49,7 +49,6 @@ export interface CreateTuiProgramOptions {
   runAcp?: (lane?: string, systemPromptOverrides?: SystemPromptOverrides) => Promise<void>;
   runLogin: (region?: MavisRegion, openBrowser?: boolean, lane?: string) => Promise<void>;
   runLogout: (region?: MavisRegion) => Promise<void>;
-  runUpdate: () => Promise<void>;
   runProvider?: (request: McodeProviderCliRequest, lane?: string) => Promise<void>;
   runPlugin?: (request: McodePluginCliRequest, lane?: string) => Promise<void>;
   runTelemetry?: (action: McodeTelemetryCliAction) => Promise<void>;
@@ -164,12 +163,6 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
     .option('--region <region>', 'account region: cn or global', parseLoginRegion)
     .allowExcessArguments(false)
     .action((commandOptions: { region?: MavisRegion }) => options.runLogout(commandOptions.region));
-
-  program
-    .command('update')
-    .description('Check for and install a Minimax Code update')
-    .allowExcessArguments(false)
-    .action(options.runUpdate);
 
   const telemetry = program
     .command('telemetry')

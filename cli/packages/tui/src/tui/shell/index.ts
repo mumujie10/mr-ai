@@ -14,7 +14,6 @@ export * from './workspace-status-line.js';
 export * from './status-line-items.js';
 export {
   TuiStatusLine,
-  TuiUpdateNotice,
   TuiWelcome,
   type TuiRuntimeStatus,
   type TuiShellState,

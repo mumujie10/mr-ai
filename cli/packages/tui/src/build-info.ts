@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { isAbsolute, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export const MR_CLI_MIN_NODE_VERSION = '22.19.0';
 export const MR_CLI_SUPPORTED_NODE_VERSIONS = '22.19+, 24, 25, or 26';
@@ -51,6 +53,38 @@ export function supportsTuiNodeVersion(version = process.versions.node): boolean
 
   const [major = -1, minor = 0] = currentParts;
   return (major === 22 && minor >= 19) || (major >= 24 && major <= 26);
+}
+
+/**
+ * The package this entry point runs from, or undefined when no package.json is
+ * nearby. MiniMax's internal distribution (`@minimax/code`) is the only name
+ * that unlocks the managed-backend `--lane` escape hatch, so a fork build
+ * resolving to `mr-cli` deliberately leaves that hatch closed.
+ */
+export const MINIMAX_INTERNAL_PACKAGE_NAME = '@minimax/code';
+
+export function resolveTuiPackageName(
+  moduleLocation: string | URL = import.meta.url,
+): string | undefined {
+  // Callers pass either an import.meta.url or a plain entry path
+  // (process.argv[1]); `new URL(x, y)` rejects a bare path as the base.
+  const base =
+    moduleLocation instanceof URL
+      ? moduleLocation
+      : pathToFileURL(
+          isAbsolute(moduleLocation) ? moduleLocation : resolve(moduleLocation),
+        );
+  for (const relativePath of ['./package.json', '../package.json']) {
+    try {
+      const manifest = JSON.parse(
+        readFileSync(new URL(relativePath, base), 'utf8'),
+      ) as Partial<PackageManifest>;
+      if (typeof manifest.name === 'string' && manifest.name.length > 0) return manifest.name;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  return undefined;
 }
 
 export const MR_CLI_VERSION = resolveTuiPackageVersion();
