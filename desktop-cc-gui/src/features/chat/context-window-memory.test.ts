@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ASSUMED_CONTEXT_WINDOW } from "./usage";
 import {
   recallContextWindow,
@@ -9,6 +9,10 @@ import {
 describe("context window memory", () => {
   beforeEach(() => {
     localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("remembers a reported window per engine and model slot", () => {
@@ -29,17 +33,26 @@ describe("context window memory", () => {
   });
 
   it("treats a broken storage as a cache miss instead of crashing", () => {
-    const setItem = vi
-      .spyOn(Storage.prototype, "setItem")
-      .mockImplementation(() => {
+    // Replace the whole storage object. Spying is unreliable here: test-setup
+    // installs a plain-object stub that never goes through Storage.prototype,
+    // while a real jsdom Storage is a proxy whose named-property setter would
+    // simply store the spy under the key "setItem".
+    const brokenStorage: Storage = {
+      getItem: () => null,
+      setItem: () => {
         throw new Error("quota exceeded");
-      });
+      },
+      removeItem: () => {},
+      clear: () => {},
+      key: () => null,
+      length: 0,
+    };
+    vi.stubGlobal("localStorage", brokenStorage);
 
     expect(() =>
       rememberContextWindow("claude", "default", 1_000_000),
     ).not.toThrow();
 
-    setItem.mockRestore();
     expect(recallContextWindow("claude", "default")).toBeUndefined();
   });
 
