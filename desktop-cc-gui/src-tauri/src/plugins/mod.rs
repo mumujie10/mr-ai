@@ -281,7 +281,10 @@ pub(crate) mod test_support {
             let dir = std::env::temp_dir()
                 .join(format!("ccgui-next-plugins-test-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&dir).unwrap();
-            Self(dir)
+            // confine_to_root walks the root's own ancestors and refuses any
+            // symlinked component, so it only ever passes once the scratch root is
+            // canonical — on macOS `temp_dir()` sits under /var -> /private/var.
+            Self(std::fs::canonicalize(&dir).unwrap())
         }
         pub(crate) fn path(&self, name: &str) -> PathBuf {
             self.0.join(name)
