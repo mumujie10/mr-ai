@@ -41,11 +41,6 @@ const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 const BUILTIN_AGENT_PLUGIN_ICON_URL = 'minimax-builtin://plugin-icons/github';
 
-interface StandaloneSkillIdentities {
-  readonly names: ReadonlySet<string>;
-  readonly sourceUrls: ReadonlySet<string>;
-}
-
 interface StandaloneSkillListInput {
   readonly keyword?: string;
   readonly limit?: number;
@@ -64,7 +59,6 @@ export interface PluginDesktopFacadeOptions {
   readonly listStandaloneSkills: (
     input: StandaloneSkillListInput,
   ) => Promise<StandaloneSkillListResult>;
-  readonly standaloneSkillIdentities: () => Promise<StandaloneSkillIdentities>;
   /** Waits only for the Utility process to receive a usable Desktop identity. */
   readonly waitForOfficialAuth: () => Promise<OfficialPluginAuthBarrierOutcome>;
   readonly metrics?: PluginServiceMetrics;
@@ -99,10 +93,8 @@ export class PluginDesktopFacade {
   ): Promise<ListMarketplacePluginsResult> {
     const source = readSource(req.source);
     if (source === InstalledPluginSource.OFFICIAL) {
-      return this.projectStandaloneSkillAdded(
-        await this.overlayOfficialMarketplaceState(
-          await this.options.registryClient.listMarketplace(req),
-        ),
+      return this.overlayOfficialMarketplaceState(
+        await this.options.registryClient.listMarketplace(req),
       );
     }
     const skillLimit = pageLimit(req.skillLimit ?? req.limit);
@@ -381,20 +373,6 @@ export class PluginDesktopFacade {
     return {
       ...response,
       plugins: response.plugins.map((plugin) => overlayOfficialSummary(plugin, installations)),
-    };
-  }
-
-  private async projectStandaloneSkillAdded(
-    response: ListMarketplacePluginsResult,
-  ): Promise<ListMarketplacePluginsResult> {
-    if (!response.marketplaceSkills) return response;
-    const installed = await this.options.standaloneSkillIdentities();
-    return {
-      ...response,
-      marketplaceSkills: response.marketplaceSkills.map((item) => ({
-        ...item,
-        added: isStandaloneSkillAdded(item, installed),
-      })),
     };
   }
 }
@@ -736,12 +714,6 @@ function optionalPluginSkillIcon(plugin: PluginSnapshot['enabledPlugins'][number
     ...(icon.iconUrl ? { pluginIconUrl: icon.iconUrl } : {}),
     ...(icon.darkIconUrl ? { pluginDarkIconUrl: icon.darkIconUrl } : {}),
   };
-}
-
-function isStandaloneSkillAdded(item: SkillHubItem, installed: StandaloneSkillIdentities): boolean {
-  const sourceUrl = item.sourceUrl?.trim();
-  if (sourceUrl && installed.sourceUrls.has(sourceUrl)) return true;
-  return installed.names.has(normalizedName(item.name));
 }
 
 function categoryId(value: MarketplaceCategoryName): MarketplaceCategory {

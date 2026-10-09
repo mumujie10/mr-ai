@@ -48,11 +48,6 @@ interface PluginCapabilityReservations {
   readonly toolNames: readonly string[];
 }
 
-interface StandaloneSkillIdentities {
-  readonly names: ReadonlySet<string>;
-  readonly sourceUrls: ReadonlySet<string>;
-}
-
 export interface PluginServiceLogger {
   info(fields: Record<string, unknown>, message: string): void;
   warn(fields: Record<string, unknown>, message: string): void;
@@ -260,7 +255,6 @@ export interface PluginServiceCompatibility {
   readonly mcp: LocalMcpService;
   readonly skill: LocalSkillService;
   readonly listReservations: () => Promise<PluginCapabilityReservations>;
-  readonly standaloneSkillIdentities: () => Promise<StandaloneSkillIdentities>;
 }
 
 export interface InitializedPluginService

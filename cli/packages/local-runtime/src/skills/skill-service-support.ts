@@ -1,7 +1,6 @@
 import type { MetricsClient } from '../common/metrics.js';
 import type { LocalRuntimeConfig } from '../config/types.js';
 import { isCuModeAvailable } from '../cu/gate.js';
-import { LocalSkillHubInstallError, type LocalSkillHubStore } from './hub-api.js';
 
 export function createRuntimeSkillBetaFlags(configGetter: () => LocalRuntimeConfig) {
   return (cuModeActive?: boolean): Readonly<Record<string, boolean | undefined>> => {
@@ -11,17 +10,6 @@ export function createRuntimeSkillBetaFlags(configGetter: () => LocalRuntimeConf
       cuMode: cuModeActive ?? isCuModeAvailable(configured['cuMode']),
     };
   };
-}
-
-export function requireSkillHub(skillHubStore: LocalSkillHubStore | undefined): LocalSkillHubStore {
-  if (!skillHubStore) {
-    throw new LocalSkillHubInstallError(
-      'Desktop skill hub store is not configured',
-      'SKILL_HUB_UNAVAILABLE',
-      503,
-    );
-  }
-  return skillHubStore;
 }
 
 export function createCatalogDiagnostics(metricsClient: MetricsClient | undefined): {

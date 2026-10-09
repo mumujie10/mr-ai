@@ -75,7 +75,6 @@ import type { LocalRuntimeTelemetrySink } from "../sessions/router.js";
 import type { LocalSessionSnapshotStore } from "../sessions/snapshot/index.js";
 import type { SessionTurnStreamFrameInput } from "../sessions/turn-stream.js";
 import type { LiveSessionWriter } from "../sessions/writer/index.js";
-import type { LocalSkillHubStore } from "../skills/hub-api.js";
 import type { LocalSkillEnabledStatePort } from "../skills/registry.js";
 import type { ThreadGoalRuntimeEventSink } from "../thread-goal/events.js";
 import type { LocalApiAgentRoutes } from "./routes/agents.js";
@@ -175,7 +174,6 @@ export interface LocalRuntimeApiHostOptions {
   mcpService?: LocalMcpRuntimeCapability;
   hookService?: LocalHookService;
   browserBroker?: LocalBrowserBroker;
-  skillHubStore?: LocalSkillHubStore;
   skillRegistryRoots?: import("@mavis/skills").SkillSourceRoot[];
   skillEnabledState?: LocalSkillEnabledStatePort;
   /** V2-owned bounded CLI-sunset state evaluator; V1 only supplies Memory files. */
@@ -370,7 +368,6 @@ export function buildLegacyDaemonProxyPath(
     | "browser"
     | "channel-bridge"
     | "im-bridge"
-    | "skill-hub"
     | "skill"
     | "skill-evolve"
     | "agent",

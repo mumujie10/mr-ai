@@ -6,9 +6,6 @@ import {
 } from '@mavis/protocol/local';
 
 import { frontmatterString } from './registry-family.js';
-import type { InstalledSkillHubMetadata } from './registry-operations.js';
-
-const INSTALLED_SKILL_HUB_SOURCE_KIND = 'skill-hub-local';
 
 /**
  * Registry view mapping + list-paging helpers split out of
@@ -16,36 +13,23 @@ const INSTALLED_SKILL_HUB_SOURCE_KIND = 'skill-hub-local';
  * Pure projection only: no registry IO lives here.
  */
 
-export function toSkillInfo(
-  entry: SkillEntry,
-  installedHubMetadata?: InstalledSkillHubMetadata,
-  enabled = true,
-): SkillInfo {
-  // Hub installs keep Market presentation metadata in skill-hub.json. Other
-  // skills use an explicit frontmatter title, then let the UI fall back to name.
+export function toSkillInfo(entry: SkillEntry, enabled = true): SkillInfo {
+  // Presentation comes from the Skill file itself: an explicit frontmatter
+  // title, then let the UI fall back to name.
   // Do not use entry.title because it also falls back to the markdown heading.
-  const explicitTitle = frontmatterString(entry.frontmatter.title);
-  const displayName = installedHubMetadata?.displayName ?? explicitTitle;
+  const displayName = frontmatterString(entry.frontmatter.title);
   const info: SkillInfo & {
     sourceKind?: string;
-    publisherSourceType?: SkillSourceType;
     displayNames?: typeof entry.displayNames;
     descriptions?: typeof entry.descriptions;
   } = {
     name: entry.name,
     ...(displayName ? { displayName } : {}),
-    ...(installedHubMetadata?.creatorInfo ? { creatorInfo: installedHubMetadata.creatorInfo } : {}),
-    ...(installedHubMetadata?.publisherSourceType !== undefined
-      ? { publisherSourceType: installedHubMetadata.publisherSourceType }
-      : {}),
     description: entry.description,
     displayDescription: entry.description,
     scope: toSkillScope(entry.rootKind),
     sourceType: toSkillSourceType(entry.rootKind),
-    sourceKind:
-      installedHubMetadata !== undefined
-        ? INSTALLED_SKILL_HUB_SOURCE_KIND
-        : toSourceKind(entry.rootKind, entry.rootScope),
+    sourceKind: toSourceKind(entry.rootKind, entry.rootScope),
     ...(entry.displayNames ? { displayNames: entry.displayNames } : {}),
     ...(entry.descriptions ? { descriptions: entry.descriptions } : {}),
     ...(entry.rootKind === 'agent' && entry.rootScope ? { agentName: entry.rootScope } : {}),
@@ -60,10 +44,7 @@ export function toSkillInfo(
 // `isLocalizableBuiltinSkill` gate. Builtin skills split by owning agent:
 //   builtin + owning agent -> builtin-agent
 //   builtin + no agent     -> builtin-global
-// Non-builtin kinds surface their registry kind verbatim, except installed
-// Skill Hub copies. Those share the global filesystem root with locally
-// created Skills, so their persisted install identity supplies a distinct
-// physical source marker for the Personal author projection.
+// Non-builtin kinds surface their registry kind verbatim.
 export function toSourceKind(kind: SkillSourceKind, rootScope?: string): string {
   if (kind === 'builtin') {
     return rootScope ? 'builtin-agent' : 'builtin-global';

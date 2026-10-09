@@ -118,9 +118,6 @@ export interface LocalRuntimeConfig {
   browser?: Config['browser'] & {
     profile?: string;
   };
-  skillHub?: {
-    enabled?: boolean;
-  };
   channelBridge?: {
     lanes?: Record<
       string,

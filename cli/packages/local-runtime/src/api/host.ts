@@ -171,7 +171,6 @@ import {
   getBuiltinSkillsDirCandidates,
   isLocalBuiltinSkillEnabled,
 } from "../skills/builtin.js";
-import { LocalSkillHubStore } from "../skills/hub-api.js";
 import { resolveBuiltinSkillsDir } from "../skills/roots.js";
 import { seedBuiltinSkills } from "../skills/seed-builtin.js";
 import {
@@ -399,7 +398,6 @@ export class LocalRuntimeApiHost {
   public readonly hookService: LocalHookService;
   public readonly metrics?: ModuleMetricsReporter;
   private readonly browserBroker: LocalBrowserBroker;
-  public readonly skillHubStore: LocalSkillHubStore;
   private readonly channelOwnerStore: LocalChannelOwnerStore;
   private readonly channelBridgeInfra: LocalChannelBridgeInfra;
   private readonly channelRunner: LocalChannelRunner;
@@ -909,15 +907,6 @@ export class LocalRuntimeApiHost {
         dataDir: () => this.configGetter().dataDir,
         nowMs: this.nowMs,
       });
-    this.skillHubStore =
-      options.skillHubStore ??
-      new LocalSkillHubStore({
-        dataDir: () => this.configGetter().dataDir,
-        nowMs: this.nowMs,
-        fetch: this.fetchImpl,
-        authContextGetter: this.authContextGetter,
-        routingContextGetter: this.routingContextGetter,
-      });
     seedBuiltinSkills({
       builtinSkillsDir: resolveBuiltinSkillsDir(this.configGetter()),
       sourceDirs: getBuiltinSkillsDirCandidates(),
@@ -944,7 +933,6 @@ export class LocalRuntimeApiHost {
       registryDiagnostics: options.skillRegistryDiagnostics,
       readMcpServerNames: () => this.mcpService.readConfiguredServerNames(),
       enabledState: options.skillEnabledState,
-      skillHubStore: this.skillHubStore,
       // Gate user-authored skill name / description / content through the same
       // content-safety scene as agent config writes (scene ConfigField).
       reviewContent: contentSafetyChecker,

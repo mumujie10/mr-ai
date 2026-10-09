@@ -146,7 +146,6 @@ export function initializePluginService(
     system,
     registryClient,
     listStandaloneSkills: (input) => compatibility.skill.listSkills(input),
-    standaloneSkillIdentities: compatibility.standaloneSkillIdentities,
     waitForOfficialAuth: () => officialAuthBarrier.waitUntilReady(),
     githubImporter,
     metrics: metricTags,

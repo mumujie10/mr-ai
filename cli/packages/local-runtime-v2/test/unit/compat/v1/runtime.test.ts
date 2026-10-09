@@ -811,12 +811,7 @@ function createThreadGoalFixture() {
         threadGoal: integration,
         isReadOnlyLegacySession,
         skillService: { listRuntimeSkills: async () => ({ skills: [] }) },
-        skillHubStore: {
-          getInstalledIdentities: async () => ({
-            names: new Set<string>(),
-            sourceUrls: new Set<string>(),
-          }),
-        },
+        skillService: { listRuntimeSkills: async () => ({ skills: [] }) },
       },
       {
         metricsClient: {},

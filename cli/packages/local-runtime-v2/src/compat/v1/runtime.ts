@@ -579,8 +579,6 @@ export function createV1RuntimeCompatibility(
           ...(options.appVersion ? { appVersion: options.appVersion } : {}),
           metrics: host.metricsClient,
           skill: host.apiHost.skillService,
-          standaloneSkillIdentities: () =>
-            host.apiHost.skillHubStore.getInstalledIdentities(),
         },
         mcp: {
           enableLiveMcp: options.enableLiveMcp === true,

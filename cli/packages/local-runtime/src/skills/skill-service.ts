@@ -2,8 +2,8 @@
 // capabilities consumed by both the DesktopService thrift adapter and runtime
 // callers (turn agent config, native skill tool). It accepts runtime/domain
 // DTOs — never thrift-gen request/response envelopes — and signals failures with
-// sentinels (`undefined` / `'protected'`) or the hub's own
-// `LocalSkillHubInstallError`; it never throws HTTP/contract errors. Contract
+// sentinels (`undefined` / `'protected'`) or the structured create result from
+// `./api.js`; it never throws HTTP/contract errors. Contract
 // DTO conversion and HTTP error mapping stay in the thrift adapter
 // (`http/desktop-skill-service.ts`); see
 // `.harness/docs/adr/desktop-service-ownership.md`.
@@ -20,11 +20,6 @@ import { type ContentSafetyChecker } from '../content-safety/api.js';
 import { configReviewBlocks } from '../content-safety/config-fields.js';
 import { createLocalSkill, type LocalSkillCreateResult } from './api.js';
 import type { LocalSkillsCatalogEntry } from './catalog.js';
-import type {
-  LocalSkillHubListItem,
-  LocalSkillHubStore,
-  LocalSkillPreviewResp,
-} from './hub-api.js';
 import {
   createLocalSkillRegistryProvider,
   type LocalRegistrySkillReadResult,
@@ -38,7 +33,6 @@ import { toNormalizedSkillSelectorSet } from './registry-family.js';
 import {
   createCatalogDiagnostics,
   createRuntimeSkillBetaFlags,
-  requireSkillHub,
 } from './skill-service-support.js';
 
 export interface LocalSkillServiceDeps {
@@ -52,7 +46,6 @@ export interface LocalSkillServiceDeps {
   }>;
   /** New skill writes always use the canonical stable agent key. */
   resolveAgentWriteTarget?: (requestedName: string) => Promise<string>;
-  skillHubStore?: LocalSkillHubStore;
   /**
    * Content-safety gate for user-authored skill writes (name / description /
    * content). When present, createSkill reviews each field at
@@ -104,23 +97,6 @@ export interface LocalSkillCreateInput {
   agentName?: string;
 }
 
-export interface LocalSkillHubListInput {
-  keyword?: string;
-  limit?: number;
-  cursor?: string;
-  sourceType?: number | string;
-  sortType?: number | string;
-}
-
-export interface LocalSkillInstallInput {
-  url?: string;
-  agentName?: string;
-  isFromGit?: boolean;
-  displayName?: string;
-  creatorInfo?: unknown;
-  publisherSourceType?: number;
-}
-
 interface LocalSkillReadScope {
   canonicalName: string;
   compatibleNames: readonly string[];
@@ -155,13 +131,6 @@ export interface LocalSkillService {
     input: LocalSkillRequestInput,
     enabled: boolean,
   ): Promise<{ ok: true; name: string; enabled: boolean } | undefined>;
-  listSkillHub(input: LocalSkillHubListInput): Promise<{
-    skills: LocalSkillHubListItem[];
-    hasMore: boolean;
-    nextCursor: string;
-  }>;
-  installSkill(input: LocalSkillInstallInput): Promise<{ ok: unknown; skill: unknown }>;
-  previewSkill(input: { url: string; ref?: string }): Promise<LocalSkillPreviewResp>;
   /**
    * Registers a synchronous invalidation listener for consumers that derive
    * turn capability reservations from the standalone Skill registry.
@@ -230,7 +199,6 @@ function createLocalSkillService(deps: LocalSkillServiceDeps): LocalSkillService
     };
   };
   const betaFlags = createRuntimeSkillBetaFlags(deps.configGetter);
-  const requireHub = () => requireSkillHub(deps.skillHubStore);
   const { reportCatalogOverflowOnce, reportCatalogDescriptionCapOnce } = createCatalogDiagnostics(
     deps.metricsClient,
   );
@@ -240,17 +208,12 @@ function createLocalSkillService(deps: LocalSkillServiceDeps): LocalSkillService
         input.agentName,
         input.excludeAgentResources || Boolean(input.expectedAgentInstanceId),
       );
-      const installedHubMetadataByLocationUri =
-        await deps.skillHubStore?.getInstalledGlobalMetadataByLocation();
-      return registryProvider.listSkills(
-        {
-          ...input,
-          agentName: scope.canonicalName,
-          ...(deps.resolveAgentReadScope ? { compatibleAgentNames: scope.compatibleNames } : {}),
-          betaFlags: betaFlags(),
-        },
-        installedHubMetadataByLocationUri,
-      );
+      return registryProvider.listSkills({
+        ...input,
+        agentName: scope.canonicalName,
+        ...(deps.resolveAgentReadScope ? { compatibleAgentNames: scope.compatibleNames } : {}),
+        betaFlags: betaFlags(),
+      });
     },
     async listRuntimeSkills(scope = {}) {
       const readScope = await resolveReadScope(
@@ -392,21 +355,7 @@ function createLocalSkillService(deps: LocalSkillServiceDeps): LocalSkillService
         transportGlobalDelete ? input : await resolveRequestScope(input),
       );
       if (deleted === 'protected') return 'protected';
-      if (!deleted) {
-        const uninstalled = transportGlobalDelete
-          ? await deps.skillHubStore?.uninstall(input.skillName)
-          : false;
-        if (uninstalled) {
-          notifyRuntimeSkillsChanged();
-          return { ok: true, name: input.skillName };
-        }
-        return undefined;
-      }
-      // Clear the hub `installed` record for any global (non-agent) skill delete
-      // so the market "added" badge resets — even when the caller passed a
-      // locationUri. Key by the actually-deleted entry's name, which matches the
-      // identity install stores under.
-      if (!input.agentName) await deps.skillHubStore?.uninstall(deleted.name);
+      if (!deleted) return undefined;
       notifyRuntimeSkillsChanged();
       return deleted;
     },
@@ -414,37 +363,6 @@ function createLocalSkillService(deps: LocalSkillServiceDeps): LocalSkillService
       const result = await registryProvider.setSkillEnabled(input, enabled);
       if (result) notifyRuntimeSkillsChanged();
       return result;
-    },
-    async listSkillHub(input) {
-      const resp = await requireHub().list({
-        keyword: input.keyword,
-        limit: input.limit,
-        nextToken: input.cursor,
-        sourceType: input.sourceType,
-        sortType: input.sortType,
-      });
-      return {
-        skills: resp.skill_list,
-        hasMore: resp.has_more,
-        nextCursor: resp.next_token,
-      };
-    },
-    async installSkill(input) {
-      const agentName = await resolveWriteTarget(input.agentName);
-      const resp = await requireHub().install({
-        url: input.url,
-        agent_name: agentName,
-        is_from_git: input.isFromGit,
-        display_name: input.displayName,
-        creator_info: input.creatorInfo,
-        publisher_source_type: input.publisherSourceType,
-      });
-      await registryProvider.refresh({ agentName });
-      notifyRuntimeSkillsChanged();
-      return { ok: resp.ok, skill: resp.skill };
-    },
-    previewSkill(input) {
-      return requireHub().preview(input);
     },
     onDidChangeRuntimeSkills(listener) {
       runtimeSkillChangeListeners.add(listener);

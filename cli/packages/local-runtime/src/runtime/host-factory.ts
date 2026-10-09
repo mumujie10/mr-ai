@@ -1,4 +1,4 @@
-import { getConfig, isManagedRuntime } from "@mavis/config";
+import { getConfig } from "@mavis/config";
 
 import { LocalRuntimeApiHost } from "../api/host.js";
 import { copyV2LayoutMigrationReceipt } from "../persistence/migration/v2-migration.js";
@@ -10,7 +10,6 @@ import {
   createDesktopErrorReporter,
   createLLMFailureReportHook,
 } from "../error-reporting/index.js";
-import { LocalSkillHubStore } from "../skills/hub-api.js";
 import type { AgentReferenceResolver } from "../agent/port.js";
 import type { LocalAgentRuntimePort } from "../agent/runtime-port.js";
 import { LocalSessionController } from "../sessions/controller.js";
@@ -140,14 +139,6 @@ export function createLocalRuntimeHost(
   });
   const queuedMessageStore = new SqliteLocalQueueStore(dataDir);
   const legacyOpencodeEnabled = options.legacyOpencodeEnabled ?? false;
-  const skillHubStore = new LocalSkillHubStore({
-    dataDir: () => configGetter().dataDir,
-    nowMs: runtimeNowMs,
-    remoteEnabled: () => shouldUseRemoteSkillHub(options),
-    fetch: options.fetchImpl,
-    authContextGetter: options.authContextGetter,
-    routingContextGetter: options.routingContextGetter,
-  });
   const controller = new LocalSessionController({
     store: sessionStore,
     legacyOpencodeEnabled: () => legacyOpencodeEnabled,
@@ -211,7 +202,6 @@ export function createLocalRuntimeHost(
     cliSunsetNotice: options.cliSunsetNotice,
     defaultWorkspaceDir: options.defaultWorkspaceDir,
     legacyOpencodeEnabled,
-    skillHubStore,
     telemetry,
     ...(evalReporterFactory ? { evalReporterFactory } : {}),
     threadGoalRuntimeEventSink: createThreadGoalObservabilityEventSink(
@@ -252,16 +242,4 @@ export function createLocalRuntimeHost(
 
 function assertConversationUnavailable(operation: string): never {
   throw new Error(`Local Runtime V1 Conversation is unavailable: ${operation}`);
-}
-
-function shouldUseRemoteSkillHub(
-  options: CreateLocalRuntimeHostOptions,
-): boolean {
-  if (options.configGetter?.().skillHub?.enabled === false) return false;
-  if (process.env.__MAVIS_RUNTIME_MANAGED === "0") return false;
-  return (
-    options.runtimeOwnerKind === "electron" ||
-    options.capabilities?.electronHost === true ||
-    isManagedRuntime()
-  );
 }

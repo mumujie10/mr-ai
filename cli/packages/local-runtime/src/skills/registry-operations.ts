@@ -3,12 +3,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { SkillRegistry, type SkillEntry, type SkillSourceKind } from '@mavis/skills';
-import {
-  type CreatorInfo,
-  type SkillFileInfo,
-  type SkillInfo,
-  type SkillSourceType,
-} from '@mavis/protocol/local';
+import type { SkillFileInfo, SkillInfo } from '@mavis/protocol/local';
 
 import type { LocalRuntimeConfig } from '../config/types.js';
 import type { SubagentTelemetryHost } from '../agent/subagent-telemetry.js';
@@ -39,12 +34,6 @@ import {
   readShippedBuiltinSkillNames,
 } from './registry-family.js';
 
-export interface InstalledSkillHubMetadata {
-  displayName?: string;
-  creatorInfo?: CreatorInfo;
-  publisherSourceType?: SkillSourceType;
-}
-
 export function listRegistrySkillSummaries(
   registry: SkillRegistry,
   options: {
@@ -56,7 +45,6 @@ export function listRegistrySkillSummaries(
     excludeBuiltin?: boolean;
     agentName?: string;
     compatibleAgentNames?: readonly string[];
-    installedHubMetadataByLocationUri?: ReadonlyMap<string, InstalledSkillHubMetadata>;
     disabledLocationUris?: ReadonlySet<string>;
     betaFlags?: Readonly<Record<string, boolean | undefined>>;
   },
@@ -70,13 +58,7 @@ export function listRegistrySkillSummaries(
     .filter((entry) => isVisibleLocalSkill(entry))
     .filter((entry) => isSkillAllowedByBetaFlags(entry, options.betaFlags))
     .filter((entry) => !options.excludeBuiltin || entry.rootKind !== 'builtin')
-    .map((entry) =>
-      toSkillInfo(
-        entry,
-        options.installedHubMetadataByLocationUri?.get(entry.locationUri),
-        !options.disabledLocationUris?.has(entry.locationUri),
-      ),
-    )
+    .map((entry) => toSkillInfo(entry, !options.disabledLocationUris?.has(entry.locationUri)))
     .filter((skill) => scope === undefined || skill.scope === scope)
     .filter((skill) => sourceType === undefined || skill.sourceType === sourceType)
     .filter(
@@ -119,7 +101,7 @@ export function getRegistrySkillDetail(
   const entry = findMatchingSkillEntry(registry, input);
   if (!entry) return undefined;
   return {
-    skill: toSkillInfo(entry, undefined, !options.disabledLocationUris?.has(entry.locationUri)),
+    skill: toSkillInfo(entry, !options.disabledLocationUris?.has(entry.locationUri)),
     ...(options.includeBody ? { content: entry.content } : {}),
   };
 }

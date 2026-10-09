@@ -76,7 +76,6 @@ export type LocalRuntimeSurfaceKey =
   | 'session.resume'
   | 'session.usage'
   | 'skill.evolve'
-  | 'skill.hub'
   | 'team'
   | 'usage';
 
@@ -219,10 +218,6 @@ export function buildLocalRuntimeSurfaceCapabilities(
       reason: 'Session usage is projected from native local-runtime token usage records.',
     },
     'skill.evolve': { status: 'native' },
-    'skill.hub': {
-      status: 'native',
-      reason: 'Skill hub search/install is backed by the native local-runtime skill hub store.',
-    },
     team: { status: 'native' },
     usage: {
       status: 'native',
@@ -289,7 +284,6 @@ export function resolveLocalRuntimeSurfaceForPath(
     return 'communication.messages';
   }
   if (path === '/api/cron' || path.startsWith('/api/cron/')) return 'cron';
-  if (path === '/api/skill-hub' || path.startsWith('/api/skill-hub/')) return 'skill.hub';
   if (path === '/api/skill-evolve' || path.startsWith('/api/skill-evolve/')) return 'skill.evolve';
   if (path === '/api/agent') return 'agent.core';
   if (path.startsWith('/api/agent/')) {

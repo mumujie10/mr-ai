@@ -24,7 +24,6 @@ import {
   readRegistrySkillFile,
   resolveRegistrySkillIdentity,
   renderLocalRegistrySkillsCatalog,
-  type InstalledSkillHubMetadata,
 } from './registry-operations.js';
 
 export { readConfiguredSkillRoots } from './roots.js';
@@ -95,10 +94,7 @@ export interface LocalRegistrySkillReadResult {
 }
 
 export interface LocalSkillRegistryProvider {
-  listSkills(
-    input: LocalSkillListInput,
-    installedHubMetadataByLocationUri?: ReadonlyMap<string, InstalledSkillHubMetadata>,
-  ): Promise<{
+  listSkills(input: LocalSkillListInput): Promise<{
     skills: SkillInfo[];
     hasMore: boolean;
     nextCursor?: string;
@@ -319,7 +315,7 @@ export function createLocalSkillRegistryProvider(
   }
 
   return {
-    async listSkills(input, installedHubMetadataByLocationUri) {
+    async listSkills(input) {
       return withAgentResourceScope(input, async (scopedInput) => {
         const agentName = normalizeAgentName(scopedInput.agentName);
         const handle = await getHandleForAgent(
@@ -340,7 +336,6 @@ export function createLocalSkillRegistryProvider(
           excludeBuiltin: scopedInput.excludeBuiltin,
           agentName,
           compatibleAgentNames: scopedInput.compatibleAgentNames,
-          installedHubMetadataByLocationUri,
           disabledLocationUris,
           betaFlags: scopedInput.betaFlags,
         });
