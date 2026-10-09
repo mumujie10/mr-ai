@@ -426,7 +426,109 @@ async fn apply_session_config(
             }
         }
     }
-    Ok(())
+    apply_effort(
+        acp,
+        session_id,
+        session_result,
+        req,
+        core,
+        state,
+        killed,
+        runtime,
+    )
+    .await
+}
+
+/// Apply the GUI's reasoning effort through the CLI's own `thinkingEffort`
+/// session option. It has to come after the model pick: the CLI advertises the
+/// levels of the *selected* model and rejects anything else, so an unadvertised
+/// level keeps the CLI's own default and tells the user which levels exist —
+/// silently dropping the request is what made this switch look dead.
+async fn apply_effort(
+    acp: &mut AcpProcess,
+    session_id: &str,
+    session_result: &Value,
+    req: &SendRequest,
+    core: &TurnCore,
+    state: &mut TurnState,
+    killed: &AtomicBool,
+    runtime: McodeRuntime,
+) -> Result<(), String> {
+    let cli = runtime.display_name();
+    let requested = req
+        .effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|effort| !effort.is_empty());
+    let Some(requested) = requested else {
+        return Ok(());
+    };
+    let advertised = advertised_efforts(session_result);
+    if advertised.is_empty() {
+        // No knob for this model in this build: the CLI's own default runs.
+        return Ok(());
+    }
+    if !advertised.iter().any(|level| level == requested) {
+        core.dispatch_event(
+            state,
+            EngineEvent::Warn(format!(
+                "{cli} 的当前模型不支持推理强度 {requested}，本次使用 CLI 自身默认档位（可选：{}）",
+                advertised.join(", ")
+            )),
+        );
+        return Ok(());
+    }
+    if effort_already_current(session_result, requested) {
+        return Ok(());
+    }
+    match set_config_option(acp, session_id, THINKING_EFFORT_OPTION, requested, killed).await {
+        Ok(()) => Ok(()),
+        Err(error)
+            if error.code == JSONRPC_METHOD_NOT_FOUND || error.code == JSONRPC_INVALID_PARAMS =>
+        {
+            core.dispatch_event(
+                state,
+                EngineEvent::Warn(format!(
+                    "{cli} 拒绝了推理强度 {requested}，本次使用 CLI 自身默认档位"
+                )),
+            );
+            Ok(())
+        }
+        Err(error) => Err(format!(
+            "{cli} effort `{requested}` setup failed: {}",
+            error.message
+        )),
+    }
+}
+
+/// The CLI's per-model reasoning levels arrive as a `thinkingEffort` select
+/// option, advertised only when the selected model declares levels.
+const THINKING_EFFORT_OPTION: &str = "thinkingEffort";
+
+fn config_option<'a>(session_result: &'a Value, id: &str) -> Option<&'a Value> {
+    session_result["configOptions"]
+        .as_array()?
+        .iter()
+        .find(|option| option["id"] == id)
+}
+
+/// The reasoning levels the current model offers, in the CLI's own order.
+fn advertised_efforts(session_result: &Value) -> Vec<String> {
+    config_option(session_result, THINKING_EFFORT_OPTION)
+        .and_then(|option| option["options"].as_array())
+        .map(|options| {
+            options
+                .iter()
+                .filter_map(|option| option["value"].as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn effort_already_current(session_result: &Value, requested: &str) -> bool {
+    config_option(session_result, THINKING_EFFORT_OPTION)
+        .and_then(|option| option["currentValue"].as_str())
+        == Some(requested)
 }
 
 /// GUI permission mode → the verified `permissionMode` option values
@@ -1013,6 +1115,45 @@ mod tests {
                 ]},
             ],
         })
+    }
+
+    /// A session whose selected model declares reasoning levels, measured from
+    /// the CLI's `thinkingEffort` select option.
+    fn effort_session_result(current: &str) -> Value {
+        json!({
+            "sessionId": "mvs_a",
+            "configOptions": [
+                { "id": "model", "options": [
+                    { "value": "m:minimax:MiniMax-M3:v:thinking", "name": "MiniMax-M3 · thinking" },
+                ]},
+                { "id": "thinkingEffort", "currentValue": current, "options": [
+                    { "value": "low", "name": "Low" },
+                    { "value": "high", "name": "High" },
+                    { "value": "ultra", "name": "Ultra" },
+                ]},
+            ],
+        })
+    }
+
+    #[test]
+    fn effort_levels_come_from_the_option_the_cli_advertises() {
+        assert_eq!(
+            advertised_efforts(&effort_session_result("high")),
+            vec!["low".to_string(), "high".to_string(), "ultra".to_string()]
+        );
+        assert!(effort_already_current(
+            &effort_session_result("high"),
+            "high"
+        ));
+        assert!(!effort_already_current(
+            &effort_session_result("high"),
+            "ultra"
+        ));
+        // A BYOK channel without the option advertises no levels: the CLI's own
+        // default runs, and nothing is sent to set it (measured on mcode 0.6.3:
+        // `provider add` declares no reasoning levels for custom providers).
+        assert!(advertised_efforts(&model_session_result()).is_empty());
+        assert!(!effort_already_current(&model_session_result(), "high"));
     }
 
     #[test]
