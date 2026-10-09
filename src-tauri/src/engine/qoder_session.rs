@@ -1295,6 +1295,7 @@ pub(crate) async fn probe_models(bin: &str) -> Result<Vec<QoderModelEntry>, Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::tool_call_message;
 
     #[test]
     fn parses_response_notification_and_agent_request() {
@@ -1414,6 +1415,86 @@ mod tests {
             QoderSessionUpdate::AgentMessageChunk {
                 text: "wrapped".to_string()
             }
+        );
+    }
+
+    /// The bundled CLI reports its task list as a `todowrite` *tool call*
+    /// (`packages/agent-tools/src/desktop/local-todowrite.ts`), not as an ACP
+    /// `plan` update, so the run-status pill has to come from the args. Pin the
+    /// wire shape the projector emits (title + `rawInput.todos`) to the payload
+    /// the frontend renders.
+    #[test]
+    fn todowrite_tool_call_carries_the_task_list() {
+        let call = json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": "call-1",
+            "title": "todowrite",
+            "name": "todowrite",
+            "kind": "other",
+            "status": "pending",
+            "rawInput": {"todos": [
+                {"content": "拆分引擎", "status": "completed", "priority": "high"},
+                {"content": "隔离数据目录", "status": "in_progress", "priority": "high"},
+                {"content": "补 GUI 能力", "status": "pending", "priority": "medium"}
+            ]}
+        });
+        let EngineEvent::Message {
+            text,
+            todos: Some(payload),
+            patch,
+            ..
+        } = tool_call_message(
+            extract_tool_name(&call).expect("tool name"),
+            call.get("rawInput"),
+        )
+        else {
+            panic!("expected a tool call carrying a todo list");
+        };
+        assert_eq!(text, "todowrite");
+        assert!(!patch);
+        // A todowrite call always re-sends the whole list, so the UI replaces.
+        assert!(payload.replace);
+        let rendered = payload
+            .items
+            .iter()
+            .map(|item| (item.content.as_str(), item.status.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rendered,
+            vec![
+                ("拆分引擎", "complete"),
+                ("隔离数据目录", "active"),
+                ("补 GUI 能力", "pending"),
+            ]
+        );
+        // Clearing the list must stay a list, not fall back to "no todo data".
+        let EngineEvent::Message {
+            todos: Some(cleared),
+            ..
+        } = tool_call_message("todowrite", Some(&json!({"todos": []})))
+        else {
+            panic!("expected a todo payload");
+        };
+        assert!(cleared.items.is_empty());
+    }
+
+    /// Plan Mode review is a *markdown document* the CLI sends as
+    /// `sessionUpdate: "plan_update"` when the client declares the plan
+    /// capability. It is not a task list; treating its text as one would show a
+    /// whole plan as a single open todo.
+    #[test]
+    fn plan_mode_updates_are_not_task_lists() {
+        assert_eq!(
+            map_session_update(
+                &json!({"sessionUpdate":"plan_update","plan":{"type":"markdown","planId":"p1","content":"# 计划"}})
+            ),
+            QoderSessionUpdate::Ignore
+        );
+        assert_eq!(
+            map_session_update(
+                &json!({"sessionUpdate":"plan","entries":[{"content":"第一步","status":"pending"}]})
+            ),
+            QoderSessionUpdate::Ignore
         );
     }
 
