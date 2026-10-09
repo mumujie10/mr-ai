@@ -300,15 +300,20 @@ test(
       assert.equal(isolated.PATH, environment.PATH);
       const beforeRequests = requests.length;
       const managedAudit = `${networkAudit}.managed`;
-      const beforeManaged = readFileSync(managedAudit, "utf8").length;
+      const readManagedAudit = () =>
+        existsSync(managedAudit) ? readFileSync(managedAudit, "utf8") : "";
+      const beforeManaged = readManagedAudit().length;
       await run([
         "provider", "test", selected.providerId, "--model", "fixture-model",
       ], environment);
       assert.ok(requests.length > beforeRequests, "The local provider must receive the request");
       assert.equal(requests[beforeRequests].body.model, "fixture-model");
-      assert.match(
-        readFileSync(managedAudit, "utf8").slice(beforeManaged),
-        /https:\/\/models\.dev\/api\.json|\/mavis\/api\/v1\/models-dev\/catalog/,
+      // The model registry is offline-only: booting the runtime and testing a
+      // provider must never request the models.dev snapshot or its descriptor.
+      assert.doesNotMatch(
+        readManagedAudit().slice(beforeManaged),
+        /https:\/\/models\.dev\/api\.json|\/mavis\/api\/v1\/models-dev\/catalog|filecdn\.minimax\.chat\/public\/models-dev/,
+        "Startup and provider test must not request the model registry",
       );
       assert.equal(existsSync(networkAudit), false, "No outbound network attempt is allowed");
       for (const [name, value] of Object.entries(proxies)) assert.equal(environment[name], value);

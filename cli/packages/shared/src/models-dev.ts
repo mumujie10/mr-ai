@@ -1,20 +1,9 @@
-export type ModelsDevRegion = 'cn' | 'en';
-
-const MODELS_DEV_BASE_URLS: Readonly<Record<ModelsDevRegion, string>> = {
-  cn: 'https://filecdn.minimax.chat/public/models-dev',
-  en: 'https://models.dev',
-};
-
-/** Canonical snapshot provenance; regional mirrors serve the same catalog bytes. */
-export const MODELS_DEV_CATALOG_SOURCE_URL = `${MODELS_DEV_BASE_URLS.en}/api.json`;
-
-export function resolveModelsDevCatalogUrl(region: ModelsDevRegion): string {
-  return `${MODELS_DEV_BASE_URLS[region]}/api.json`;
-}
-
-export function resolveModelsDevProviderLogoUrl(
-  region: ModelsDevRegion,
-  providerId: string,
-): string {
-  return `${MODELS_DEV_BASE_URLS[region]}/logos/${encodeURIComponent(providerId)}.svg`;
-}
+/**
+ * Provenance marker recorded inside the bundled (and any already-persisted)
+ * models.dev catalog snapshot.
+ *
+ * The distribution ships the snapshot as an asset and the CLI only ever reads
+ * it; nothing in this fork fetches the registry. This constant survives because
+ * snapshot bytes carry `source` and parsing must keep rejecting foreign files.
+ */
+export const MODELS_DEV_CATALOG_SOURCE_URL = 'https://models.dev/api.json';

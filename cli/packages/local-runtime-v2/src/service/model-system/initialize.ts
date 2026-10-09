@@ -59,8 +59,6 @@ export function createLocalModelSystemConfigPort(read: () => LocalRuntimeConfig 
 export function initializeModelSystem(options: InitializeModelSystemOptions): ModelSystemOwner {
   const providerPresets = new ProviderPresetCatalog({
     dataDir: options.config.read().dataDir,
-    previewSecret: process.env.PREVIEW_SECRET,
-    lane: process.env.MAVIS_PLUGIN_CLOUD_LANE,
   });
   const resolver = new LocalModelResolver({
     ...options.resolverOptions,

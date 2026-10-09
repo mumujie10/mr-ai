@@ -21,6 +21,9 @@ export const retiredSourceRoots = [
   "packages/local-runtime-v2/src/http/",
   "packages/protocol/src/generated/",
   "packages/local-runtime-v2/src/service/session-handoff/",
+  // The BYOK-only distribution ships the models.dev snapshot as a bundled asset
+  // and must never fetch it, so the registry pull path stays out of this fork.
+  "packages/local-runtime-v2/src/service/model-system/catalog/provider-presets/provider-presets.client.ts",
 ];
 
 // May exist as public source, but must never be reachable from the standalone

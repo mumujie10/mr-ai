@@ -1,18 +1,12 @@
 import { getRuntimeRegion } from '@mavis/config';
+import { MODELS_DEV_CATALOG_SOURCE_URL } from '@mavis/shared/models-dev';
 
 import type { ByokProviderPresetView, UserModelInputView } from '../../contracts.js';
 import { normalizeProviderBaseUrl } from '../../connectivity/provider-request.js';
 import type { ModelProviderApi } from '../../identity.js';
 import {
-  fetchModelsDevCatalog,
-  fetchPinnedProviderIdsConfig,
-  MODELS_DEV_URL,
-} from './provider-presets.client.js';
-import {
   readProviderPresetSnapshotCandidates,
-  resolveProviderPresetLocalCatalogPath,
   type ProviderPresetRepositoryOptions,
-  writeProviderPresetSnapshot,
 } from './provider-presets.repository.js';
 
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
@@ -35,25 +29,15 @@ const PROVIDER_PLAN_NAMES = new Map([
   ['zhipuai', 'Zhipu AI API'],
   ['zhipuai-coding-plan', 'Zhipu AI Coding Plan'],
 ]);
-const refreshInFlight = new Map<string, Promise<void>>();
 
 export interface ProviderPresetCatalogOptions extends ProviderPresetRepositoryOptions {
-  readonly modelsDevFetch?: typeof fetch;
-  readonly modelsDevTimeoutMs?: number;
-  readonly commonConfigFetch?: typeof fetch;
   readonly regionGetter?: () => 'cn' | 'en';
-  readonly commonConfigOriginGetter?: () => string;
-  readonly commonConfigTimeoutMs?: number;
-  readonly previewSecret?: string;
-  readonly lane?: string;
-  readonly now?: () => number;
 }
 
 interface ModelsDevCatalogSnapshot {
   readonly version: 1;
-  readonly source: typeof MODELS_DEV_URL;
+  readonly source: typeof MODELS_DEV_CATALOG_SOURCE_URL;
   readonly updatedAt: number;
-  readonly etag?: string;
   readonly iconBaseUrl?: string;
   readonly catalog: Record<string, unknown>;
 }
@@ -63,38 +47,20 @@ interface ParsedModelsDevCatalogSnapshot {
   readonly presets: readonly ByokProviderPresetView[];
 }
 
+/**
+ * Reads the bundled models.dev snapshot (plus any snapshot already persisted by
+ * an earlier release) entirely from disk. Construction and listing perform no
+ * network I/O, and there is no code path in this fork that can fetch the
+ * registry: the distribution owns the snapshot bytes.
+ */
 export class ProviderPresetCatalog {
-  constructor(private readonly options: ProviderPresetCatalogOptions = {}) {
-    const refreshKey =
-      resolveProviderPresetLocalCatalogPath(options) ?? options.bundledCatalogPath ?? 'default';
-    if (!refreshInFlight.has(refreshKey)) {
-      const refresh = refreshModelsDevSnapshotInBackground(options, refreshKey);
-      refreshInFlight.set(refreshKey, refresh);
-    }
-  }
+  constructor(private readonly options: ProviderPresetCatalogOptions = {}) {}
 
   async listProviderPresets(): Promise<ByokProviderPresetView[]> {
     const latest = await latestCatalogSnapshot(this.options);
     if (!latest) throw new Error('No valid models.dev catalog snapshot is available');
-    const pinnedProviderIds =
-      (await resolvePinnedProviderIds({
-        fetchImpl: this.options.commonConfigFetch,
-        originGetter: this.options.commonConfigOriginGetter,
-        timeoutMs: this.options.commonConfigTimeoutMs,
-        previewSecret: this.options.previewSecret,
-        lane: this.options.lane,
-      })) ?? REGION_PINNED_PROVIDER_IDS[(this.options.regionGetter ?? getRuntimeRegion)()];
-    return orderProviderPresets(latest.presets, pinnedProviderIds);
-  }
-}
-
-async function resolvePinnedProviderIds(
-  options: Parameters<typeof fetchPinnedProviderIdsConfig>[0],
-): Promise<readonly string[] | undefined> {
-  try {
-    return parsePinnedProviderIds(await fetchPinnedProviderIdsConfig(options));
-  } catch {
-    return undefined;
+    const region = (this.options.regionGetter ?? getRuntimeRegion)();
+    return orderProviderPresets(latest.presets, REGION_PINNED_PROVIDER_IDS[region]);
   }
 }
 
@@ -235,24 +201,6 @@ function parseModelLimit(value: Record<string, unknown>): Partial<UserModelInput
   return { limit: { ...(context ? { context } : {}), ...(output ? { output } : {}) } };
 }
 
-function parsePinnedProviderIds(value: unknown): string[] | undefined {
-  let decoded = value;
-  if (typeof value === 'string') {
-    try {
-      decoded = JSON.parse(value);
-    } catch {
-      return undefined;
-    }
-  }
-  if (
-    !Array.isArray(decoded) ||
-    decoded.some((providerId) => typeof providerId !== 'string' || !providerId.trim())
-  ) {
-    return undefined;
-  }
-  return [...new Set(decoded)];
-}
-
 function orderProviderPresets(
   presets: readonly ByokProviderPresetView[],
   pinnedProviderIds: readonly string[],
@@ -268,46 +216,6 @@ function orderProviderPresets(
     ...pinned,
     ...[...byId.values()].sort((left, right) => left.name.localeCompare(right.name)),
   ];
-}
-
-async function refreshModelsDevSnapshot(options: ProviderPresetCatalogOptions): Promise<void> {
-  const current = await latestCatalogSnapshot(options);
-  const region = (options.regionGetter ?? getRuntimeRegion)();
-  const result = await fetchModelsDevCatalog({
-    fetchImpl: options.modelsDevFetch,
-    timeoutMs: options.modelsDevTimeoutMs,
-    etag: current?.snapshot.iconBaseUrl ? current.snapshot.etag : undefined,
-    region,
-    descriptorOriginGetter: options.commonConfigOriginGetter,
-    previewSecret: options.previewSecret,
-    lane: options.lane,
-  });
-  if (result.kind === 'not_modified') return;
-  const presets = parseModelsDevProviderPresets(result.catalog, result.iconBaseUrl);
-  if (presets.length === 0) throw new Error('models.dev returned no supported providers');
-  const snapshot: ModelsDevCatalogSnapshot = {
-    version: 1,
-    source: MODELS_DEV_URL,
-    updatedAt: (options.now ?? Date.now)(),
-    ...(result.etag ? { etag: result.etag } : {}),
-    iconBaseUrl: result.iconBaseUrl,
-    catalog: result.catalog,
-  };
-  const localCatalogPath = resolveProviderPresetLocalCatalogPath(options);
-  if (localCatalogPath) await writeProviderPresetSnapshot(localCatalogPath, snapshot);
-}
-
-async function refreshModelsDevSnapshotInBackground(
-  options: ProviderPresetCatalogOptions,
-  refreshKey: string,
-): Promise<void> {
-  try {
-    await refreshModelsDevSnapshot(options);
-  } catch {
-    // The validated local snapshot remains authoritative when refresh fails.
-  } finally {
-    refreshInFlight.delete(refreshKey);
-  }
 }
 
 async function latestCatalogSnapshot(
@@ -329,7 +237,7 @@ function parseCatalogSnapshot(value: unknown): ParsedModelsDevCatalogSnapshot {
   if (
     !isRecord(value) ||
     value.version !== 1 ||
-    value.source !== MODELS_DEV_URL ||
+    value.source !== MODELS_DEV_CATALOG_SOURCE_URL ||
     !updatedAt ||
     !isRecord(value.catalog)
   ) {
@@ -340,13 +248,11 @@ function parseCatalogSnapshot(value: unknown): ParsedModelsDevCatalogSnapshot {
   if (presets.length === 0) {
     throw new Error('models.dev catalog snapshot has no supported providers');
   }
-  const etag = stringValue(value.etag);
   return {
     snapshot: {
       version: 1,
-      source: MODELS_DEV_URL,
+      source: MODELS_DEV_CATALOG_SOURCE_URL,
       updatedAt,
-      ...(etag ? { etag } : {}),
       ...(iconBaseUrl ? { iconBaseUrl } : {}),
       catalog: value.catalog,
     },

@@ -1,4 +1,5 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -6,26 +7,31 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { providerCompletionUrl, providerModelsUrls } from '../../connectivity/provider-request.js';
 import { ProviderPresetCatalog } from './provider-presets.service.js';
-import { readProviderPresetSnapshotCandidates } from './provider-presets.repository.js';
 import { modelsFromInputs } from '../../management/service-input.js';
 import { buildModelEntry } from '../list-models.js';
 
-vi.mock('./provider-presets.repository.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./provider-presets.repository.js')>();
-  return {
-    ...actual,
-    readProviderPresetSnapshotCandidates: vi.fn(actual.readProviderPresetSnapshotCandidates),
-  };
-});
-
 const temporaryDirectories: string[] = [];
-const TEST_RELEASE_SHA = 'a'.repeat(64);
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true })),
   );
 });
+
+/**
+ * The registry is offline-only, so every test installs this hook: any request
+ * is recorded and fails loudly instead of being tolerated. It replaces the
+ * former per-catalog fetch seams.
+ */
+function recordNetworkAttempts(): string[] {
+  const attempts: string[] = [];
+  vi.spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Request) => {
+    attempts.push(String(input instanceof Request ? input.url : input));
+    throw new Error(`Unexpected network access: ${String(input)}`);
+  }) as unknown as typeof fetch);
+  return attempts;
+}
 
 function rawCatalog(modelId: string) {
   return {
@@ -38,12 +44,11 @@ function rawCatalog(modelId: string) {
   };
 }
 
-function snapshot(updatedAt: number, modelId: string, etag?: string, iconBaseUrl?: string) {
+function snapshot(updatedAt: number, modelId: string, iconBaseUrl?: string) {
   return {
     version: 1,
     source: 'https://models.dev/api.json',
     updatedAt,
-    ...(etag ? { etag } : {}),
     ...(iconBaseUrl ? { iconBaseUrl } : {}),
     catalog: rawCatalog(modelId),
   };
@@ -62,36 +67,6 @@ async function catalogPaths() {
   };
 }
 
-function unavailableCommonConfig() {
-  return vi.fn(async () => {
-    throw new Error('offline');
-  }) as typeof fetch;
-}
-
-function redirectResponse() {
-  return new Response(null, { status: 302, headers: { location: 'https://evil.example' } });
-}
-
-function gatewayRedirectFetch() {
-  return vi.fn(async () => redirectResponse()) as typeof fetch;
-}
-
-function mirroredCatalogRedirectFetch() {
-  let requests = 0;
-  return vi.fn(async () => {
-    requests += 1;
-    if (requests === 1) {
-      return new Response(
-        JSON.stringify({
-          catalog_url: `https://filecdn.minimax.chat/public/models-dev/catalog/${TEST_RELEASE_SHA}/api.json`,
-          icon_base_url: `https://filecdn.minimax.chat/public/models-dev/catalog/${TEST_RELEASE_SHA}/logos/`,
-        }),
-      );
-    }
-    return redirectResponse();
-  }) as typeof fetch;
-}
-
 function providerCatalog(providerIds: readonly string[]) {
   return Object.fromEntries(
     providerIds.map((providerId) => [
@@ -106,75 +81,37 @@ function providerCatalog(providerIds: readonly string[]) {
   );
 }
 
-async function orderingCatalog(
-  providerIds: readonly string[],
-  options: {
-    region: 'cn' | 'en';
-    commonConfigFetch: typeof fetch;
-    commonConfigTimeoutMs?: number;
-    previewSecret?: string;
-    lane?: string;
-  },
-) {
+async function writeBundled(contents: unknown, filePath: string) {
+  await writeFile(filePath, gzipSync(Buffer.from(JSON.stringify(contents), 'utf8')));
+}
+
+async function orderingCatalog(providerIds: readonly string[], region: 'cn' | 'en') {
   const paths = await catalogPaths();
-  await writeFile(
+  await writeBundled(
+    {
+      version: 1,
+      source: 'https://models.dev/api.json',
+      updatedAt: 1,
+      catalog: providerCatalog(providerIds),
+    },
     paths.bundledCatalogPath,
-    gzipSync(
-      JSON.stringify({
-        version: 1,
-        source: 'https://models.dev/api.json',
-        updatedAt: 1,
-        catalog: providerCatalog(providerIds),
-      }),
-    ),
   );
-  return new ProviderPresetCatalog({
-    ...paths,
-    modelsDevFetch: vi.fn(() => new Promise<Response>(() => undefined)) as unknown as typeof fetch,
-    commonConfigFetch: options.commonConfigFetch,
-    commonConfigOriginGetter: () => 'https://gateway.example',
-    commonConfigTimeoutMs: options.commonConfigTimeoutMs,
-    previewSecret: options.previewSecret,
-    lane: options.lane,
-    regionGetter: () => options.region,
-  });
-}
-
-function commonConfigResponse(value: unknown) {
-  return new Response(JSON.stringify({ data: { agent_byok_pinned_provider_ids: value } }), {
-    status: 200,
-  });
-}
-
-async function waitForRepositoryRead(index: number): Promise<void> {
-  const readCandidates = vi.mocked(readProviderPresetSnapshotCandidates);
-  await vi.waitFor(() => expect(readCandidates).toHaveBeenCalledTimes(index + 1));
-  const result = readCandidates.mock.results[index];
-  if (!result) throw new Error(`Expected repository read ${index}`);
-  await result.value;
-  await new Promise<void>((resolve) => setImmediate(resolve));
+  return new ProviderPresetCatalog({ ...paths, regionGetter: () => region });
 }
 
 async function parsePresetsForTest(catalog: Record<string, unknown>, iconBaseUrl?: string) {
   const paths = await catalogPaths();
-  await writeFile(
+  await writeBundled(
+    {
+      version: 1,
+      source: 'https://models.dev/api.json',
+      updatedAt: 1,
+      ...(iconBaseUrl ? { iconBaseUrl } : {}),
+      catalog,
+    },
     paths.bundledCatalogPath,
-    gzipSync(
-      JSON.stringify({
-        version: 1,
-        source: 'https://models.dev/api.json',
-        updatedAt: 1,
-        ...(iconBaseUrl ? { iconBaseUrl } : {}),
-        catalog,
-      }),
-    ),
   );
-  return new ProviderPresetCatalog({
-    ...paths,
-    modelsDevFetch: vi.fn(() => new Promise<Response>(() => undefined)) as unknown as typeof fetch,
-    commonConfigFetch: vi.fn(async () => commonConfigResponse([])) as typeof fetch,
-    regionGetter: () => 'cn',
-  }).listProviderPresets();
+  return new ProviderPresetCatalog({ ...paths, regionGetter: () => 'cn' }).listProviderPresets();
 }
 
 describe('models.dev Provider Presets', () => {
@@ -227,6 +164,12 @@ describe('models.dev Provider Presets', () => {
     expect(preset?.iconUrl).toBe('https://cdn.example/catalog/release/logos/vendor.with.dots.svg');
   });
 
+  it('omits the icon URL when the snapshot carries no icon base URL', async () => {
+    const [preset] = await parsePresetsForTest(providerCatalog(['compatible']));
+
+    expect(preset).not.toHaveProperty('iconUrl');
+  });
+
   it('excludes MiniMax providers from the preset catalog', async () => {
     const presets = await parsePresetsForTest(
       providerCatalog([
@@ -262,22 +205,28 @@ describe('models.dev Provider Presets', () => {
       },
     });
 
+    // Display order follows the region pin table and is asserted by the
+    // "Provider Preset ordering" suite; here the mapping is the subject, so the
+    // presets are compared in a stable provider-id order.
+    const byId = [...presets].sort((left, right) =>
+      left.providerId.localeCompare(right.providerId),
+    );
     expect(
-      presets.map(({ providerId, baseUrl, apiFormat }) => ({
+      byId.map(({ providerId, baseUrl, apiFormat }) => ({
         providerId,
         baseUrl,
         apiFormat,
       })),
     ).toEqual([
       {
-        providerId: 'compatible',
-        baseUrl: 'https://compatible.example/v1',
-        apiFormat: 'openai-completions',
-      },
-      {
         providerId: 'anthropic',
         baseUrl: 'https://api.anthropic.com',
         apiFormat: 'anthropic-messages',
+      },
+      {
+        providerId: 'compatible',
+        baseUrl: 'https://compatible.example/v1',
+        apiFormat: 'openai-completions',
       },
       {
         providerId: 'openai',
@@ -287,18 +236,18 @@ describe('models.dev Provider Presets', () => {
     ]);
     const messagesApiHost = 'https://api.anthropic.com';
     expect(
-      presets.map((preset) => ({
+      byId.map((preset) => ({
         completion: providerCompletionUrl(preset.apiFormat, preset.baseUrl),
         models: providerModelsUrls(preset.apiFormat, preset.baseUrl),
       })),
     ).toEqual([
       {
-        completion: 'https://compatible.example/v1/chat/completions',
-        models: ['https://compatible.example/v1/models'],
-      },
-      {
         completion: `${messagesApiHost}/v1/messages`,
         models: [`${messagesApiHost}/v1/models`, `${messagesApiHost}/models`],
+      },
+      {
+        completion: 'https://compatible.example/v1/chat/completions',
+        models: ['https://compatible.example/v1/models'],
       },
       {
         completion: 'https://api.openai.com/v1/responses',
@@ -527,22 +476,12 @@ describe('models.dev Provider Presets', () => {
 });
 
 describe('models.dev Provider Preset snapshots', () => {
-  it('lists the newest valid local snapshot without waiting for network', async () => {
+  it('lists the newest valid snapshot with zero network I/O', async () => {
+    const attempts = recordNetworkAttempts();
     const paths = await catalogPaths();
-    await writeFile(
-      paths.bundledCatalogPath,
-      gzipSync(JSON.stringify(snapshot(20, 'bundled-new'))),
-    );
+    await writeBundled(snapshot(20, 'bundled-new'), paths.bundledCatalogPath);
     await writeFile(paths.localCatalogPath, JSON.stringify(snapshot(10, 'local-old')));
-    const neverFetches = vi.fn(
-      () => new Promise<Response>(() => undefined),
-    ) as unknown as typeof fetch;
-    const catalog = new ProviderPresetCatalog({
-      ...paths,
-      modelsDevFetch: neverFetches,
-      commonConfigFetch: unavailableCommonConfig(),
-      regionGetter: () => 'cn',
-    });
+    const catalog = new ProviderPresetCatalog({ ...paths, regionGetter: () => 'cn' });
 
     await expect(catalog.listProviderPresets()).resolves.toMatchObject([
       { models: [{ modelId: 'bundled-new' }] },
@@ -557,173 +496,111 @@ describe('models.dev Provider Preset snapshots', () => {
     await expect(catalog.listProviderPresets()).resolves.toMatchObject([
       { models: [{ modelId: 'bundled-new' }] },
     ]);
-    expect(neverFetches).toHaveBeenCalledOnce();
+    expect(attempts).toEqual([]);
+  });
+
+  it('serves the persisted snapshot when the bundled asset is corrupt, without a request', async () => {
+    const attempts = recordNetworkAttempts();
+    const paths = await catalogPaths();
+    await writeFile(paths.bundledCatalogPath, Buffer.from('not gzip at all'));
+    await writeFile(paths.localCatalogPath, JSON.stringify(snapshot(5, 'persisted')));
+
+    await expect(
+      new ProviderPresetCatalog({ ...paths, regionGetter: () => 'cn' }).listProviderPresets(),
+    ).resolves.toMatchObject([{ models: [{ modelId: 'persisted' }] }]);
+    expect(attempts).toEqual([]);
   });
 
   it.each([
-    ['gateway 503', () => vi.fn(async () => new Response(null, { status: 503 })) as typeof fetch],
-    ['gateway redirect', gatewayRedirectFetch],
-    [
-      'gateway timeout',
-      () =>
-        vi.fn(
-          (_url: string | URL | Request, init?: RequestInit) =>
-            new Promise<Response>((_resolve, reject) => {
-              init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
-            }),
-        ) as typeof fetch,
-    ],
-    [
-      'mirrored catalog failure',
-      () => {
-        let requests = 0;
-        return vi.fn(async () => {
-          requests += 1;
-          if (requests === 1) {
-            return new Response(
-              JSON.stringify({
-                catalog_url: `https://filecdn.minimax.chat/public/models-dev/catalog/${TEST_RELEASE_SHA}/api.json`,
-                icon_base_url: `https://filecdn.minimax.chat/public/models-dev/catalog/${TEST_RELEASE_SHA}/logos/`,
-              }),
-            );
-          }
-          return new Response(null, { status: 503 });
-        }) as typeof fetch;
-      },
-    ],
-    ['mirrored catalog redirect', mirroredCatalogRedirectFetch],
-    [
-      'invalid gateway descriptor',
-      () =>
-        vi.fn(
-          async () =>
-            new Response(
-              JSON.stringify({
-                catalog_url: 'https://evil.example/api.json',
-                icon_base_url: 'https://evil.example/logos/',
-              }),
-            ),
-        ) as typeof fetch,
-    ],
+    ['absent snapshot asset', null],
+    ['corrupt gzip payload', '{not json'],
+    ['snapshot from another source', { ...snapshot(10, 'stale'), source: 'https://example.test' }],
+    ['snapshot without supported providers', { ...snapshot(10, 'stale'), catalog: {} }],
   ])(
-    'keeps the local snapshot immediately available after a CN %s',
-    async (_label, fetchFactory) => {
+    'reports the %s as an unavailable snapshot instead of reaching the network',
+    async (_label, contents) => {
+      const attempts = recordNetworkAttempts();
       const paths = await catalogPaths();
-      await writeFile(paths.bundledCatalogPath, gzipSync(JSON.stringify(snapshot(10, 'bundled'))));
-      await writeFile(paths.localCatalogPath, JSON.stringify(snapshot(20, 'local')));
-      const modelsDevFetch = fetchFactory();
-      const catalog = new ProviderPresetCatalog({
-        ...paths,
-        modelsDevFetch,
-        modelsDevTimeoutMs: 5,
-        commonConfigFetch: unavailableCommonConfig(),
-        commonConfigOriginGetter: () => 'https://gateway.example',
-        regionGetter: () => 'cn',
-      });
+      if (typeof contents === 'string') {
+        await writeFile(paths.bundledCatalogPath, Buffer.from(contents));
+      } else if (contents) {
+        await writeBundled(contents, paths.bundledCatalogPath);
+      }
 
-      await expect(catalog.listProviderPresets()).resolves.toMatchObject([
-        { models: [{ modelId: 'local' }] },
-      ]);
-      await vi.waitFor(() => expect(modelsDevFetch).toHaveBeenCalled());
+      await expect(
+        new ProviderPresetCatalog({ ...paths, regionGetter: () => 'cn' }).listProviderPresets(),
+      ).rejects.toThrow('No valid models.dev catalog snapshot is available');
+      expect(attempts).toEqual([]);
     },
   );
 
-  it('forces one full refresh for a legacy snapshot without an icon base URL', async () => {
+  it('treats the snapshot directory as read-only while constructing and listing', async () => {
+    const attempts = recordNetworkAttempts();
     const paths = await catalogPaths();
-    await writeFile(
-      paths.bundledCatalogPath,
-      gzipSync(JSON.stringify(snapshot(20, 'bundled', 'old-etag'))),
-    );
-    let finishFetch: (response: Response) => void = () => undefined;
-    let modelsDevRequestInit: RequestInit | undefined;
-    const modelsDevFetch = vi.fn((_input: string | URL | Request, init?: RequestInit) => {
-      modelsDevRequestInit = init;
-      return new Promise<Response>((resolve) => {
-        finishFetch = resolve;
-      });
-    }) as unknown as typeof fetch;
-    const catalog = new ProviderPresetCatalog({
-      ...paths,
-      modelsDevFetch,
-      commonConfigFetch: unavailableCommonConfig(),
-      regionGetter: () => 'en',
-      now: () => 30,
-    });
+    await writeBundled(snapshot(20, 'bundled'), paths.bundledCatalogPath);
 
+    const catalog = new ProviderPresetCatalog({ ...paths, regionGetter: () => 'cn' });
     await expect(catalog.listProviderPresets()).resolves.toMatchObject([
       { models: [{ modelId: 'bundled' }] },
     ]);
-    await vi.waitFor(() => expect(modelsDevRequestInit).toBeDefined());
-    expect(new Headers(modelsDevRequestInit?.headers).get('if-none-match')).toBeNull();
+    await new Promise((resolve) => setImmediate(resolve));
 
-    finishFetch(
-      new Response(JSON.stringify(rawCatalog('network-new')), {
-        status: 200,
-        headers: { etag: 'new-etag' },
-      }),
-    );
-    await vi.waitFor(async () => {
-      expect(JSON.parse(await readFile(paths.localCatalogPath, 'utf8'))).toEqual(
-        snapshot(30, 'network-new', 'new-etag', 'https://models.dev/logos/'),
-      );
-    });
-    await expect(catalog.listProviderPresets()).resolves.toMatchObject([
-      { models: [{ modelId: 'network-new' }] },
-    ]);
+    expect(existsSync(paths.localCatalogPath)).toBe(false);
+    expect(attempts).toEqual([]);
   });
 
-  it.each([
-    ['304', () => new Response(null, { status: 304 })],
-    ['HTTP error', () => new Response(null, { status: 503 })],
-    ['invalid JSON', () => new Response('{invalid', { status: 200 })],
-    ['empty supported set', () => new Response(JSON.stringify({ unsupported: true }))],
-  ])('keeps the valid snapshot after a %s refresh', async (_label, responseFactory) => {
-    const paths = await catalogPaths();
-    await writeFile(paths.bundledCatalogPath, gzipSync(JSON.stringify(snapshot(20, 'stable'))));
-    const catalog = new ProviderPresetCatalog({
-      ...paths,
-      modelsDevFetch: vi.fn(async () => responseFactory()) as typeof fetch,
-      commonConfigFetch: unavailableCommonConfig(),
-      regionGetter: () => 'en',
-    });
+  it.each(['cn', 'en'] as const)(
+    'constructing the catalog in the %s region issues no request',
+    async (region) => {
+      const attempts = recordNetworkAttempts();
+      const paths = await catalogPaths();
+      await writeBundled(snapshot(20, 'bundled'), paths.bundledCatalogPath);
 
-    await vi.waitFor(() =>
-      expect(catalog.listProviderPresets()).resolves.toMatchObject([
-        { models: [{ modelId: 'stable' }] },
-      ]),
-    );
-    await expect(readFile(paths.localCatalogPath, 'utf8')).rejects.toThrow();
+      new ProviderPresetCatalog({ ...paths, regionGetter: () => region });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(attempts).toEqual([]);
+    },
+  );
+
+  it('serves a legacy snapshot without an icon base URL with no request and no write', async () => {
+    // The shipped bundled asset is exactly this shape: `source`, `updatedAt` and
+    // a stale `etag`, but no `iconBaseUrl`. It used to force a full refresh.
+    const attempts = recordNetworkAttempts();
+    const paths = await catalogPaths();
+    await writeBundled({ ...snapshot(20, 'bundled'), etag: '"old-etag"' }, paths.bundledCatalogPath);
+
+    const catalog = new ProviderPresetCatalog({ ...paths, regionGetter: () => 'cn' });
+    await expect(catalog.listProviderPresets()).resolves.toMatchObject([
+      { models: [{ modelId: 'bundled' }] },
+    ]);
+    const [preset] = await catalog.listProviderPresets();
+    expect(preset).not.toHaveProperty('iconUrl');
+    expect(existsSync(paths.localCatalogPath)).toBe(false);
+    expect(attempts).toEqual([]);
   });
 
-  it('isolates a timed out models.dev refresh and keeps the local snapshot available', async () => {
+  it('rejects a snapshot whose icon base URL is unusable without any request', async () => {
+    const attempts = recordNetworkAttempts();
     const paths = await catalogPaths();
-    await writeFile(paths.bundledCatalogPath, gzipSync(JSON.stringify(snapshot(20, 'stable'))));
-    let requestSignal: AbortSignal | undefined;
-    const modelsDevFetch = vi.fn(
-      (_url: string | URL | Request, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          requestSignal = init?.signal ?? undefined;
-          requestSignal?.addEventListener('abort', () => reject(requestSignal?.reason));
-        }),
-    ) as typeof fetch;
-    const catalog = new ProviderPresetCatalog({
-      ...paths,
-      modelsDevFetch,
-      modelsDevTimeoutMs: 5,
-      commonConfigFetch: unavailableCommonConfig(),
-      regionGetter: () => 'cn',
-    });
+    await writeBundled(
+      {
+        ...snapshot(20, 'bundled'),
+        iconBaseUrl: 'ftp://icons.example',
+        catalog: providerCatalog(['compatible']),
+      },
+      paths.bundledCatalogPath,
+    );
 
-    await vi.waitFor(() => expect(requestSignal?.aborted).toBe(true));
-    await expect(catalog.listProviderPresets()).resolves.toMatchObject([
-      { models: [{ modelId: 'stable' }] },
-    ]);
-    await expect(readFile(paths.localCatalogPath, 'utf8')).rejects.toThrow();
+    await expect(
+      new ProviderPresetCatalog({ ...paths, regionGetter: () => 'cn' }).listProviderPresets(),
+    ).rejects.toThrow('No valid models.dev catalog snapshot is available');
+    expect(attempts).toEqual([]);
   });
 });
 
 describe('Provider Preset ordering', () => {
-  it('uses the region-local CN and Global pin order when Apollo is unavailable', async () => {
+  it('uses the region-local CN pin order', async () => {
     const cnIds = [
       'minimax-cn',
       'zhipuai-coding-plan',
@@ -736,14 +613,14 @@ describe('Provider Preset ordering', () => {
       'tencent-coding-plan',
       'zzz',
     ];
-    const cn = await orderingCatalog(cnIds, {
-      region: 'cn',
-      commonConfigFetch: unavailableCommonConfig(),
-    });
-    await expect(
-      cn.listProviderPresets().then((items) => items.map((item) => item.providerId)),
-    ).resolves.toEqual(cnIds.slice(1));
+    const catalog = await orderingCatalog(cnIds, 'cn');
 
+    await expect(
+      catalog.listProviderPresets().then((items) => items.map((item) => item.providerId)),
+    ).resolves.toEqual(cnIds.slice(1));
+  });
+
+  it('uses the region-local Global pin order', async () => {
     const globalIds = [
       'minimax',
       'zai-coding-plan',
@@ -755,162 +632,28 @@ describe('Provider Preset ordering', () => {
       'aaa',
       'tencent-coding-plan',
     ];
-    const global = await orderingCatalog(globalIds, {
-      region: 'en',
-      commonConfigFetch: unavailableCommonConfig(),
-    });
+    const catalog = await orderingCatalog(globalIds, 'en');
+
     await expect(
-      global.listProviderPresets().then((items) => items.map((item) => item.providerId)),
+      catalog.listProviderPresets().then((items) => items.map((item) => item.providerId)),
     ).resolves.toEqual(globalIds.slice(1));
   });
 
-  it.each([
-    ['JSON array', ['anthropic', 'unknown', 'anthropic', 'openai']],
-    ['JSON string', JSON.stringify(['anthropic', 'unknown', 'anthropic', 'openai'])],
-  ])('lets a valid Apollo %s fully replace the region defaults', async (_label, value) => {
-    const readCandidates = vi.mocked(readProviderPresetSnapshotCandidates);
-    readCandidates.mockClear();
-    let commonConfigRequest: string | URL | Request | undefined;
-    let finishFetch: (response: Response) => void = () => undefined;
-    const commonConfigFetch = vi.fn((input: string | URL | Request) => {
-      commonConfigRequest = input;
-      return new Promise<Response>((resolve) => {
-        finishFetch = resolve;
-      });
-    }) as unknown as typeof fetch;
-    const catalog = await orderingCatalog(['zhipuai', 'openai', 'deepseek', 'anthropic'], {
-      region: 'cn',
-      commonConfigFetch,
-    });
-    await waitForRepositoryRead(0);
-
-    let settled = false;
-    const firstList = catalog
-      .listProviderPresets()
-      .then((items) => items.map((item) => item.providerId))
-      .finally(() => {
-        settled = true;
-      });
-    await waitForRepositoryRead(1);
-    expect(settled).toBe(false);
-    finishFetch(commonConfigResponse(value));
-    await expect(firstList).resolves.toEqual(['anthropic', 'openai', 'deepseek', 'zhipuai']);
-    expect(commonConfigFetch).toHaveBeenCalledOnce();
-    const requestUrl = new URL(String(commonConfigRequest));
-    expect(requestUrl.origin).toBe('https://gateway.example');
-    expect(requestUrl.pathname).toBe('/v1/api/config/web/common_config');
-    expect(requestUrl.searchParams.get('filter')).toBe('agent_byok_pinned_provider_ids');
-  });
-
-  it.each([
-    ['JSON array', []],
-    ['JSON string', '[]'],
-  ])('treats an Apollo empty %s as no pins', async (_label, value) => {
-    const readCandidates = vi.mocked(readProviderPresetSnapshotCandidates);
-    readCandidates.mockClear();
-    let finishFetch: (response: Response) => void = () => undefined;
-    const commonConfigFetch = vi.fn(
-      () =>
-        new Promise<Response>((resolve) => {
-          finishFetch = resolve;
-        }),
-    ) as typeof fetch;
-    const catalog = await orderingCatalog(['zhipuai', 'openai', 'deepseek', 'anthropic'], {
-      region: 'cn',
-      commonConfigFetch,
-    });
-    await waitForRepositoryRead(0);
-
-    let settled = false;
-    const firstList = catalog
-      .listProviderPresets()
-      .then((items) => items.map((item) => item.providerId))
-      .finally(() => {
-        settled = true;
-      });
-    await waitForRepositoryRead(1);
-    expect(settled).toBe(false);
-    finishFetch(commonConfigResponse(value));
-    await expect(firstList).resolves.toEqual(['anthropic', 'deepseek', 'openai', 'zhipuai']);
-  });
-
-  it.each([
-    ['missing', undefined],
-    ['not JSON', 'not-json'],
-    ['not an array', '{}'],
-    ['mixed types', '["openai",1]'],
-    ['mixed native types', ['openai', 1]],
-    ['empty string', '[""]'],
-    ['blank string', '[" "]'],
-  ])('falls back to the CN defaults for %s Apollo data', async (_label, value) => {
-    const catalog = await orderingCatalog(['zhipuai', 'openai', 'deepseek', 'anthropic'], {
-      region: 'cn',
-      commonConfigFetch: vi.fn(async () => commonConfigResponse(value)) as typeof fetch,
-    });
+  it('skips pinned ids the snapshot does not contain', async () => {
+    const catalog = await orderingCatalog(['openai', 'anthropic', 'aaa'], 'cn');
 
     await expect(
       catalog.listProviderPresets().then((items) => items.map((item) => item.providerId)),
-    ).resolves.toEqual(['zhipuai', 'deepseek', 'openai', 'anthropic']);
+    ).resolves.toEqual(['openai', 'anthropic', 'aaa']);
   });
 
-  it.each([
-    ['statusInfo', { statusInfo: { code: 500 }, data: { agent_byok_pinned_provider_ids: '[]' } }],
-    [
-      'base_resp',
-      { base_resp: { status_code: 500 }, data: { agent_byok_pinned_provider_ids: '[]' } },
-    ],
-  ])('falls back to region defaults for a %s business error', async (_label, body) => {
-    const catalog = await orderingCatalog(['zhipuai', 'openai', 'deepseek', 'anthropic'], {
-      region: 'cn',
-      commonConfigFetch: vi.fn(
-        async () => new Response(JSON.stringify(body), { status: 200 }),
-      ) as typeof fetch,
-    });
+  it('orders from the region table alone, even when the network would answer', async () => {
+    const attempts = recordNetworkAttempts();
+    const catalog = await orderingCatalog(['openai', 'anthropic', 'aaa'], 'cn');
 
     await expect(
       catalog.listProviderPresets().then((items) => items.map((item) => item.providerId)),
-    ).resolves.toEqual(['zhipuai', 'deepseek', 'openai', 'anthropic']);
-  });
-
-  it('aborts a timed out Apollo request and keeps the region defaults', async () => {
-    let requestSignal: AbortSignal | undefined;
-    const commonConfigFetch = vi.fn(
-      (_url: string | URL | Request, init?: RequestInit) =>
-        new Promise<Response>((_resolve, reject) => {
-          requestSignal = init?.signal ?? undefined;
-          requestSignal?.addEventListener('abort', () => reject(requestSignal?.reason));
-        }),
-    ) as typeof fetch;
-    const catalog = await orderingCatalog(['zhipuai', 'openai', 'deepseek', 'anthropic'], {
-      region: 'cn',
-      commonConfigFetch,
-      commonConfigTimeoutMs: 5,
-    });
-
-    await expect(
-      catalog.listProviderPresets().then((items) => items.map((item) => item.providerId)),
-    ).resolves.toEqual(['zhipuai', 'deepseek', 'openai', 'anthropic']);
-    expect(requestSignal?.aborted).toBe(true);
-  });
-
-  it('retries Apollo ordering on the next list after a transient failure', async () => {
-    let requestCount = 0;
-    const commonConfigFetch = vi.fn(async () => {
-      requestCount += 1;
-      if (requestCount === 1) throw new Error('offline');
-      return commonConfigResponse(['tencent-tokenhub', 'openai']);
-    }) as typeof fetch;
-    const catalog = await orderingCatalog(
-      ['zhipuai', 'openai', 'deepseek', 'anthropic', 'tencent-tokenhub'],
-      { region: 'cn', commonConfigFetch },
-    );
-
-    await expect(
-      catalog.listProviderPresets().then((items) => items.map((item) => item.providerId)),
-    ).resolves.toEqual(['zhipuai', 'deepseek', 'openai', 'anthropic', 'tencent-tokenhub']);
-    await expect(
-      catalog.listProviderPresets().then((items) => items.map((item) => item.providerId)),
-    ).resolves.toEqual(['tencent-tokenhub', 'openai', 'anthropic', 'deepseek', 'zhipuai']);
-    expect(commonConfigFetch).toHaveBeenCalledTimes(2);
+    ).resolves.toEqual(['openai', 'anthropic', 'aaa']);
+    expect(attempts).toEqual([]);
   });
 });

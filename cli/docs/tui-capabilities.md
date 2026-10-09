@@ -76,7 +76,7 @@ The evidence column summarizes the historical TUI 0.3.11 restoration record from
 | Automatic LLM error reports | Disabled by default; requires `telemetry.diagnostics` opt-in; bounded diagnostic facts minimized before encryption | Synthetic provider errors and native Headers; final HTTP batches captured and decrypted locally |
 | Telemetry | Usage events and runtime performance metrics are removed from this build; only automatic error diagnostics remain, disabled by default and requiring `telemetry.diagnostics`. `MCODE_DISABLE_TELEMETRY` / `DO_NOT_TRACK` still override it | Privacy regression tests intercept and decode the diagnostic request locally; no live upload |
 | Auto permissions | Cloud classifier restored; local rules and confirmation on failure retained | Classifier client, permission facade, and sandbox tests |
-| Model catalog | Online catalog and bundled snapshot fallback restored | Actual build boundary checks and offline startup; online catalog contents not accepted |
+| Model catalog | Bundled snapshot only: the CLI reads the shipped (or already persisted) snapshot and has no code path that fetches the registry | Provider-presets suite asserts construction and listing perform zero network I/O; the build boundary check keeps the retired registry client out of the bundle |
 | Files, shell, subagents, sessions, headless, ACP | Actual runtime retained | BYOK, file reads, session resume, ACP, sandbox, and status protocol tests |
 | Built-in skills, MCP, plugin tools | Original TUI assets and activation conditions retained | Asset build, plugin, and MCP tests; no claim that every skill has passed a real task |
 

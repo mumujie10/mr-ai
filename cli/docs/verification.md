@@ -85,7 +85,7 @@ Final source was copied outside the repository without `.git`, `node_modules`, `
 
 The BYOK test uses a local OpenAI-format protocol server to drive the actual runtime. It verifies authorization headers, resume history, and real file contents in subsequent model requests, while ensuring Token Plan model overrides still require login. It does not establish real provider quality or production availability.
 
-After managed capabilities were restored, startup could request the model catalog. Offline tests return local 503 responses for an explicit public-service allowlist, recording attempts without sending them. Unknown addresses and unexpected TCP connections still fail tests. This verifies some unavailable-service behavior; those failures are not counted as live-service successes.
+The model catalog is a bundled snapshot: booting the runtime and listing provider presets issue no registry request, and the BYOK gate asserts that no registry host appears in its offline audit. Offline tests return local 503 responses for an explicit public-service allowlist, recording attempts without sending them. Unknown addresses and unexpected TCP connections still fail tests. This verifies some unavailable-service behavior; those failures are not counted as live-service successes.
 
 ## Real TUI inspection
 

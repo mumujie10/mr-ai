@@ -956,7 +956,6 @@
     "packages/local-runtime-v2/src/service/model-system/catalog/model-favorites.ts",
     "packages/local-runtime-v2/src/service/model-system/catalog/model-selection.test.ts",
     "packages/local-runtime-v2/src/service/model-system/catalog/model-selection.ts",
-    "packages/local-runtime-v2/src/service/model-system/catalog/provider-presets/provider-presets.client.ts",
     "packages/local-runtime-v2/src/service/model-system/catalog/provider-presets/provider-presets.repository.ts",
     "packages/local-runtime-v2/src/service/model-system/catalog/provider-presets/provider-presets.service.test.ts",
     "packages/local-runtime-v2/src/service/model-system/catalog/provider-presets/provider-presets.service.ts",

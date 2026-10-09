@@ -1,9 +1,7 @@
-import { chmodSync, renameSync } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
-import { retryWindowsFileSystemOperation } from '@mavis/shared';
 
 const MODULE_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 
@@ -23,7 +21,7 @@ function resolveProviderPresetBundledCatalogPaths(
   ];
 }
 
-export function resolveProviderPresetLocalCatalogPath(
+function resolveProviderPresetLocalCatalogPath(
   options: ProviderPresetRepositoryOptions,
 ): string | undefined {
   return (
@@ -32,6 +30,11 @@ export function resolveProviderPresetLocalCatalogPath(
   );
 }
 
+/**
+ * Snapshot bytes the distribution already owns: the bundled asset plus a
+ * snapshot persisted by an earlier release. Reading is the whole contract; the
+ * CLI never writes or refreshes these files.
+ */
 export async function readProviderPresetSnapshotCandidates(
   options: ProviderPresetRepositoryOptions,
 ): Promise<unknown[]> {
@@ -42,22 +45,6 @@ export async function readProviderPresetSnapshotCandidates(
     readCatalogSnapshot(resolveProviderPresetLocalCatalogPath(options)),
   ]);
   return candidates.filter((candidate) => candidate !== undefined);
-}
-
-export async function writeProviderPresetSnapshot(
-  filePath: string,
-  snapshot: unknown,
-): Promise<void> {
-  await mkdir(dirname(filePath), { recursive: true, mode: 0o700 });
-  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  await writeFile(temporaryPath, JSON.stringify(snapshot), { mode: 0o600 });
-  try {
-    retryWindowsFileSystemOperation(() => renameSync(temporaryPath, filePath));
-    retryWindowsFileSystemOperation(() => chmodSync(filePath, 0o600));
-  } catch (error) {
-    await rm(temporaryPath, { force: true });
-    throw error;
-  }
 }
 
 async function readCatalogSnapshot(filePath: string | undefined): Promise<unknown> {
