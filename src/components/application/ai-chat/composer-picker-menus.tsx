@@ -3,6 +3,7 @@ import { SlashCommandMenu } from "@/components/application/ai-chat/slash-command
 import { BotMenu } from "@/components/application/ai-chat/bot-menu";
 import { PromptMenu } from "@/components/application/ai-chat/prompt-menu";
 import type { ComposerPickers } from "@/components/application/ai-chat/use-composer-pickers";
+import type { EngineCommandPayload } from "@/lib/events";
 
 /**
  * The composer's floating pickers (`@` files, `/` commands, `#` bots,
@@ -12,10 +13,13 @@ import type { ComposerPickers } from "@/components/application/ai-chat/use-compo
 export function ComposerPickerMenus({
   isCollapsed,
   workspacePath,
+  /** Engine catalog for the `/` picker of the session this composer drives. */
+  engineCommands,
   pickers,
 }: {
   isCollapsed: boolean;
   workspacePath?: string;
+  engineCommands?: EngineCommandPayload[] | null;
   pickers: ComposerPickers;
 }) {
   if (isCollapsed || !workspacePath) return null;
@@ -54,6 +58,7 @@ export function ComposerPickerMenus({
           root={workspacePath}
           query={slash.query}
           left={slash.left}
+          engineCommands={engineCommands}
           onSelect={handleSlashSelect}
           onClose={() => setSlash(null)}
           menuRef={slashMenuRef}

@@ -131,6 +131,12 @@ pub enum EngineEvent {
     Model(String),
     /// Reasoning effort level requested at launch, then the level the engine actually reported.
     Effort(String),
+    /// The engine's own invocable command catalog, re-sent whole whenever it
+    /// changes (ACP `available_commands_update`): native commands plus the
+    /// skills it discovered for this session's workspace. The composer's `/`
+    /// picker merges it with its own disk scan, which cannot see the engine's
+    /// skill roots and so cannot offer `/skill-name` for those skills.
+    AvailableCommands(Vec<EngineCommand>),
     /// The selection this run was launched with — the model/effort this
     /// client asked the CLI to use, after channel remap. Dispatched at most
     /// once per run, before any output, so the response check has an
@@ -161,6 +167,16 @@ pub enum EngineEvent {
         servers: Vec<(String, Option<String>)>,
         tools: Vec<String>,
     },
+}
+/// One command the engine advertises for the composer's `/` picker.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct EngineCommand {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// What the command takes after its name, for the picker's hint column.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub argument_hint: Option<String>,
 }
 /// One todo entry carried to the frontend.
 #[derive(Debug, Clone, Serialize)]

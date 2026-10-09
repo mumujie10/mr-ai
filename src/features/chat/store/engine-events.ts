@@ -1,6 +1,6 @@
 import { ipc, type Message, type QuestionSpec, type SessionMeta } from "@/lib/ipc";
 import type { PlanReview, PlanReviewStatus } from "@/lib/ipc";
-import type { EngineEventPayload } from "@/lib/events";
+import type { EngineCommandPayload, EngineEventPayload } from "@/lib/events";
 import {
   applyPlanDraft,
   applyPlanReview,
@@ -705,11 +705,50 @@ function onServed(
   });
 }
 
+/** One advertised command; `null` when the frame is not a catalog at all.
+ *  Entries without a usable name are dropped (nothing can be typed for them),
+ *  as are repeats — the picker would show the same row twice. */
+function parseEngineCommands(data: unknown): EngineCommandPayload[] | null {
+  if (!Array.isArray(data)) return null;
+  const seen = new Set<string>();
+  const commands: EngineCommandPayload[] = [];
+  for (const entry of data) {
+    if (!entry || typeof entry !== "object") continue;
+    const name = (entry as { name?: unknown }).name;
+    if (typeof name !== "string") continue;
+    const trimmed = name.trim();
+    if (!trimmed || seen.has(trimmed.toLowerCase())) continue;
+    seen.add(trimmed.toLowerCase());
+    const text = (value: unknown) =>
+      typeof value === "string" && value.trim() ? value.trim() : undefined;
+    commands.push({
+      name: trimmed,
+      description: text((entry as { description?: unknown }).description),
+      argumentHint: text((entry as { argumentHint?: unknown }).argumentHint),
+    });
+  }
+  return commands;
+}
+
+/** The engine's command catalog for this session (ACP
+ *  `available_commands_update`). Every frame is the whole catalog, so this
+ *  replaces: the engine's second frame — after it finishes discovering skills —
+ *  is what the user should end up seeing, and an empty list is a real answer
+ *  ("nothing beyond what the app already offers"). */
+function onAvailableCommands(
+  event: ChatEngineEvent,
+  key: string,
+  deps: EngineEventDeps,
+) {
+  const commands = parseEngineCommands(event.data);
+  if (!commands) return;
+  patchSession(deps.set, key, { engineCommands: commands });
+}
+
 /** Sessions whose run is inside a provider-retry backoff. Kept out of the
  *  store read path on purpose: the delta handlers test this set (O(1)) rather
  *  than reading `bySession` for every streamed token. */
 const retryingKeys = new Set<string>();
-
 function onDelta(
   event: ChatEngineEvent,
   key: string,
@@ -1915,6 +1954,13 @@ export function handleEngineEvents(
       event.kind === "plan_draft" ||
       event.kind === "plan_review" ||
       event.kind === "plan_review_settled";
+    // The command catalog rides the same exemption: it is session state the
+    // composer reads, and the CLI re-sends it once skill discovery finishes,
+    // which can land after the turn that opened the session has settled.
+    // Applying it must not depend on that race — and it cannot revive the run,
+    // because it only patches `engineCommands`.
+    const isSessionScopedEvent =
+      isPlanEvent || event.kind === "available_commands";
     // EOF stderr/failure can follow Done, and the turn's final usage report
     // can trail either terminal event. Keep those, but never adopt the run
     // again or drain its queue a second time.
@@ -1923,6 +1969,10 @@ export function handleEngineEvents(
       !(
         event.kind === "usage" ||
         event.kind === "plan_review_settled" ||
+        // The catalog is session state, not turn output: the CLI re-sends it
+        // once skill discovery finishes, and that frame can follow the turn
+        // that was already running. Keep it, without reviving the run.
+        event.kind === "available_commands" ||
         (settled === "done" &&
           (event.kind === "warn" ||
             event.kind === "error" ||
@@ -1988,7 +2038,7 @@ export function handleEngineEvents(
       // is per computer-use send (messaging.ts); the call is idempotent.
       void ipc.computerUseSetActive?.(false)?.catch(() => {});
     }
-    if (!isPlanEvent &&
+    if (!isSessionScopedEvent &&
       state.bySession[key]?.settledRunIds?.includes(event.runId)) {
       // A usage report trailing the terminal event carries the turn's final
       // occupancy. Re-read it from the transcript instead of patching the
@@ -2086,6 +2136,9 @@ export function handleEngineEvents(
         if (reported) applyEffortDisplay(reported, key, deps);
         break;
       }
+      case "available_commands":
+        onAvailableCommands(event, key, deps);
+        break;
       case "launch":
         onLaunch(event, key, deps);
         break;

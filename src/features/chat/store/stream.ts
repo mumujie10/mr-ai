@@ -1,4 +1,5 @@
 import type { Message, TodosPayload } from "@/lib/ipc";
+import type { EngineCommandPayload } from "@/lib/events";
 import type { ResponseCheckState } from "../response-check";
 
 /**
@@ -75,6 +76,11 @@ export interface SessionState {
    *  (`"${planId}:${revision}"`): the approval dock mounts for it again.
    *  Pure UI state — the backend record stays `deferred` either way. */
   planReviewResume: string | null;
+  /** The engine's own command catalog for this session (ACP
+   *  `available_commands_update`), offered in the composer's `/` picker next to
+   *  the disk scan. Null until the engine advertises one — a CLI that never
+   *  broadcasts leaves the picker exactly as the scan had it. */
+  engineCommands?: EngineCommandPayload[] | null;
 }
 
 export const EMPTY_SESSION: SessionState = {

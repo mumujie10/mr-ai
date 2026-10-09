@@ -779,6 +779,9 @@ fn handle_session_update(
             };
             core.dispatch_event(state, super::tool_result_patch(name, Some(&result)));
         }
+        super::qoder_session::QoderSessionUpdate::AvailableCommands(commands) => {
+            core.dispatch_event(state, EngineEvent::AvailableCommands(commands));
+        }
         super::qoder_session::QoderSessionUpdate::Ignore => {}
     }
 }

@@ -246,6 +246,9 @@ pub(crate) enum QoderSessionUpdate {
         output: Option<Value>,
         error: Option<String>,
     },
+    /// ACP `available_commands_update`: the engine's whole invocable catalog,
+    /// re-sent whenever it changes. Always the full list, so consumers replace.
+    AvailableCommands(Vec<super::events::EngineCommand>),
     Ignore,
 }
 
@@ -419,10 +422,54 @@ pub(crate) fn map_session_update(update: &Value) -> QoderSessionUpdate {
                 error,
             }
         }
-        // plan / available_commands_update / config_option_update /
-        // user_message_chunk: UI noise here.
+        "available_commands_update" => {
+            QoderSessionUpdate::AvailableCommands(available_commands(update))
+        }
+        // plan / config_option_update / user_message_chunk: UI noise here.
         _ => QoderSessionUpdate::Ignore,
     }
+}
+
+/// Project one ACP `availableCommands` array onto picker rows. Entries without
+/// a name are not invocable, so they are dropped rather than shown blank; an
+/// empty list is still a list — it means the engine offers nothing right now.
+fn available_commands(update: &Value) -> Vec<super::events::EngineCommand> {
+    let Some(commands) = update
+        .get("availableCommands")
+        .or_else(|| update.get("commands"))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+    commands
+        .iter()
+        .filter_map(|command| {
+            let name = command
+                .get("name")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|name| !name.is_empty())?;
+            let text = |key: &str| {
+                command
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+            };
+            Some(super::events::EngineCommand {
+                name: name.to_string(),
+                description: text("description"),
+                argument_hint: command
+                    .get("input")
+                    .and_then(|input| input.get("hint"))
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|hint| !hint.is_empty())
+                    .map(str::to_string),
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn session_update_from_notification(params: &Value) -> QoderSessionUpdate {
@@ -1167,6 +1214,9 @@ fn handle_session_update(
             };
             core.dispatch_event(state, super::tool_result_patch(name, Some(&result)));
         }
+        QoderSessionUpdate::AvailableCommands(commands) => {
+            core.dispatch_event(state, EngineEvent::AvailableCommands(commands));
+        }
         QoderSessionUpdate::Ignore => {}
     }
 }
@@ -1495,6 +1545,68 @@ mod tests {
                 &json!({"sessionUpdate":"plan","entries":[{"content":"第一步","status":"pending"}]})
             ),
             QoderSessionUpdate::Ignore
+        );
+    }
+
+    /// The bundled CLI advertises its catalog twice over
+    /// `available_commands_update` (native commands first, then the same list
+    /// plus discovered skills), so the host replaces rather than merges, and a
+    /// skill's `[Skill]` description and input hint must survive the mapping for
+    /// the picker to say what the row will do.
+    #[test]
+    fn available_commands_update_carries_the_whole_catalog() {
+        let update = json!({
+            "sessionUpdate": "available_commands_update",
+            "availableCommands": [
+                {"name": "model", "description": "Switch the model", "input": {"hint": "[provider/model[#variant]]"}},
+                {"name": "compact", "description": "Compact the context", "input": {"hint": "[instructions]"}},
+                {"name": "pdf-tools", "description": "[Skill] Read PDF files", "input": {"hint": "[instructions]"}},
+                {"name": "   ", "description": "not invocable"}
+            ]
+        });
+        let QoderSessionUpdate::AvailableCommands(commands) = map_session_update(&update) else {
+            panic!("expected the advertised catalog");
+        };
+        let rows = commands
+            .iter()
+            .map(|command| {
+                (
+                    command.name.as_str(),
+                    command.description.as_deref(),
+                    command.argument_hint.as_deref(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rows,
+            vec![
+                (
+                    "model",
+                    Some("Switch the model"),
+                    Some("[provider/model[#variant]]")
+                ),
+                (
+                    "compact",
+                    Some("Compact the context"),
+                    Some("[instructions]")
+                ),
+                (
+                    "pdf-tools",
+                    Some("[Skill] Read PDF files"),
+                    Some("[instructions]")
+                ),
+            ]
+        );
+        // An engine with nothing to offer still reports, and says so.
+        let empty = json!({"sessionUpdate":"available_commands_update","availableCommands":[]});
+        assert_eq!(
+            map_session_update(&empty),
+            QoderSessionUpdate::AvailableCommands(Vec::new())
+        );
+        // A malformed frame is a catalog of nothing, not a missing row.
+        assert_eq!(
+            map_session_update(&json!({"sessionUpdate":"available_commands_update"})),
+            QoderSessionUpdate::AvailableCommands(Vec::new())
         );
     }
 

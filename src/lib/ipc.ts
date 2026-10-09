@@ -623,8 +623,13 @@ export interface FileIndexEntry {
  *  distinct: the menu keys icons/badges/section grouping off this field,
  *  and per-kind merging lets a command and a skill share a name. "app" is
  *  frontend-only: injected by the picker for ccgui's own intercepted
- *  commands (/new, /compact), never emitted by the backend catalog. */
-export type SlashEntryKind = "command" | "skill" | "app";
+ *  commands (/new, /compact), never emitted by the backend catalog. "engine"
+ *  is also frontend-only: rows built from what the running engine advertised
+ *  for this session (`available_commands_update`). The disk scan cannot produce
+ *  these: it walks `.claude` and the other CLIs' skill roots, not this engine's
+ *  own data directory, so the skills the engine loaded for the session would
+ *  otherwise never appear. */
+export type SlashEntryKind = "command" | "skill" | "app" | "engine";
 
 /** A `/` picker entry (`list_slash_commands`): workspace entries shadow
  *  global ones of the same name and kind. */

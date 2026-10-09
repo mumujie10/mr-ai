@@ -23,6 +23,7 @@ export interface EngineEventPayload {
     | "done"
     | "model"
     | "effort"
+    | "available_commands"
     | "launch"
     | "served";
   data: unknown;
@@ -35,6 +36,16 @@ export interface EngineEventPayload {
    *  report could not be timed; consumers fall back to report-to-report
    *  timing. Since SDK 0.3.15. */
   genMs?: number;
+}
+
+/** One command the engine advertises for the composer's `/` picker. The list
+ *  is always the whole catalog: the engine re-sends it when discovery finishes,
+ *  so skills arrive in a later frame and the consumer replaces rather than
+ *  merges. */
+export interface EngineCommandPayload {
+  name: string;
+  description?: string;
+  argumentHint?: string;
 }
 
 /** Batched engine events arrive as an array under a single event name. */

@@ -340,6 +340,8 @@ export const zh = {
     compactingContext: "正在压缩上下文",
     slashGroupApp: "内置",
     slashKindApp: "内置",
+    slashGroupEngine: "引擎命令",
+    slashKindEngine: "引擎",
     removeTag: "移除 {{name}}",
     slashAppNew: "新建会话(ccgui 内置)",
     slashAppClear: "清空上下文并新建会话(ccgui 内置)",

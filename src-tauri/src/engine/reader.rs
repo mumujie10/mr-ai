@@ -712,6 +712,14 @@ impl TurnCore {
                     Value::String(effort),
                 );
             }
+            EngineEvent::AvailableCommands(commands) => {
+                // The catalog is session state the composer reads when `/` is
+                // typed, so an empty list is worth sending: it says the engine
+                // currently offers nothing beyond what the app already knows.
+                if let Ok(value) = serde_json::to_value(commands) {
+                    state.push(&self.sink, &self.run_id, &self.engine_id, "available_commands", value);
+                }
+            }
             EngineEvent::Launch { model, effort } => {
                 state.push(
                     &self.sink,

@@ -4,9 +4,12 @@ import { useSlashCommandStore } from "./slash-commands";
 
 /**
  * App-level commands: bare slash inputs ccgui handles itself instead of
- * sending to the engine. The CLIs only interpret their native commands in
- * interactive TUI mode — headless/protocol launches (how ccgui runs them)
- * never see them, so the GUI provides the equivalent.
+ * sending to the engine. They exist because the app can do something better
+ * with the word — `/new` opens a real new session, `/mcp` opens the panel —
+ * not because no engine understands them: the bundled CLI answers its native
+ * commands over the protocol too (it advertises exactly those, see the engine
+ * rows in the `/` picker), and other CLIs only interpret them in their own
+ * interactive mode, which a headless/protocol launch never reaches.
  *
  * A workspace/global catalog entry of the same name always wins: the user
  * defined that command for the CLI, and the CLI expands it — the app

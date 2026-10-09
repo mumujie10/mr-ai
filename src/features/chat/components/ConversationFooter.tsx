@@ -174,6 +174,11 @@ function FooterComposer({
   supportsImages: boolean;
   onPasteImages: (files: File[]) => void;
 }) {
+  // This pane's own session: its advertised catalog must not leak into another
+  // pane's `/` picker when the footer is split.
+  const engineCommands = useChatStore((s) =>
+    active ? s.bySession[sessionKey(active.engine, active.sessionId, active.workspacePath)]?.engineCommands : undefined,
+  );
   return (
     <Composer
       className="mx-auto max-w-3xl"
@@ -190,6 +195,7 @@ function FooterComposer({
       permissionMenu={<>{permissionMenu}<ComposerSlotExtras slot="permissionMenu" /></>}
       onPasteImages={supportsImages ? onPasteImages : undefined}
       workspacePath={active?.workspacePath}
+      engineCommands={engineCommands}
     />
   );
 }

@@ -16,16 +16,20 @@ import {
   type ComposerPickerMenuHandle,
 } from "@/components/application/ai-chat/composer-picker-menu";
 import {
+  engineCommandRows,
+  matchEngineCommands,
   matchSlashCommands,
   useSlashCommandStore,
 } from "./slash-commands";
 import { matchAppCommands } from "./app-commands";
-import { type SlashCommandEntry } from "@/lib/ipc";
+import { type SlashCommandEntry, type SlashEntryKind } from "@/lib/ipc";
+import type { EngineCommandPayload } from "@/lib/events";
 
 /**
  * `/` picker, rendered above the composer while a `/` trigger is active.
- * Lists two distinct entry kinds — slash commands and skills — grouped by
- * kind with per-kind icons/badges. Same interaction model as
+ * Lists the app's own commands, what the running engine advertised for this
+ * session, and the scanned command/skill catalog — grouped by kind with
+ * per-kind icons/badges. Same interaction model as
  * FileMentionMenu (both are thin shells over ComposerPickerMenu): the
  * contentEditable keeps focus and owns the keyboard; the menu is
  * deliberately NOT a react-aria popover (those steal focus / manage their
@@ -39,6 +43,23 @@ export type SlashCommandMenuHandle = ComposerPickerMenuHandle;
  *  (headers are not options — Row indices stay contiguous). */
 const GROUP_HEADER =
   "px-2 pb-1 pt-1.5 text-caption-1-medium text-text-tertiary select-none";
+
+/** Section header per source group; a `Record` so a new entry kind fails the
+ *  type check here instead of silently borrowing another group's header. */
+const SLASH_GROUP_LABEL: Record<SlashEntryKind, string> = {
+  app: "chat.slashGroupApp",
+  engine: "chat.slashGroupEngine",
+  command: "chat.slashGroupCommands",
+  skill: "chat.slashGroupSkills",
+};
+
+/** Row badge (right-aligned) naming where the row came from. */
+const SLASH_KIND_LABEL: Record<SlashEntryKind, string> = {
+  app: "chat.slashKindApp",
+  engine: "chat.slashKindEngine",
+  command: "chat.slashKindCommand",
+  skill: "chat.slashKindSkill",
+};
 
 const Row = memo(function Row({
   entry,
@@ -90,6 +111,8 @@ export function SlashCommandMenu({
   query,
   /** Horizontal offset (px) of the `/` caret inside the composer wrapper. */
   left,
+  /** Commands the engine of this session advertised; absent until it reports. */
+  engineCommands,
   onSelect,
   onClose,
   menuRef,
@@ -97,6 +120,7 @@ export function SlashCommandMenu({
   root: string;
   query: string;
   left: number;
+  engineCommands?: EngineCommandPayload[] | null;
   onSelect: (entry: SlashCommandEntry) => void;
   onClose: () => void;
   menuRef?: MutableRefObject<SlashCommandMenuHandle | null>;
@@ -108,11 +132,28 @@ export function SlashCommandMenu({
   }, [root]);
 
   const entries = catalog?.entries;
+  const engineRows = useMemo(() => engineCommandRows(engineCommands), [engineCommands]);
   const items = useMemo(
-    // Built-in app commands lead the list; a catalog command of the same
-    // name shadows its app row (precedence parity with submit interception).
-    () => [...matchAppCommands(entries, query), ...matchSlashCommands(entries ?? [], query)],
-    [entries, query],
+    // Three groups, each owning a name once: the app's own commands lead
+    // (the app acts on them), then the engine's advertised catalog (what the
+    // running engine will actually execute, including skills it loaded from
+    // its own data directory), then the scanned catalog. A catalog command of
+    // the same name still shadows its app row (precedence parity with submit
+    // interception).
+    () => {
+      const app = matchAppCommands(entries, query);
+      const claimed = new Set(app.map((entry) => entry.name.toLowerCase()));
+      const engine = matchEngineCommands(engineRows, query, claimed);
+      for (const entry of engine) claimed.add(entry.name.toLowerCase());
+      return [
+        ...app,
+        ...engine,
+        ...matchSlashCommands(entries ?? [], query).filter(
+          (entry) => !claimed.has(entry.name.toLowerCase()),
+        ),
+      ];
+    },
+    [entries, engineRows, query],
   );
 
   return (
@@ -131,15 +172,9 @@ export function SlashCommandMenu({
       menuRef={menuRef}
       groupHeaderAt={(entry, i) =>
         // Group header at each kind boundary (app rows lead, then the
-        // catalog's commands-then-skills).
+        // engine's catalog, then the scanned commands-then-skills).
         i === 0 || items[i - 1].kind !== entry.kind ? (
-          <div className={GROUP_HEADER}>
-            {entry.kind === "app"
-              ? t("chat.slashGroupApp")
-              : entry.kind === "skill"
-                ? t("chat.slashGroupSkills")
-                : t("chat.slashGroupCommands")}
-          </div>
+          <div className={GROUP_HEADER}>{t(SLASH_GROUP_LABEL[entry.kind])}</div>
         ) : null
       }
       renderRow={(entry, i, active, { onHover }) => (
@@ -147,13 +182,7 @@ export function SlashCommandMenu({
           entry={entry}
           index={i}
           active={active}
-          kindLabel={
-            entry.kind === "app"
-              ? t("chat.slashKindApp")
-              : entry.kind === "skill"
-                ? t("chat.slashKindSkill")
-                : t("chat.slashKindCommand")
-          }
+          kindLabel={t(SLASH_KIND_LABEL[entry.kind])}
           onSelect={onSelect}
           onHover={onHover}
         />

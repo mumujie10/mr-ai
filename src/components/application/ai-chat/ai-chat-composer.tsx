@@ -34,6 +34,7 @@ import { ComposerResizeHandle } from "@/components/application/ai-chat/composer-
 import { ComposerEditable } from "@/components/application/ai-chat/composer-editable";
 import { ComposerToolbar } from "@/components/application/ai-chat/composer-toolbar";
 import { ComposerPickerMenus } from "@/components/application/ai-chat/composer-picker-menus";
+import type { EngineCommandPayload } from "@/lib/events";
 import { SelectedBotChip } from "@/components/application/ai-chat/composer-bot-chip";
 import { useComposerPickers } from "@/components/application/ai-chat/use-composer-pickers";
 import { useComposerInputHandle } from "@/components/application/ai-chat/use-composer-input-handle";
@@ -112,6 +113,10 @@ export interface ComposerProps {
   onPasteImages?: (files: File[]) => void;
   /** Active workspace root: enables the `@` file-mention picker. */
   workspacePath?: string;
+  /** Commands the engine of the session this composer drives advertised
+   *  (`available_commands_update`); offered in the `/` picker alongside the
+   *  scanned catalog. Absent until the engine reports a session. */
+  engineCommands?: EngineCommandPayload[] | null;
 }
 
 export function Composer({
@@ -129,6 +134,7 @@ export function Composer({
   inputRef,
   onPasteImages,
   workspacePath,
+  engineCommands,
 }: ComposerProps = {}) {
   const editableRef = useRef<HTMLDivElement>(null);
   // IME composition tracking (desktop-cc-gui parity): WKWebView fires
@@ -286,6 +292,7 @@ export function Composer({
       <ComposerPickerMenus
         isCollapsed={isCollapsed}
         workspacePath={workspacePath}
+        engineCommands={engineCommands}
         pickers={pickers}
       />
 

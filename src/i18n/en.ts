@@ -355,6 +355,8 @@ export const en: Messages = {
     compactingContext: "Compacting context",
     slashGroupApp: "Built-in",
     slashKindApp: "App",
+    slashGroupEngine: "From the engine",
+    slashKindEngine: "Engine",
     removeTag: "Remove {{name}}",
     slashAppNew: "Start a new chat (ccgui built-in)",
     slashAppClear: "Clear context and start a new chat (ccgui built-in)",

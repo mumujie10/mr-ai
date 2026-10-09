@@ -132,3 +132,91 @@ describe("SlashCommandMenu", () => {
     expect(rows[1]).toContain("/code-review");
   });
 });
+
+describe("SlashCommandMenu with an engine catalog", () => {
+  let node: HTMLDivElement, root: Root;
+  const engineCommands = [
+    { name: "model", description: "Switch the model", argumentHint: "[provider/model]" },
+    { name: "pdf-tools", description: "[Skill] Read PDF files" },
+    { name: "commit", description: "引擎里的同名命令" },
+    { name: "mcp", description: "List MCP servers" },
+  ];
+
+  beforeEach(() => {
+    Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    node = document.createElement("div");
+    document.body.append(node);
+    root = createRoot(node);
+    useSlashCommandStore.setState({
+      byRoot: { "/ws": { entries: ENTRIES, status: "ready", fetchedAt: Date.now() } },
+    });
+  });
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    node.remove();
+  });
+
+  const render = (query = "") =>
+    act(async () =>
+      root.render(
+        <SlashCommandMenu
+          root="/ws"
+          query={query}
+          left={0}
+          engineCommands={engineCommands}
+          onSelect={vi.fn()}
+          onClose={vi.fn()}
+        />,
+      ),
+    );
+
+  it("groups the engine's rows under their own header, after the app rows", async () => {
+    await render();
+    const headers = [...node.querySelectorAll('[role="listbox"] > div > div > div:first-child')]
+      .map((el) => el.textContent)
+      .filter((text) => text?.startsWith("chat.slashGroup"));
+    expect(headers).toEqual([
+      "chat.slashGroupApp",
+      "chat.slashGroupEngine",
+      "chat.slashGroupCommands",
+      "chat.slashGroupSkills",
+    ]);
+    const rows = optionTexts(node);
+    expect(rows[0]).toContain("/new");
+    // The engine's own rows carry its description and the engine badge.
+    const model = rows.find((text) => text?.includes("/model"));
+    expect(model).toContain("Switch the model");
+    expect(model).toContain("chat.slashKindEngine");
+    expect(rows.find((text) => text?.includes("/pdf-tools"))).toContain("chat.slashKindEngine");
+  });
+
+  it("one row per name: the app row keeps /mcp, the engine row wins over the catalog", async () => {
+    await render();
+    const rows = optionTexts(node);
+    // `/mcp` is the app's panel action; the engine advertising it adds nothing.
+    expect(rows.filter((text) => text?.includes("/mcp"))).toHaveLength(1);
+    expect(rows.find((text) => text?.includes("/mcp"))).toContain("chat.slashKindApp");
+    // `/commit` exists both as the user's `.claude/commands/commit.md` and in
+    // the engine catalog: one row, labelled by what will execute it.
+    const commits = rows.filter((text) => text?.includes("/commit"));
+    expect(commits).toHaveLength(1);
+    expect(commits[0]).toContain("引擎里的同名命令");
+    expect(commits[0]).toContain("chat.slashKindEngine");
+  });
+
+  it("filters engine rows by name and description", async () => {
+    await render("pdf");
+    const rows = optionTexts(node);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toContain("/pdf-tools");
+  });
+
+  it("leaves the picker exactly as the scan had it before the engine reports", async () => {
+    await act(async () =>
+      root.render(
+        <SlashCommandMenu root="/ws" query="" left={0} onSelect={vi.fn()} onClose={vi.fn()} />,
+      ),
+    );
+    expect(optionTexts(node).some((text) => text?.includes("/pdf-tools"))).toBe(false);
+  });
+});
