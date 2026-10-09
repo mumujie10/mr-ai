@@ -74,7 +74,7 @@ On Windows, also use `node` with the appropriate local absolute path. Do not ove
 
 ## Accounts and data
 
-Run `/login` in the TUI or `pnpm mcode login`, choosing the region for your account. Token Plan requires an account and available credits. See the root README for BYOK configuration and testing.
+Builds from this repository have no MiniMax account sign-in: the `login` / `logout` commands are not in the binary, and every model comes from a provider you add yourself (BYOK). See the root README for the provider commands.
 
 Source builds and the published npm CLI use the same default user data directory:
 

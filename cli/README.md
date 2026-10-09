@@ -66,21 +66,9 @@ mcode --help
 
 See the official [quick start](https://agent.minimax.io/docs/cli/quick-start), [features](https://agent.minimax.io/docs/cli/features), and [troubleshooting](https://agent.minimax.io/docs/cli/faq).
 
-### 2. Sign in or bring your own API key
+### 2. Bring your own API key
 
-For a mainland China account:
-
-```bash
-mcode login
-```
-
-For a Global account:
-
-```bash
-mcode login --region global
-```
-
-Complete sign-in in your browser, then open `mcode` and use `/status` to check your account and `/provider` to choose a model. Run `mcode logout` to sign out.
+Builds from this repository are BYOK-only: there is no MiniMax account sign-in, and the `login` / `logout` commands are not part of this build. Add a provider with your own key, then open the CLI and pick a model with `/provider`:
 
 Builds from this repository keep user data in their own directory: `~/.mireai` (or `~/.mireai-<profile>` for a selected profile). The published npm CLI `@minimax-ai/code@0.4.12` keeps using `~/.minimax`; this fork never reads or writes it, so the two installs cannot see or delete each other's sessions and provider configuration. Override the location with `MIREAI_DATA_DIR` or `--data-dir` — the fork deliberately ignores `MINIMAX_DATA_DIR` and `MAVIS_DATA_DIR`, which belong to other installs. The installer's `~/.minimax-code` directory is an installation location, not a data directory. See [Accounts and data](docs/installation.md#accounts-and-data) before locating or removing configuration and sessions.
 

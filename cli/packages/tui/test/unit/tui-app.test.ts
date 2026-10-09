@@ -14729,8 +14729,6 @@ describe("interactive model argument contract", () => {
       version: "test",
       launchTui: launch,
       runExec: vi.fn(),
-      runLogin: vi.fn(),
-      runLogout: vi.fn(),
       runUpdate: vi.fn(),
     })
       .exitOverride()

@@ -50,6 +50,10 @@ export const retiredSourceRoots = [
   // first-party signing scheme (User-Agent plus md5 x-signature). Deleting it
   // keeps a future module from reaching for a ready-made MiniMax client identity.
   "packages/tui/src/runtime/public-gateway.ts",
+  // A BYOK-only build has no account to sign into, so the command entry point is
+  // deleted rather than hidden: without it no flag, docs snippet or future
+  // caller can bring the browser sign-in flow back into this product.
+  "packages/tui/src/cli/auth-command.ts",
 ];
 
 // May exist as public source, but must never be reachable from the standalone

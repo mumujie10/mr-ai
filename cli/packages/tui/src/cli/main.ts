@@ -55,12 +55,6 @@ export interface RunTuiCliDependencies {
     lane?: string,
     systemPromptOverrides?: SystemPromptOverrides,
   ) => Promise<void>;
-  readonly runLogin?: (
-    region?: MavisRegion,
-    openBrowser?: boolean,
-    lane?: string,
-  ) => Promise<string>;
-  readonly runLogout?: (region?: MavisRegion) => Promise<string>;
   readonly runProvider?: (
     request: McodeProviderCliRequest,
     version: string,
@@ -142,16 +136,6 @@ export async function runTuiCli(dependencies: RunTuiCliDependencies = {}): Promi
         await (systemPromptOverrides
           ? runAcp(MR_CLI_VERSION, lane, systemPromptOverrides)
           : runAcp(MR_CLI_VERSION, lane));
-        completedCommandExitMode = 'natural';
-      },
-      runLogin: async (region, openBrowser, lane) => {
-        const runLogin = dependencies.runLogin ?? defaultRunLogin;
-        processRef.stdout.write(`${await runLogin(region, openBrowser, lane)}\n`);
-        completedCommandExitMode = 'natural';
-      },
-      runLogout: async (region) => {
-        const runLogout = dependencies.runLogout ?? defaultRunLogout;
-        processRef.stdout.write(`${await runLogout(region)}\n`);
         completedCommandExitMode = 'natural';
       },
       runProvider: async (request, lane) => {
@@ -260,20 +244,6 @@ async function defaultRunAcp(
   await (systemPromptOverrides
     ? runTuiAcpCommand(version, {}, lane, systemPromptOverrides)
     : runTuiAcpCommand(version, {}, lane));
-}
-
-async function defaultRunLogin(
-  region?: MavisRegion,
-  openBrowser = true,
-  lane?: string,
-): Promise<string> {
-  const { runTuiLogin } = await import('./auth-command.js');
-  return runTuiLogin({ region, openBrowser, lane });
-}
-
-async function defaultRunLogout(region?: MavisRegion): Promise<string> {
-  const { runTuiLogout } = await import('./auth-command.js');
-  return runTuiLogout({ region });
 }
 
 async function defaultRunProvider(

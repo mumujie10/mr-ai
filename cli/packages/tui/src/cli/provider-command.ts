@@ -20,14 +20,7 @@ export type McodeProviderCliRequest =
     }
   | { readonly action: 'remove'; readonly providerId: string; readonly confirmed: boolean }
   | { readonly action: 'select'; readonly modelKey: string }
-  | {
-      readonly action: 'test';
-      readonly providerId: string;
-      readonly modelId?: string;
-      readonly json?: boolean;
-    }
-  | { readonly action: 'set-minimax-key'; readonly apiKeyEnv?: string }
-  | { readonly action: 'use'; readonly source: 'token_plan' | 'minimax_api_key' };
+  | { readonly action: 'test'; readonly providerId: string; readonly modelId?: string; readonly json?: boolean };
 
 interface McodeProviderCommandContext {
   readonly application: McodeProviderApplication;
@@ -135,17 +128,9 @@ export async function runMcodeProviderCommand(
             nextStep: 'Check the URL, API key, and model ID, then retry.',
           });
     }
-    if (request.action === 'set-minimax-key') {
-      const envName = request.apiKeyEnv?.trim() || 'MCODE_PROVIDER_API_KEY';
-      const apiKey = (options.environment ?? process.env)[envName]?.trim();
-      if (!apiKey) {
-        throw new Error(`MiniMax API key is missing. Set ${envName} or pass --api-key-env <name>.`);
-      }
-      await context.application.setMiniMaxApiKey(apiKey);
-      return 'MiniMax API Key saved and selected.';
-    }
-    await context.application.setMiniMaxSource(request.source);
-    return request.source === 'token_plan' ? 'Using MiniMax Token Plan.' : 'Using MiniMax API Key.';
+    // No fallthrough: a new action has to say what it does here.
+    const unsupported: never = request;
+    throw new Error(`Unsupported provider action: ${String(unsupported)}`);
   } finally {
     await context.shutdown();
   }

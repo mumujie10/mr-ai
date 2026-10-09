@@ -46,8 +46,6 @@ export interface CreateTuiProgramOptions {
     lane?: string,
   ) => Promise<void>;
   runAcp?: (lane?: string, systemPromptOverrides?: SystemPromptOverrides) => Promise<void>;
-  runLogin: (region?: MavisRegion, openBrowser?: boolean, lane?: string) => Promise<void>;
-  runLogout: (region?: MavisRegion) => Promise<void>;
   runProvider?: (request: McodeProviderCliRequest, lane?: string) => Promise<void>;
   runPlugin?: (request: McodePluginCliRequest, lane?: string) => Promise<void>;
   resolveLane?: typeof resolveTuiManagedBackendLane;
@@ -130,37 +128,6 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
       if (systemPromptOverrides) return runAcp(activeLane, systemPromptOverrides);
       return activeLane ? runAcp(activeLane) : runAcp();
     });
-
-  acp
-    .command('login')
-    .description('Sign in to use MiniMax Code Agent features')
-    .option('--region <region>', 'account region: cn or global', parseLoginRegion)
-    .option('--no-browser', 'print the authorization URL without opening a browser')
-    .allowExcessArguments(false)
-    .action((commandOptions: { region?: MavisRegion; browser?: boolean }) =>
-      activeLane
-        ? options.runLogin(commandOptions.region, commandOptions.browser !== false, activeLane)
-        : options.runLogin(commandOptions.region, commandOptions.browser !== false),
-    );
-
-  program
-    .command('login')
-    .description('Sign in to use MiniMax Code Agent features')
-    .option('--region <region>', 'account region: cn or global', parseLoginRegion)
-    .option('--no-browser', 'print the authorization URL without opening a browser')
-    .allowExcessArguments(false)
-    .action((commandOptions: { region?: MavisRegion; browser?: boolean }) =>
-      activeLane
-        ? options.runLogin(commandOptions.region, commandOptions.browser !== false, activeLane)
-        : options.runLogin(commandOptions.region, commandOptions.browser !== false),
-    );
-
-  program
-    .command('logout')
-    .description('Sign out of the MiniMax account used by this CLI')
-    .option('--region <region>', 'account region: cn or global', parseLoginRegion)
-    .allowExcessArguments(false)
-    .action((commandOptions: { region?: MavisRegion }) => options.runLogout(commandOptions.region));
 
   const provider = program
     .command('provider')
@@ -255,23 +222,6 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
         providerId,
         modelId: commandOptions.model,
         json: commandOptions.json,
-      }),
-    );
-
-  provider
-    .command('use')
-    .description('Choose the MiniMax credential source')
-    .argument('<source>', 'token-plan or api-key', parseProviderSource)
-    .action((source: 'token_plan' | 'minimax_api_key') => runProvider({ action: 'use', source }));
-
-  provider
-    .command('set-minimax-key')
-    .description('Save and use a MiniMax API key')
-    .option('--api-key-env <name>', 'environment variable containing the API key')
-    .action((commandOptions: { apiKeyEnv?: string }) =>
-      runProvider({
-        action: 'set-minimax-key',
-        apiKeyEnv: commandOptions.apiKeyEnv,
       }),
     );
 
@@ -382,21 +332,9 @@ function collectOptionValue(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
 
-function parseLoginRegion(value: string): MavisRegion {
-  if (value === 'cn') return 'cn';
-  if (value === 'global') return 'en';
-  throw new InvalidArgumentError('expected "cn" or "global"');
-}
-
 function parseApiFormat(value: string): McodeProviderApiFormat {
   if (isModelProviderApiFormat(value)) return value;
   throw new InvalidArgumentError(`expected one of: ${MCODE_PROVIDER_API_FORMATS.join(', ')}`);
-}
-
-function parseProviderSource(value: string): 'token_plan' | 'minimax_api_key' {
-  if (value === 'token-plan') return 'token_plan';
-  if (value === 'api-key') return 'minimax_api_key';
-  throw new InvalidArgumentError('expected "token-plan" or "api-key"');
 }
 
 function parsePluginMarketplace(value: string): McodePluginMarketplace {

@@ -66,21 +66,9 @@ mcode --help
 
 参阅官网的[快速开始](https://agent.minimaxi.com/docs/cli/quick-start)、[功能与配置](https://agent.minimaxi.com/docs/cli/features)和[故障排查](https://agent.minimaxi.com/docs/cli/faq)。
 
-### 2. 登录账号或配置 API Key
+### 2. 配置 API Key
 
-中国大陆账号运行：
-
-```bash
-mcode login
-```
-
-Global 账号运行：
-
-```bash
-mcode login --region global
-```
-
-在浏览器中完成登录，再启动 `mcode`，通过 `/status` 检查账号、通过 `/provider` 选择模型。退出登录使用 `mcode logout`。
+从本仓库构建的版本只走 BYOK：没有 MiniMax 账号登录，`login` / `logout` 命令不在本构建里。先用你自己的密钥添加一个提供方，再启动 CLI，通过 `/provider` 选择模型。
 
 从本仓库构建的版本把自己的用户数据放在独立目录：默认 `~/.mireai`（选择 profile 时为 `~/.mireai-<profile>`）。已发布的 npm CLI `@minimax-ai/code@0.4.12` 仍使用 `~/.minimax`；本仓库的构建既不读取也不写入该目录，两个安装不会互相看到或删除对方的会话与渠道配置。覆盖位置请用 `MIREAI_DATA_DIR` 或 `--data-dir`——本 fork 刻意不读 `MINIMAX_DATA_DIR` 与 `MAVIS_DATA_DIR`，那两个变量属于其他安装。安装脚本使用的 `~/.minimax-code` 是安装目录，不是数据目录。查找或删除配置和会话前，请参阅[账号与数据](docs/installation.md#accounts-and-data)。
 
