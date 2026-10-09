@@ -11,7 +11,8 @@ pub const DISABLED_PROVIDER_ID: &str = "__disabled__";
 pub const ENGINES: [&str; 13] = [
     "claude", "kimi", "grok", "codex", "pi", "omp", "dsh", "agy", "opencode", "qoder", "qoder-cn",
     // This app's own agent runtime, bundled under `cli/` and staged as `mr`.
-    "mireai", // The official MiniMax Code CLI, installed by the user himself.
+    "mireai",
+    // The official MiniMax Code CLI, installed by the user himself.
     "minimax",
 ];
 
