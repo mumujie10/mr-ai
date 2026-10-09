@@ -76,7 +76,6 @@ export const AGENT_CAPABILITY_OWNED_SKILL_IDS = [
   'resume-codex',
   'mavis',
   'create-agent',
-  'minimax-code-product',
   'miniapp-creator',
 ] as const;
 

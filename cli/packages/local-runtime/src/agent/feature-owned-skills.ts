@@ -27,7 +27,6 @@ export function resolveFeatureAwareBuiltinSkillNames(
   if (capabilities.features.mavis) {
     selected.add('mavis');
     selected.add('create-agent');
-    selected.add('minimax-code-product');
   }
   if (
     gates.miniappAvailable === true &&

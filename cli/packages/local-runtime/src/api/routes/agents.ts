@@ -55,8 +55,9 @@ import {
   normalizeAbsolutePath,
 } from "../../project/canonical-workspace.js";
 
-const DEFAULT_LOCAL_AGENT_AVATAR_URL =
-  "https://filecdn.minimax.chat/public/d92edcbe-2404-417b-a133-b770b0b9bf61.svg";
+// No avatar by default: the desktop client renders generated/emoji/local avatars,
+// and a bundled URL would make every install fetch a third-party host.
+const DEFAULT_LOCAL_AGENT_AVATAR_URL = "";
 const LEGACY_PRIMARY_AGENT_NAME = "main";
 
 export interface LocalAgentRouteContext {

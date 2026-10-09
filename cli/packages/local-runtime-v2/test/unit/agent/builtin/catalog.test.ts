@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
@@ -858,7 +859,7 @@ describe("BuiltinAgentCatalog session surfaces", () => {
     expect(codingZh.persona).toBe(coding.persona);
     expect(codingZh.corePrompt).toBe(coding.corePrompt);
     expect(cli.corePrompt).toContain(
-      "user's active MiniMax Code terminal conversation",
+      "user's active MR CLI terminal conversation",
     );
     expect(coding.corePrompt).toContain("this agent's root session");
     expect(cli.corePrompt).toContain("# Core Judgment");
@@ -988,13 +989,9 @@ describe("BuiltinAgentCatalog session surfaces", () => {
       promptChannel: "online" as const,
       capabilities: resolveAgentCapabilities(),
     };
-    const [coding, work, productSkill] = await Promise.all([
+    const [coding, work] = await Promise.all([
       catalog.render({ ...common, appMode: "coding", promptMode: "coding" }),
       catalog.render({ ...common, appMode: "work", promptMode: "work" }),
-      readFile(
-        join(root, "mavis", "skills", "minimax-code-product", "SKILL.md"),
-        "utf8",
-      ),
     ]);
 
     for (const rendered of [coding, work]) {
@@ -1002,46 +999,21 @@ describe("BuiltinAgentCatalog session surfaces", () => {
       expect(rendered.corePrompt).not.toContain(
         "Do not guess dynamic product facts from model memory.",
       );
+      // Product knowledge used to live in a bundled Skill that told the model to
+      // fetch MiniMax doc hosts; neither the Skill nor any such host may return.
+      for (const text of [rendered.corePrompt, ...(rendered.systemPrompts ?? [])]) {
+        expect(text).not.toMatch(/minimax/i);
+      }
     }
-    expect(productSkill).toMatch(/官方|authoritative/i);
-    expect(productSkill).toMatch(
-      /核实顺序|verification workflow|official source discovery/i,
+
+    const shippedProductSkill = join(
+      root,
+      "mavis",
+      "skills",
+      "minimax-code-product",
+      "SKILL.md",
     );
-    expect(productSkill).toContain("https://agent.minimax.cn/docs/llms.txt");
-    expect(productSkill).toContain(
-      "https://platform.minimaxi.com/docs/llms.txt",
-    );
-    expect(productSkill).toContain("https://agent.minimax.io/docs/llms.txt");
-    expect(productSkill).toContain("https://platform.minimax.io/docs/llms.txt");
-    expect(productSkill).toContain(
-      "https://agent.minimax.cn/docs/changelog.md",
-    );
-    expect(productSkill).toContain(
-      "https://agent.minimax.io/docs/changelog.md",
-    );
-    expect(productSkill).toMatch(
-      /current-region Desktop changelog[\s\S]*latest-version/i,
-    );
-    expect(productSkill).toMatch(/version\/date[\s\S]*download links/i);
-    expect(productSkill).not.toMatch(/latest\.yml|latest-mac\.yml/i);
-    expect(productSkill).not.toMatch(
-      /filecdn\.minimax\.chat|file\.cdn\.minimax\.io/i,
-    );
-    expect(productSkill).not.toMatch(
-      /https:\/\/agent\.minimaxi\.com|process\.platform/,
-    );
-    expect(productSkill).not.toContain("web_fetch");
-    expect(productSkill).not.toMatch(
-      /国内 Changelog[^\n]*https:\/\/agent\.minimax\.cn\/docs\/changelog(?!\.md)/i,
-    );
-    expect(productSkill).not.toMatch(
-      /海外 Changelog[^\n]*https:\/\/agent\.minimax\.io\/docs\/changelog(?!\.md)/i,
-    );
-    expect(productSkill).not.toMatch(/\b(?:test|staging|inside)\b/i);
-    expect(productSkill).not.toMatch(/最新版本\s*[:：]\s*v?\d/i);
-    expect(productSkill).not.toMatch(
-      /https?:\/\/[^\s)]+\.(?:dmg|exe|zip|pkg)/i,
-    );
+    expect(existsSync(shippedProductSkill)).toBe(false);
   });
 });
 
@@ -1116,7 +1088,7 @@ describe("BuiltinAgentCatalog TUI prompt profile", () => {
       const enabled = await catalog.render(input);
       const child = await catalog.render({ ...input, surface: "task-child" });
       expect(enabled.corePrompt).toContain(
-        "You are a coding agent running in the MiniMax Code terminal",
+        "You are a coding agent running in the MR CLI terminal",
       );
       expect(enabled.corePrompt).toContain("markdown in a terminal");
       expect(enabled.corePrompt).toContain("## Deliverable Files");
@@ -1218,7 +1190,8 @@ describe("BuiltinAgentCatalog persona assets", () => {
       "Report results faithfully: say what succeeded, what failed, what was skipped, and what remains unverified.",
     );
     expect(persona).toContain("display_name: Mavis");
-    expect(persona).toContain("MiniMax Code");
+    expect(persona).toContain("MR CLI");
+    expect(persona).not.toContain("MiniMax");
     expect(persona).not.toContain("You are Mavis");
     expect(persona).not.toContain("Core Judgment");
     expect(persona).not.toContain("customer service");
@@ -1417,7 +1390,7 @@ describe("BuiltinAgentCatalog prompt modes", () => {
       rendered.push(enabled);
     }
     expect(rendered[0]?.corePrompt).toContain(
-      "You are a coding agent running in the MiniMax Code terminal",
+      "You are a coding agent running in the MR CLI terminal",
     );
     expect(rendered[1]?.corePrompt).toContain(
       "You help users with software engineering tasks.",
