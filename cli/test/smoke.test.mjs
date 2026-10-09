@@ -123,6 +123,40 @@ test("provider configuration loads from an isolated data directory", (t) => {
 
   assert.doesNotMatch(result.stdout, /custom_provider:/);
 });
+test("provider select activates a saved model without probing connectivity", (t) => {
+  const options = fixture(t);
+  const env = { ...options.env, MCODE_PROVIDER_API_KEY: "smoke-only-key" };
+  const spawnCli = (args) =>
+    spawnSync(process.execPath, [cli, ...args], {
+      ...options,
+      env,
+      encoding: "utf8",
+      timeout: runtimeTimeoutMs,
+    });
+  // The base URL is unreachable on purpose: selection must never probe it, so a
+  // dead endpoint still activates. The fixture's after-hook also asserts that no
+  // outbound attempt was recorded at all.
+  assertSuccessfulChild(spawnCli([
+    "provider", "add", "--name", "Smoke Relay", "--base-url", "http://127.0.0.1:1/v1",
+    "--api-format", "openai-completions", "--model", "smoke-model",
+  ]));
+  const selected = spawnCli([
+    "provider", "select", "custom_provider:smoke-relay/smoke-model",
+  ]);
+  assertSuccessfulChild(selected);
+  assert.match(
+    selected.stdout,
+    /^Model selected: custom_provider:smoke-relay\/smoke-model$/m,
+    selected.stderr,
+  );
+  assert.equal(
+    parseYaml(readFileSync(path.join(options.cwd, "config.yaml"), "utf8")).defaultModel,
+    "custom_provider:smoke-relay/smoke-model",
+  );
+  const rejected = spawnCli(["provider", "select", "unqualified"]);
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr, /providerID\/modelID/);
+});
 test("config permission failures preserve private reads and terminate unsafe startup", {
   skip: process.platform !== "darwin",
 }, (t) => {

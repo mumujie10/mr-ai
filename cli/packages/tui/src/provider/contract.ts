@@ -192,5 +192,10 @@ export interface McodeProviderRuntimePort {
   updateUserModelProvider(input: McodeUpdateProviderInput): Promise<void>;
   deleteUserModelProvider(providerId: string): Promise<void>;
   testUserModelProvider(providerId: string): Promise<McodeProviderTestResult>;
+  /** Persist the default model without probing connectivity. */
+  selectModel(
+    model: { readonly providerId: string; readonly modelId: string },
+    sessionId?: string,
+  ): Promise<boolean>;
   testUserModel(providerId: string, modelId: string): Promise<McodeProviderTestResult>;
 }

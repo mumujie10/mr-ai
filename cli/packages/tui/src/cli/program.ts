@@ -237,6 +237,13 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
     );
 
   provider
+    .command('select')
+    .description('Select the default model without probing connectivity')
+    .argument('<model-key>', 'providerID/modelID, e.g. custom_provider:relay/gpt-4')
+    .allowExcessArguments(false)
+    .action((modelKey: string) => runProvider({ action: 'select', modelKey }));
+
+  provider
     .command('test')
     .description('Test a provider or one configured model')
     .argument('<provider-id>', 'provider id')

@@ -19,6 +19,7 @@ export type McodeProviderCliRequest =
       readonly saveAndUse?: boolean;
     }
   | { readonly action: 'remove'; readonly providerId: string; readonly confirmed: boolean }
+  | { readonly action: 'select'; readonly modelKey: string }
   | {
       readonly action: 'test';
       readonly providerId: string;
@@ -110,6 +111,19 @@ export async function runMcodeProviderCommand(
       }
       await context.application.remove(request.providerId);
       return `Provider removed: ${request.providerId}`;
+    }
+    if (request.action === 'select') {
+      const slash = request.modelKey.indexOf('/');
+      const providerId = slash > 0 ? request.modelKey.slice(0, slash) : '';
+      const modelId = slash > 0 ? request.modelKey.slice(slash + 1) : '';
+      if (!providerId || !modelId) {
+        throw new Error('Select a model as providerID/modelID, e.g. custom_provider:relay/gpt-4.');
+      }
+      const selected = await context.application.selectDefault({ providerId, modelId });
+      if (!selected) {
+        throw new Error(`Could not select ${request.modelKey}. Is that model configured?`);
+      }
+      return `Model selected: ${request.modelKey}`;
     }
     if (request.action === 'test') {
       if (request.providerId === 'minimax_oauth') {

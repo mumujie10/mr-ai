@@ -90,6 +90,18 @@ export class McodeProviderApplication {
     return this.port.saveUserModelProviderCandidate(input);
   }
 
+  /**
+   * Make one configured model the default without probing connectivity. The
+   * desktop client activates a channel with this, because a key that has not
+   * been validated still has to be usable as the answer to the first message.
+   */
+  selectDefault(model: {
+    readonly providerId: string;
+    readonly modelId: string;
+  }): Promise<boolean> {
+    return this.port.selectModel(model);
+  }
+
   discoverModels(input: McodeDiscoverProviderModelsInput) {
     return this.port.discoverUserModelsCandidate(input);
   }
