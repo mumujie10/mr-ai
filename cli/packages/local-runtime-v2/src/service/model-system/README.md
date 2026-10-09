@@ -11,7 +11,7 @@ preparation 接收该 resolver，Session 建立后再组装 `ModelProviderApplic
 DTO 映射、AgentHost lifecycle 和 Session persistence 仍由各自边界持有。
 
 OpenRouter 使用官方 `https://openrouter.ai` endpoint 时，Model
-System 会在真实推理、连接测试和模型发现请求中统一加入 MiniMax Code 的 app attribution
+System 会在真实推理、连接测试和模型发现请求中统一加入本产品（MireAI CLI）的 app attribution
 headers：`HTTP-Referer`、`X-OpenRouter-Title` 和
 `X-OpenRouter-Categories`。这些产品身份字段由 Runtime 按 header
 name 大小写不敏感地覆盖，用户自定义 Provider headers 不能改变归因身份；其他 endpoint 不受影响。

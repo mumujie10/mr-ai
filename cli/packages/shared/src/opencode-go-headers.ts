@@ -15,7 +15,7 @@ export function withOpenCodeGoHeaders(
   // Runtime identity wins case-insensitively over stale, static config headers.
   // Connectivity requests have no conversation and receive their own identity.
   merged['x-opencode-session'] = sessionId || crypto.randomUUID();
-  merged['user-agent'] = 'MiniMaxCode';
+  merged['user-agent'] = 'MireAI CLI';
   return merged;
 }
 

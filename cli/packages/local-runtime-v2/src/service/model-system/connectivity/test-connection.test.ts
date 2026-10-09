@@ -116,7 +116,7 @@ describe('ModelConnectionTester requests', () => {
     expect(body).not.toHaveProperty('reasoning');
   });
 
-  it('attributes OpenRouter completion tests to MiniMax Code', async () => {
+  it('attributes OpenRouter completion tests to this product', async () => {
     const fetchImpl = vi.fn(async () => openAiOkResponse());
     const tester = new ModelConnectionTester({ fetchImpl: fetchImpl as unknown as typeof fetch });
 
@@ -133,8 +133,8 @@ describe('ModelConnectionTester requests', () => {
 
     const [, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     const headers = new Headers(init.headers);
-    expect(headers.get('http-referer')).toBe('https://agent.minimax.io/');
-    expect(headers.get('x-openrouter-title')).toBe('MiniMax Code');
+    expect(headers.get('http-referer')).toBe('https://github.com/mumujie10/mr-ai');
+    expect(headers.get('x-openrouter-title')).toBe('MireAI CLI');
     expect(headers.get('x-openrouter-categories')).toBe('cli-agent');
   });
 
@@ -780,7 +780,7 @@ describe('OpenCode Go connection identity', () => {
     const headers = fetchImpl.mock.calls.map((call) => new Headers(call[1]?.headers));
     for (const header of headers) {
       expect(header.get('x-opencode-session')).toMatch(/^[0-9a-f-]{36}$/u);
-      expect(header.get('user-agent')).toBe('MiniMaxCode');
+      expect(header.get('user-agent')).toBe('MireAI CLI');
     }
     expect(headers[0]?.get('x-opencode-session')).not.toBe(headers[1]?.get('x-opencode-session'));
   });

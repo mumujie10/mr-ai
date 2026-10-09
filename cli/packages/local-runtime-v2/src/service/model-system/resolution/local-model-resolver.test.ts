@@ -590,8 +590,8 @@ describe('LocalModelResolver BYOK routing and fallback', () => {
     });
 
     expect(resolved.headers).toMatchObject({
-      'HTTP-Referer': 'https://agent.minimax.io/',
-      'X-OpenRouter-Title': 'MiniMax Code',
+      'HTTP-Referer': 'https://github.com/mumujie10/mr-ai',
+      'X-OpenRouter-Title': 'MireAI CLI',
       'X-OpenRouter-Categories': 'cli-agent',
       'X-Mavis-Session-Id': 'session-openrouter',
     });
@@ -1278,7 +1278,7 @@ describe('OpenCode Go conversation identity', () => {
         });
         const headers = new Headers(resolved.headers);
         expect(headers.get('x-opencode-session')).toBe(sessionId);
-        expect(headers.get('user-agent')).toBe('MiniMaxCode');
+        expect(headers.get('user-agent')).toBe('MireAI CLI');
         expect(resolved.model.provider).toBe('custom_provider:renamed');
       }
     },

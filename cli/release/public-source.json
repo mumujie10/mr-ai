@@ -2962,7 +2962,6 @@
     "packages/tui/src/runtime/mcode-tools-integration.ts",
     "packages/tui/src/runtime/port.ts",
     "packages/tui/src/runtime/projections/context-snapshot.ts",
-    "packages/tui/src/runtime/public-gateway.ts",
     "packages/tui/src/runtime/review-assets.ts",
     "packages/tui/src/runtime/session-visibility.ts",
     "packages/tui/src/runtime/stream-events.ts",

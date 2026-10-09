@@ -1,6 +1,6 @@
 export const OPENROUTER_ATTRIBUTION_HEADERS = {
-  'HTTP-Referer': 'https://agent.minimax.io/',
-  'X-OpenRouter-Title': 'MiniMax Code',
+  'HTTP-Referer': 'https://github.com/mumujie10/mr-ai',
+  'X-OpenRouter-Title': 'MireAI CLI',
   'X-OpenRouter-Categories': 'cli-agent',
 } as const;
 
@@ -16,8 +16,9 @@ export function isOpenRouterApiUrl(value: string | undefined): boolean {
 
 /**
  * OpenRouter attributes usage per request. Product-owned values intentionally
- * win case-insensitively over user/provider headers so every MiniMax Code call
- * to the official endpoint is recorded under the same application identity.
+ * win case-insensitively over user/provider headers so every call this CLI
+ * makes to the official endpoint is recorded under one application identity —
+ * this product's own, not the upstream CLI it forked.
  */
 export function withOpenRouterAttributionHeaders(
   baseUrl: string | undefined,

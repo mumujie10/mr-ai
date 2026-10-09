@@ -45,6 +45,11 @@ export const retiredSourceRoots = [
   "packages/agent-modules/permission/src/http-cloud-gateway-client.ts",
   "packages/agent-modules/permission/src/in-memory-cloud-gateway-client.ts",
   "packages/agent-modules/permission/src/conversation-renderer.ts",
+  // The public gateway request builder had no caller left once the account and
+  // managed-backend paths stopped being this product's, and it carried a
+  // first-party signing scheme (User-Agent plus md5 x-signature). Deleting it
+  // keeps a future module from reaching for a ready-made MiniMax client identity.
+  "packages/tui/src/runtime/public-gateway.ts",
 ];
 
 // May exist as public source, but must never be reachable from the standalone
