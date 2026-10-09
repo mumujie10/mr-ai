@@ -94,7 +94,6 @@ describe("createV1AgentHostProductCapabilities", () => {
       terminalMemory: { record: vi.fn() },
       contextUsage: { isEnabled: vi.fn(), prepareAttempt: vi.fn() },
       runnerLogger: { error: vi.fn() },
-      llmRequestFailureHook: vi.fn(),
       reportFailure: vi.fn(),
       metricsClient: undefined,
     };
@@ -135,9 +134,6 @@ describe("createV1AgentHostProductCapabilities", () => {
     expect(product.executor.fileChanges.begin).toBe(hosted.fileChanges.begin);
     expect(product.runner.contextUsage).toBe(hosted.contextUsage);
     expect(product.runner.logger).toBe(hosted.runnerLogger);
-    expect(product.runner.onLLMRequestFailure).toBe(
-      hosted.llmRequestFailureHook,
-    );
     expect(product.runner.evalReporterFactory).toBe(evalReporterFactory);
     expect(product.runner).not.toHaveProperty("reviewContent");
     expect(product).not.toHaveProperty("agents");

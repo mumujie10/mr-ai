@@ -1,4 +1,4 @@
-import type { TuiIncidentSink, TuiObservability } from '../observability/index.js';
+import type { TuiObservability } from '../observability/index.js';
 import type { McodeAuthPort } from '../auth/application.js';
 import type { TuiRuntime, TuiWorkspaceRoot } from '../runtime/port.js';
 import type { TuiCommandFlow } from '../tui/controller/product/command-flow.js';
@@ -71,7 +71,6 @@ export interface CreateTuiAppOptions {
   automationResultPath?: string;
   productFeatures?: Partial<TuiProductFeatures>;
   observability?: TuiObservability;
-  incidentReporter?: TuiIncidentSink;
   auth?: McodeAuthPort;
   externalEditorCommand?: string;
   editDraftInExternalEditor?: EditTuiDraftInExternalEditor;

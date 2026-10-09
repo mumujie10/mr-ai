@@ -134,7 +134,6 @@ export function createTuiApplicationRenderer(options: CreateTuiAppOptions) {
     initialMode: options.tuiMode ?? 'regular',
     clearScrollbackOnStart: options.clearScrollbackOnStart,
     logDirectory: options.runtimeLogDirectory,
-    incidentReporter: options.incidentReporter,
     altScreen: {
       searchMatchStyle: (text) => tuiChalk.underline(styleSearchMatch(text)),
       searchCurrentMatchStyle: (text) => tuiChalk.bold.inverse(styleSearchMatch(text)),

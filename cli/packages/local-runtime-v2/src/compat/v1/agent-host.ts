@@ -215,9 +215,6 @@ export function createV1AgentHostProductCapabilities(
       contextUsage: hosted.contextUsage,
       logger: hosted.runnerLogger,
       ...(hosted.metricsClient ? { metricsClient: hosted.metricsClient } : {}),
-      ...(hosted.llmRequestFailureHook
-        ? { onLLMRequestFailure: hosted.llmRequestFailureHook }
-        : {}),
       ...(hosted.observeLLMRequest
         ? { observeLLMRequest: hosted.observeLLMRequest }
         : {}),

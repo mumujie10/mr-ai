@@ -29,9 +29,7 @@ import type { TuiDelegationFlow } from '../delegation-flow.js';
 import type { TuiGoalFlow } from '../product/goal-flow.js';
 import { delayWithAbort } from '../support.js';
 import {
-  captureTuiIncidentBestEffort,
   noopTuiObservability,
-  type TuiIncidentSink,
   type TuiObservability,
   type TuiRunLifecycleObservation,
 } from '../../../observability/index.js';
@@ -44,9 +42,6 @@ import { formatTuiActionFailure, tuiErrorDiagnostic } from '../../../user-facing
 
 const EVENT_BUS_RECONNECT_BASE_DELAY_MS = 250;
 const EVENT_BUS_RECONNECT_MAX_DELAY_MS = 10_000;
-// One recovered process-local event-loop failure is transient; a short burst is actionable.
-const INCIDENT_RECONNECT_WINDOW_MS = 30_000;
-const INCIDENT_RECONNECT_FAILURE_THRESHOLD = 3;
 const TERMINAL_RECONCILIATION_TIMEOUT_MS = 2_000;
 // A projected run must read as settled on two consecutive checks before the TUI clears it.
 const STALE_RUN_CHECK_INTERVAL_MS = 5_000;
@@ -87,7 +82,6 @@ export interface TuiRuntimeEventFlowOptions {
   readonly isStopped: () => boolean;
   readonly queueEnabled: boolean;
   readonly observability?: TuiObservability;
-  readonly incidentReporter?: TuiIncidentSink;
   readonly terminalReconciliationTimeoutMs?: number;
   /** Interval for the stale-run safety net; `0` disables the timer. */
   readonly staleRunCheckIntervalMs?: number;
@@ -119,35 +113,6 @@ export class TuiRuntimeEventFlow {
   private reportedStaleInProcessTurnId: string | undefined;
 
   constructor(private readonly options: TuiRuntimeEventFlowOptions) {}
-
-  private captureRuntimeBridgeFailure(
-    error: unknown,
-    operation: string,
-    context: Readonly<Record<string, string | number | boolean | undefined>> = {},
-  ): void {
-    captureTuiIncidentBestEffort(this.options.incidentReporter, {
-      eventType: 'cli_runtime_bridge_error',
-      error,
-      component: 'runtime-event-flow',
-      operation,
-      codeLocation: 'src/tui/controller/runtime/runtime-event-flow.ts#TuiRuntimeEventFlow',
-      severity: 'warning',
-      impact: 'degraded',
-      handled: true,
-      context,
-    });
-  }
-
-  private breadcrumb(
-    name: string,
-    details?: Readonly<Record<string, string | number | boolean | undefined>>,
-  ): void {
-    try {
-      this.options.incidentReporter?.breadcrumb(name, details);
-    } catch {
-      // Diagnostics must not affect Runtime event handling.
-    }
-  }
 
   start(): void {
     if (this.task || this.options.isStopped()) return;
@@ -314,10 +279,6 @@ export class TuiRuntimeEventFlow {
       if (this.reportedStaleInProcessTurnId !== inProcessTurnId) {
         this.reportedStaleInProcessTurnId = inProcessTurnId;
         this.recordRunLifecycle({ kind: 'stale-in-process-run', ...observation });
-        this.breadcrumb('cli.run.stale_in_process', {
-          runtimeState: activeRun.state,
-          stalledForMs: observation.stalledForMs,
-        });
       }
       return false;
     }
@@ -332,10 +293,6 @@ export class TuiRuntimeEventFlow {
     }
     this.options.runProjection.reconcileRuntimeTurn(undefined);
     this.recordRunLifecycle({ kind: 'stale-run-reconciled', ...observation });
-    this.breadcrumb('cli.run.stale_reconciled', {
-      runtimeState: activeRun.state,
-      stalledForMs: observation.stalledForMs,
-    });
     this.options.onChanged();
     await this.refreshRuntimeSessionProjection(sessionId, { includeDurableHistory: true }).catch(
       () => false,
@@ -394,8 +351,6 @@ export class TuiRuntimeEventFlow {
     let reconnectAttempt = 0;
     let disconnectedAtMs: number | undefined;
     let reconnectErrorKind: string | undefined;
-    let recentStreamFailureCount = 0;
-    let lastStreamFailureAtMs: number | undefined;
     const observability = this.options.observability ?? noopTuiObservability;
     const reconcileConnection = async () => {
       await this.options.delegationFlow.refresh();
@@ -410,7 +365,6 @@ export class TuiRuntimeEventFlow {
       await this.options.goalFlow?.refresh(this.options.controller.snapshot().session?.sessionId);
       if (this.options.isStopped() || busController.signal.aborted) return;
       if (reconnectAttempt > 0) {
-        this.breadcrumb('cli.runtime.events.reconnected', { attempt: reconnectAttempt });
         observability.recordEventStream({
           state: 'reconnected',
           attempt: reconnectAttempt,
@@ -420,29 +374,12 @@ export class TuiRuntimeEventFlow {
         disconnectedAtMs = undefined;
         reconnectErrorKind = undefined;
       } else {
-        this.breadcrumb('cli.runtime.events.connected');
         observability.recordEventStream({ state: 'connected', attempt: 0 });
       }
     };
     const consumeEvent = async (event: TuiRuntimeEvent) => {
       if (this.options.isStopped() || busController.signal.aborted) return;
       await this.handle(event);
-    };
-    const recordStreamFailure = (error: unknown, failureKind: string): void => {
-      const nowMs = Date.now();
-      recentStreamFailureCount =
-        lastStreamFailureAtMs !== undefined &&
-        nowMs - lastStreamFailureAtMs <= INCIDENT_RECONNECT_WINDOW_MS
-          ? recentStreamFailureCount + 1
-          : 1;
-      lastStreamFailureAtMs = nowMs;
-      if (recentStreamFailureCount !== INCIDENT_RECONNECT_FAILURE_THRESHOLD) return;
-      this.captureRuntimeBridgeFailure(error, 'watch-events', {
-        recentFailures: recentStreamFailureCount,
-        failureWindowMs: INCIDENT_RECONNECT_WINDOW_MS,
-        errorKind: failureKind,
-        sessionId: this.options.controller.snapshot().session?.sessionId,
-      });
     };
     while (!this.options.isStopped() && !busController.signal.aborted) {
       try {
@@ -455,14 +392,6 @@ export class TuiRuntimeEventFlow {
         reconnectAttempt += 1;
         disconnectedAtMs ??= Date.now();
         reconnectErrorKind = 'StreamEnded';
-        this.breadcrumb('cli.runtime.events.disconnected', {
-          attempt: reconnectAttempt,
-          errorKind: reconnectErrorKind,
-        });
-        recordStreamFailure(
-          new Error('Runtime event stream ended before the CLI stopped.'),
-          reconnectErrorKind,
-        );
         this.options.stateStore.dispatch({
           type: 'connection/disconnected',
           error: 'Runtime event stream ended.',
@@ -478,11 +407,6 @@ export class TuiRuntimeEventFlow {
         reconnectAttempt += 1;
         disconnectedAtMs ??= Date.now();
         reconnectErrorKind = errorKind(error);
-        this.breadcrumb('cli.runtime.events.disconnected', {
-          attempt: reconnectAttempt,
-          errorKind: reconnectErrorKind,
-        });
-        recordStreamFailure(error, reconnectErrorKind);
         this.options.stateStore.dispatch({
           type: 'connection/disconnected',
           error: formatTuiActionFailure(error, {
@@ -1239,19 +1163,6 @@ export class TuiRuntimeEventFlow {
     }
 
     if (incompleteParts.length > 0) {
-      const failedParts = refreshFailures.map(({ part }) => part).join(',');
-      this.captureRuntimeBridgeFailure(
-        new AggregateError(
-          refreshFailures.map(({ error }) => error),
-          `Runtime session refresh failed for ${failedParts}.`,
-        ),
-        'refresh-session-projection',
-        {
-          sessionId,
-          failedPartCount: refreshFailures.length,
-          failedParts,
-        },
-      );
       this.options.append(
         `Couldn't fully refresh this session (${incompleteParts.join('; ')}). Reopen the session to retry.`,
         'warning',

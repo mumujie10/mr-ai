@@ -667,7 +667,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     isStopped: () => stopped,
     queueEnabled: productFeatures.queue,
     observability: options.observability,
-    incidentReporter: options.incidentReporter,
     notify: (kind, key) => {
       terminalNotifications.notifyOnce(
         kind,

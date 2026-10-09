@@ -73,8 +73,8 @@ The evidence column summarizes the historical TUI 0.3.11 restoration record from
 | Managed connectors | Cloud client, permissions, and invocation adapters restored | Connector runtime and cloud transport tests; actual tool discovery passed; business writes not run |
 | Updates | Removed: this fork ships no self-update command, so a bundled CLI is replaced only by reinstalling the application | No update entry point exists in `packages/tui/src/cli/program.ts`; the updater package is not in the build |
 | Feedback uploads | Removed: this fork sends no feedback report, so there is no `/feedback` command and no archive upload path | No upload code remains to test; the capability is absent from the built bundle (see `scripts/check-standalone-boundary.mjs`) |
-| Automatic LLM error reports | Disabled by default; requires `telemetry.diagnostics` opt-in; bounded diagnostic facts minimized before encryption | Synthetic provider errors and native Headers; final HTTP batches captured and decrypted locally |
-| Telemetry | Usage events and runtime performance metrics are removed from this build; only automatic error diagnostics remain, disabled by default and requiring `telemetry.diagnostics`. `MCODE_DISABLE_TELEMETRY` / `DO_NOT_TRACK` still override it | Privacy regression tests intercept and decode the diagnostic request locally; no live upload |
+| Automatic LLM error reports | Removed: the `error-reporting/` module (reporter, batcher, event-log encryption, Matrix batch client) is deleted, so a provider failure is only formatted for the current turn | No buffer or transport remains to test; `dist` contains no `desktop-errors/batch` string and the paths are retired in `scripts/lib/retired-sources.mjs` |
+| Telemetry | Usage events, runtime performance metrics shipping, and automatic error diagnostics are all removed from this fork; there is no `telemetry` block left in the config schema | `metrics-telemetry-privacy.test.ts` proves metric instruments stay in-process even in a managed production build; the boundary check keeps the retired clients out of the bundle |
 | Auto permissions | Cloud classifier restored; local rules and confirmation on failure retained | Classifier client, permission facade, and sandbox tests |
 | Model catalog | Bundled snapshot only: the CLI reads the shipped (or already persisted) snapshot and has no code path that fetches the registry | Provider-presets suite asserts construction and listing perform zero network I/O; the build boundary check keeps the retired registry client out of the bundle |
 | Files, shell, subagents, sessions, headless, ACP | Actual runtime retained | BYOK, file reads, session resume, ACP, sandbox, and status protocol tests |
@@ -176,13 +176,13 @@ Website deployment tools and routes follow the original tool set. Successful dep
 
 Production client paths are restored without internal registries or test-service addresses as build dependencies. Real account behavior, quota, billing, model quality, media generation, and deployment require separate acceptance. Mocks, protocol fixtures, successful builds, and the source import do not replace that evidence. Public npm `latest` was 0.4.12 on 2026-09-18; that metadata observation does not validate the installed package or deploy a backend. See [verification records](verification.md) and the historical [release audit](release-audit.md) for recorded acceptance results.
 
-## Diagnostic upload privacy
+## Error reporting privacy
 
-Automatic LLM error reports use an allowlist before buffering and encryption. Schema 3 retains a numeric release version, the fixed metric error category, known error names/codes, HTTP statuses (100–599), and bounded error/cause/properties relationships. It excludes error messages, stacks, headers (including native `Headers`), prompts, request/model metadata, URLs, arbitrary property names/values, and binary data. Unknown event types are dropped; the event type and code location are fixed at the reporter boundary. Encryption remains a transport layer, not redaction. Authenticated transport still uses the signed-in account token and user ID.
-
-The separate TUI incident reporter uses schema 2. It retains a fixed event category, phase/severity/impact, handled flag, generated IDs, timestamps, numeric release/Node versions, known platform/architecture, known error names/codes and HTTP status, and up to 20 fixed breadcrumb names with an optional phase. It excludes free-form error text, stack/cause/aggregate contents, caller context, component/operation labels, terminal/OS strings, and original code locations. Fingerprints are derived only from the minimized category and error facts, so grouping is intentionally coarser. Legacy schema-1 pending and sent files are deleted best-effort at startup and never uploaded; current-schema pending files are projected again before encryption and replaced with their minimized copy before being marked sent. The gateway wire encryption format is unchanged. Production ingestion of schema 2 has not been tested.
-
-The regression tests use temporary synthetic data and intercepted HTTP only. They decrypt the final automatic-report request as a receiver would. They do not validate production ingestion of the new schemas, retention policies, live services, other telemetry paths or other platforms.
+This fork has no error-report upload: the encrypted batch schemas, their client, and the TUI
+incident queue are deleted, so there is no minimized-payload format, consent switch, or retention
+window to describe. Failure information stays local — the `v2/observability` event log, the
+`/doctor` configuration view, and stderr cleanup warnings — and none of it leaves the machine
+except as part of a model request the user started.
 
 
 ## Launch-scoped system prompt overrides

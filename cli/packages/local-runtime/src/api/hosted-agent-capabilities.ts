@@ -1,10 +1,7 @@
 import { join } from 'node:path';
 
 import { AuthStorage } from '@earendil-works/pi-coding-agent/auth-storage';
-import type {
-  PiLLMRequestFailureHook,
-  PiLLMRequestObserver,
-} from '@mavis/agent-core/pi-turn-runner';
+import type { PiLLMRequestObserver } from '@mavis/agent-core/pi-turn-runner';
 import { resolveAgentCapabilities, type AgentBuiltinSkillId } from '@mavis/config';
 import type { IRuntimeEvent } from '@mavis/protocol';
 
@@ -101,7 +98,6 @@ export interface HostedAgentCapabilitiesHost {
   readonly metricsClient: MetricsClient | undefined;
   readonly isContextWindowUsageEnabled: () => boolean;
   readonly fetchImpl: typeof fetch | undefined;
-  readonly llmRequestFailureHook?: PiLLMRequestFailureHook;
   readonly observeLLMRequest?: PiLLMRequestObserver;
   readonly runtimeConversation: RuntimeConversation | undefined;
   readonly nowMs: () => number;
@@ -157,7 +153,6 @@ export function createHostedAgentCapabilities(
   return {
     config: host.configGetter,
     runnerLogger: PI_TURN_RUNNER_LOGGER,
-    llmRequestFailureHook: host.llmRequestFailureHook,
     observeLLMRequest: host.observeLLMRequest,
     authContextGetter: host.authContextGetter,
     authContextInvalidator: host.authContextInvalidator,

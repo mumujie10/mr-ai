@@ -3,7 +3,6 @@ import {
   PiTurnRunner,
   type LLMModelConfig,
   type PiEventWriter,
-  type PiLLMRequestFailureHook,
   type PiLLMRequestObserver,
   type PiTurnRunnerOptions,
   type PiTurnRunnerLogger,
@@ -48,7 +47,6 @@ export interface LocalAgentTurnRunnerOptions {
   readonly metricsClient?: MetricsClient;
   readonly logger?: PiTurnRunnerLogger;
   readonly contextUsage?: LocalContextUsageCapabilities;
-  readonly onLLMRequestFailure?: PiLLMRequestFailureHook;
   readonly observeLLMRequest?: PiLLMRequestObserver;
   readonly evalReporterFactory?: LocalEvalReporterFactoryPort;
   /**
@@ -437,13 +435,12 @@ function shouldReportInputReviewResolution(input: LocalRuntimeTurnRunnerInput): 
 function buildLocalPiTurnRunnerOptions(
   options: Pick<
     LocalAgentTurnRunnerOptions,
-    'metricsClient' | 'logger' | 'onLLMRequestFailure' | 'observeLLMRequest' | 'llmCaptureFactory'
+    'metricsClient' | 'logger' | 'observeLLMRequest' | 'llmCaptureFactory'
   >,
 ): PiTurnRunnerOptions {
   return {
     ...(options.metricsClient ? { metricsClient: options.metricsClient } : {}),
     ...(options.logger ? { logger: options.logger } : {}),
-    ...(options.onLLMRequestFailure ? { onLLMRequestFailure: options.onLLMRequestFailure } : {}),
     ...(options.observeLLMRequest ? { observeLLMRequest: options.observeLLMRequest } : {}),
     ...(options.llmCaptureFactory ? { llmCaptureFactory: options.llmCaptureFactory } : {}),
   };

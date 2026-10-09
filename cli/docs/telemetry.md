@@ -6,37 +6,30 @@ offered are deleted from this fork, not disabled:
 - **TUI usage events** — the analytics module, its `telemetry.enabled` switch and its
   `meerkat-reporter` destinations are gone. No event is queued and no request can be made,
   whatever `config.yaml` contains.
-- **Runtime performance metrics** — the cloud metrics transport behind `telemetry.metrics`
-  is gone; metric instruments stay in-process and are only exposed to local callers.
+- **Runtime performance metrics** — no host wires a shipping reporter, so metric instruments stay
+  in-process and are only exposed to local callers; the unused batch client never reaches the built
+  bundle (verified with `dist` string checks, see below).
 
-There is no `mr telemetry` command. `telemetry.enabled` and `telemetry.metrics` still parse
-from `config.yaml` for compatibility with older files, but they no longer authorize any
-outbound request.
+There is no `mr telemetry` command. The whole `telemetry` block is gone from the config schema,
+so a leftover `telemetry:` section in an older `config.yaml` is ignored rather than honored, and
+`MCODE_DISABLE_TELEMETRY` / `DO_NOT_TRACK` no longer have anything to switch off.
 
 ## Automatic error diagnostics
 
-The only reporting path that remains is `telemetry.diagnostics`, which is off by default:
+Deleted as well, together with the queue and transport that carried it:
 
-```yaml
-telemetry:
-  diagnostics: false # Account-linked TUI and LLM error diagnostics
-```
+- **TUI incident reports** — `packages/tui/src/observability/incident-reporter.ts` is removed.
+  The launcher no longer installs an `uncaughtExceptionMonitor`, no longer writes
+  `<dataDir>/v2/observability/cli/incidents/*.json`, and no longer batches pending incidents on
+  authentication. Renderer, Runtime-bridge and shutdown failures still reach the user through the
+  existing local paths: the `v2/observability` event log, the `[minimax-code] … cleanup failed`
+  stderr lines, and the in-TUI warning cells.
+- **LLM request-failure reports** — `packages/local-runtime/src/error-reporting/` is removed, so a
+  provider request failure is only formatted for the current turn; nothing is buffered or encrypted.
 
-Setting it to `true` authorizes both TUI incident reports and LLM request-failure reports.
-Both additionally require a signed-in account: the transport uses the account's Bearer token
-and a `user_id` query parameter, so these reports are **account-linked** even though their
-contents are minimized and encrypted. The minimization schemas are described in
-[TUI capability coverage](tui-capabilities.md#diagnostic-upload-privacy). Both use
-`/minimax-cloud/api/v1/observability/desktop-errors/batch` on the regional MiniMax host.
-When the channel is disabled, TUI incidents are written as local-only files (7 days / 200
-files) that are never uploaded, and LLM failure reports are dropped before buffering.
-
-Either environment variable turns the channel off and takes precedence over the config file:
-
-```sh
-MCODE_DISABLE_TELEMETRY=1 mr
-DO_NOT_TRACK=1 mr
-```
+The `/minimax-cloud/api/v1/observability/desktop-errors/batch` endpoint and its regional hosts are
+absent from the source tree and from the built bundle, so no configuration key or environment
+variable can re-enable a send. `scripts/check-standalone-boundary.mjs` treats those paths as retired.
 
 ## Locating the active config file
 
@@ -44,7 +37,7 @@ Builds from this repository use `~/.minimax/config.yaml` (or
 `~/.minimax-<profile>/config.yaml` when a profile is selected) unless a data-directory
 override is set; see [Accounts and data](installation.md#accounts-and-data).
 
-Server-side retention for any channel is not defined or verified by this repository. Login,
-model requests, and update checks have separate network behavior described in
+Server-side retention for any channel is not defined or verified by this repository. Login and
+model requests have separate network behavior described in
 [TUI capability coverage](tui-capabilities.md); user-submitted feedback uploads are removed from
 this fork entirely.

@@ -30,6 +30,12 @@ export const retiredSourceRoots = [
   "packages/tui/src/runtime/feedback/",
   "packages/tui/src/tui/features/feedback/",
   "packages/tui/src/tui/controller/product/feedback-flow.ts",
+  // Nothing reports errors to MiniMax either: the automatic desktop-error batch
+  // client, the TUI incident queue that drained into it, and the opt-in channel
+  // that authorized both are deleted, so no future config key can re-enable a send.
+  "packages/local-runtime/src/error-reporting/",
+  "packages/tui/src/observability/incident-reporter.ts",
+  "packages/config/src/telemetry-policy.ts",
 ];
 
 // May exist as public source, but must never be reachable from the standalone

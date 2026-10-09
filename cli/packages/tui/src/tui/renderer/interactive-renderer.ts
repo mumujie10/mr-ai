@@ -10,7 +10,6 @@ import {
   type TuiMode,
   type TuiStopOptions,
 } from '../engine/public.js';
-import { captureTuiIncidentBestEffort, type TuiIncidentSink } from '../../observability/index.js';
 
 export interface McodeInteractiveRendererOptions {
   readonly terminal: Terminal;
@@ -20,7 +19,6 @@ export interface McodeInteractiveRendererOptions {
   readonly logDirectory?: string;
   readonly altScreen?: TuiAltScreenOptions;
   readonly fullscreenLayoutRoot?: Component;
-  readonly incidentReporter?: TuiIncidentSink;
   readonly onRendererChanged?: (renderer: TuiMainScreen | TuiAltScreen) => void;
 }
 
@@ -260,21 +258,6 @@ export class McodeInteractiveRenderer {
           [options.cause, ...rollbackErrors],
           'TUI mode switch failed and could not fully restore the previous renderer.',
         );
-    captureTuiIncidentBestEffort(this.options.incidentReporter, {
-      eventType: 'cli_render_error',
-      error: failure,
-      component: 'renderer',
-      operation: 'switch-mode',
-      codeLocation: 'src/tui/renderer/interactive-renderer.ts#McodeInteractiveRenderer.switchMode',
-      severity: 'error',
-      impact: rollbackSucceeded ? 'action_failed' : 'screen_unavailable',
-      handled: rollbackSucceeded,
-      context: {
-        previousMode: options.previous.mode,
-        nextMode: options.next.mode,
-        rollbackSucceeded,
-      },
-    });
     throw failure;
   }
 

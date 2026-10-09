@@ -1,6 +1,5 @@
 import type {
   LLMRetryOptions,
-  PiLLMRequestFailureHook,
   PiLLMRequestObserver,
   RunTurnInput,
   TurnEventReporter,
@@ -12,7 +11,6 @@ import type { MetricsClient } from '../common/metrics.js';
 import type { ContextUsageDebugMeasurement, PromptRange } from '../context/context-usage.js';
 import type { RemoteTokenCounter } from '../context/remote-token-counter.js';
 import type { LocalEvalReporterFactoryLike } from '../eval/types.js';
-import type { DesktopErrorReporter } from '../error-reporting/index.js';
 import type { LocalEventWriter } from '../events/sink.js';
 import type { LocalRuntimeAuthContext } from './model-resolver.js';
 import type { LocalRuntimeProjectionFrame } from './projection.js';
@@ -40,10 +38,6 @@ export interface LocalRuntimeHostOptions {
   outputSafetyRetryDelay?: () => Promise<void>;
   metricsClient?: MetricsClient;
   fetchImpl?: typeof fetch;
-  /** Desktop error reporter shared by the process composition layer. */
-  errorReporter?: DesktopErrorReporter;
-  /** Failure callback shared by v1 and v2 runners in the same process. */
-  llmRequestFailureHook?: PiLLMRequestFailureHook;
   /** Host-owned observer for each physical LLM request lifecycle. */
   observeLLMRequest?: PiLLMRequestObserver;
   /** Optional fail-open eval_step reporter wired by packaged Electron builds. */
