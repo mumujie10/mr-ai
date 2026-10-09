@@ -24,6 +24,12 @@ export const retiredSourceRoots = [
   // The BYOK-only distribution ships the models.dev snapshot as a bundled asset
   // and must never fetch it, so the registry pull path stays out of this fork.
   "packages/local-runtime-v2/src/service/model-system/catalog/provider-presets/provider-presets.client.ts",
+  // Users of this fork report problems to their own vendor, not to MiniMax: the
+  // `/feedback` command, its reviewed draft, archive projection and ticket client
+  // are deleted rather than gated off, so the upload code cannot come back.
+  "packages/tui/src/runtime/feedback/",
+  "packages/tui/src/tui/features/feedback/",
+  "packages/tui/src/tui/controller/product/feedback-flow.ts",
 ];
 
 // May exist as public source, but must never be reachable from the standalone

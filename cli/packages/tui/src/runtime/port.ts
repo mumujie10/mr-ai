@@ -333,11 +333,6 @@ export interface TuiContextSnapshotResponse {
   };
 }
 
-export interface TuiFeedbackPort {
-  prepareFeedback(input: { description: string; sessionId?: string }): Promise<TuiFeedbackPreview>;
-  submitFeedback(draftId: string, options?: TuiFeedbackSubmitOptions): Promise<TuiFeedbackReceipt>;
-  cancelFeedback(draftId: string): Promise<boolean>;
-}
 
 export interface TuiQueueSnapshot {
   readonly items: readonly TuiQueuedMessage[];
@@ -613,7 +608,6 @@ export type TuiRuntime = TuiSessionPort &
   TuiConversationPort &
   TuiConfigurationPort &
   TuiInspectionPort &
-  TuiFeedbackPort &
   TuiQueuePort &
   TuiInteractionPort &
   TuiRuntimeEventPort &
@@ -654,41 +648,6 @@ export type {
   TuiSessionUsageSummary,
   TuiSkillList,
 } from '../types/runtime-models.js';
-
-export interface TuiFeedbackDiagnosticRow {
-  label: string;
-  value: string;
-}
-
-export interface TuiFeedbackPreview {
-  schemaVersion: 1;
-  draftId: string;
-  description: string;
-  diagnostics: TuiFeedbackDiagnosticRow[];
-  diagnosticBundleIncluded: boolean;
-  included: string[];
-  excluded: string[];
-  expiresAtMs: number;
-}
-
-export interface TuiFeedbackReceipt {
-  schemaVersion: 1;
-  ticketId?: string;
-  uploadId?: string;
-  status: 'processing' | 'resolved' | 'unknown';
-  createdAtMs?: number;
-}
-
-export type TuiFeedbackPhase =
-  | 'preparing'
-  | 'uploading-diagnostics'
-  | 'creating-ticket'
-  | 'completed';
-
-export interface TuiFeedbackSubmitOptions {
-  readonly signal?: AbortSignal;
-  readonly onPhase?: (phase: TuiFeedbackPhase) => void;
-}
 
 export interface EnqueueTuiMessageOptions {
   attachments?: readonly TuiTransportAttachment[];

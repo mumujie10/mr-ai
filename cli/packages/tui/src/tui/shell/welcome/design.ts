@@ -15,7 +15,6 @@ export const MINIMAX_CODE_WELCOME_DESIGN = {
     'Use /history to review and branch from earlier prompts.',
     'Use /goal to keep long-running work focused on a finish line.',
     'Use /permission to choose how MCode handles tool approvals.',
-    'Use /feedback to preview a redacted report before upload.',
   ],
   wide: {
     tips: [
@@ -26,7 +25,6 @@ export const MINIMAX_CODE_WELCOME_DESIGN = {
     news: [
       'Send follow-ups while MCode works.',
       '/context shows read-only session context.',
-      '/feedback previews before upload.',
     ],
   },
   stacked: {
@@ -34,14 +32,14 @@ export const MINIMAX_CODE_WELCOME_DESIGN = {
       'Say what you want and how to verify it.',
       `@ files · ${MINIMAX_CODE_WELCOME_PASTE_IMAGE_SHORTCUT} images · /init guidance`,
     ],
-    news: ['Follow-ups wait while MCode works.', '/context budget · /feedback preview'],
+    news: ['Follow-ups wait while MCode works.', '/context budget · /doctor config check'],
   },
   compact: {
     tips: [
       `@ files · ${MINIMAX_CODE_WELCOME_PASTE_IMAGE_SHORTCUT} images`,
       '/init repo guidance',
     ],
-    news: ['Follow-ups wait', '/context · /feedback'],
+    news: ['Follow-ups wait', '/context'],
   },
   hero: {
     fullMinWidth: 91,

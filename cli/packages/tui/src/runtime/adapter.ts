@@ -31,9 +31,6 @@ import type {
   TuiCompactionResult,
   TuiDelegationSnapshot,
   TuiDelegationStopReceipt,
-  TuiFeedbackPreview,
-  TuiFeedbackSubmitOptions,
-  TuiFeedbackReceipt,
   TuiEditMessageInput,
   TuiEditMessageResult,
   TuiInstructionSource,
@@ -94,17 +91,6 @@ export interface TuiRuntimeAdapterOptions {
   tokenPlanAccountStatusGetter?: (options?: {
     readonly forceRefresh?: boolean;
   }) => Promise<TuiTokenPlanAccountStatus>;
-  feedback?: {
-    prepare(input: {
-      readonly description: string;
-      readonly sessionId?: string;
-    }): TuiFeedbackPreview | Promise<TuiFeedbackPreview>;
-    submit(
-      draftId: string,
-      options?: TuiFeedbackSubmitOptions,
-    ): Promise<TuiFeedbackReceipt>;
-    cancel(draftId: string): boolean | Promise<boolean>;
-  };
 }
 
 export class TuiRuntimeAdapter implements TuiRuntime {
@@ -126,7 +112,6 @@ export class TuiRuntimeAdapter implements TuiRuntime {
     | undefined;
   private readonly synchronizeAuth: TuiRuntimeAdapterOptions["synchronizeAuth"];
   private readonly accountIdentityGetter: TuiRuntimeAdapterOptions["accountIdentityGetter"];
-  private readonly feedback: TuiRuntimeAdapterOptions["feedback"];
   private readonly contextMode: McodeContextMode;
 
   constructor(cliService: CliService, options: TuiRuntimeAdapterOptions = {}) {
@@ -136,7 +121,6 @@ export class TuiRuntimeAdapter implements TuiRuntime {
     this.tokenPlanAccountStatusGetter = options.tokenPlanAccountStatusGetter;
     this.synchronizeAuth = options.synchronizeAuth;
     this.accountIdentityGetter = options.accountIdentityGetter;
-    this.feedback = options.feedback;
     this.contextMode = options.contextMode ?? "standard";
     this.conversationAccess = new TuiConversationAccess(cliService);
     this.pluginAccess = new TuiPluginAccess(cliService);
@@ -406,26 +390,6 @@ export class TuiRuntimeAdapter implements TuiRuntime {
     workspaceDir: string,
   ): Promise<readonly TuiInstructionSource[]> {
     return this.productAccess.getInstructionSources(workspaceDir);
-  }
-  async prepareFeedback(input: {
-    description: string;
-    sessionId?: string;
-  }): Promise<TuiFeedbackPreview> {
-    if (!this.feedback)
-      throw new Error("MiniMax Code feedback is unavailable.");
-    return this.feedback.prepare(input);
-  }
-  submitFeedback(
-    draftId: string,
-    options?: TuiFeedbackSubmitOptions,
-  ): Promise<TuiFeedbackReceipt> {
-    if (!this.feedback)
-      return Promise.reject(new Error("MiniMax Code feedback is unavailable."));
-    return this.feedback.submit(draftId, options);
-  }
-  cancelFeedback(draftId: string): Promise<boolean> {
-    if (!this.feedback) return Promise.resolve(false);
-    return Promise.resolve(this.feedback.cancel(draftId));
   }
   getPermissionMode(): Promise<TuiPermissionMode | undefined> {
     return this.productAccess.getPermissionMode();

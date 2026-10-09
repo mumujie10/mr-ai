@@ -344,41 +344,6 @@ function createRuntime(): TuiRuntime {
       customProviderCount: 0,
       warnings: [],
     })),
-    prepareFeedback: vi.fn(async ({ description, sessionId }) => ({
-      schemaVersion: 1 as const,
-      draftId: "feedback-draft-1",
-      description,
-      diagnostics: [
-        { label: "Client", value: "mcode 0.1.0" },
-        { label: "Runtime", value: "clean · cli" },
-        { label: "Session", value: sessionId ?? "not included" },
-      ],
-      included: ["redacted feedback description"],
-      excluded: ["credentials and tokens", "conversation prompts and messages"],
-      expiresAtMs: Date.now() + 60_000,
-    })),
-    submitFeedback: vi.fn(async () => ({
-      schemaVersion: 1 as const,
-      ticketId: "ticket-1",
-      status: "processing" as const,
-      createdAtMs: Date.now(),
-    })),
-    cancelFeedback: vi.fn(async () => true),
-    runDailyCheckin: vi.fn(async () => ({
-      status: "claimed" as const,
-      dayNo: 2,
-      points: 20,
-      expireAtMs: 1_800_000_000_000,
-      panel: {
-        scene: 2,
-        days: Array.from({ length: 7 }, (_, index) => ({
-          day_no: index + 1,
-          points: (index + 1) * 10,
-          status: index <= 1 ? 3 : 1,
-          is_today: index === 1,
-        })),
-      },
-    })),
     getAccountStatus: vi.fn(async () => ({
       status: "ready",
       defaultModel: "minimax/MiniMax-M2.7",
@@ -5131,74 +5096,6 @@ describe("createTuiApp", () => {
       expect.objectContaining({ id: "session-1", content: "/config" }),
       expect.any(AbortSignal),
     );
-  });
-
-  it("previews /feedback without uploading until Enter confirms the Runtime draft", async () => {
-    const terminal = new FakeTerminal();
-    terminal.rows = 30;
-    const runtime = createRuntime();
-    const app = createTuiApp({
-      runtime,
-      terminal,
-      version: "0.1.0",
-      workspaceDir: "/workspace",
-    });
-    app.start();
-    await app.ready;
-    await app.submit("/feedback Upload failed token=****");
-
-    expect(runtime.prepareFeedback).toHaveBeenCalledWith({
-      description: "Upload failed token=****",
-    });
-    expect(runtime.submitFeedback).not.toHaveBeenCalled();
-    expect(app.tui.hasOverlay()).toBe(false);
-    expect(app.interaction.isActive()).toBe(true);
-    const panel = app.interaction.current();
-    expect(panel?.render(80).join("\n")).toContain("Review feedback");
-    panel?.handleInput?.("d");
-    expect(panel?.render(80).join("\n")).toContain("Client  mcode 0.1.0");
-
-    terminal.input?.("\r");
-    await vi.waitFor(() =>
-      expect(runtime.submitFeedback).toHaveBeenCalledWith(
-        "feedback-draft-1",
-        expect.objectContaining({ onPhase: expect.any(Function) }),
-      ),
-    );
-    expect(panel?.render(80).join("\n")).toContain("ticket-1");
-    expect(runtime.sendMessage).not.toHaveBeenCalled();
-    terminal.input?.("\x1b");
-    expect(app.interaction.isActive()).toBe(false);
-    await app.stop();
-  });
-
-  it("cancels /feedback without uploading and keeps missing descriptions out of the Agent", async () => {
-    const terminal = new FakeTerminal();
-    const runtime = createRuntime();
-    const app = createTuiApp({
-      runtime,
-      terminal,
-      version: "0.1.0",
-      workspaceDir: "/workspace",
-    });
-    app.start();
-    await app.ready;
-
-    await app.submit("/feedback");
-    expect(app.transcript.snapshot().at(-1)).toMatchObject({
-      kind: "final-summary",
-      content: "Usage: /feedback <message>",
-    });
-    expect(runtime.prepareFeedback).not.toHaveBeenCalled();
-
-    await app.submit("/feedback Cancel this report");
-    terminal.input?.("\x1b");
-    await vi.waitFor(() =>
-      expect(runtime.cancelFeedback).toHaveBeenCalledWith("feedback-draft-1"),
-    );
-    expect(runtime.submitFeedback).not.toHaveBeenCalled();
-    expect(runtime.sendMessage).not.toHaveBeenCalled();
-    await app.stop();
   });
 
   it("keeps the status report local and submits the hidden /config name as text", async () => {

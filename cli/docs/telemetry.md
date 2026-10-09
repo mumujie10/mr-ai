@@ -45,5 +45,6 @@ Builds from this repository use `~/.minimax/config.yaml` (or
 override is set; see [Accounts and data](installation.md#accounts-and-data).
 
 Server-side retention for any channel is not defined or verified by this repository. Login,
-model requests, update checks, and user-submitted feedback have separate network behavior
-described in [TUI capability coverage](tui-capabilities.md).
+model requests, and update checks have separate network behavior described in
+[TUI capability coverage](tui-capabilities.md); user-submitted feedback uploads are removed from
+this fork entirely.

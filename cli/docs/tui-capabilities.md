@@ -72,7 +72,7 @@ The evidence column summarizes the historical TUI 0.3.11 restoration record from
 | Official and local plugins; runtime GitHub importer | `/plugins` and `mcode plugin` manage official installations and discovered local packages; arbitrary marketplace registration and GitHub URL import are not exposed in the CLI/TUI. See [plugin management](examples.md#4-manage-plugins) | Plugin application, source-page, and offline local CLI tests; actual official catalog read passed |
 | Managed connectors | Cloud client, permissions, and invocation adapters restored | Connector runtime and cloud transport tests; actual tool discovery passed; business writes not run |
 | Updates | Removed: this fork ships no self-update command, so a bundled CLI is replaced only by reinstalling the application | No update entry point exists in `packages/tui/src/cli/program.ts`; the updater package is not in the build |
-| Feedback and diagnostic uploads | Reviewed feedback text and minimized diagnostic summaries | Synthetic fixtures exercise session collection and capture/decode the final ZIP upload; no live uploads or real content |
+| Feedback uploads | Removed: this fork sends no feedback report, so there is no `/feedback` command and no archive upload path | No upload code remains to test; the capability is absent from the built bundle (see `scripts/check-standalone-boundary.mjs`) |
 | Automatic LLM error reports | Disabled by default; requires `telemetry.diagnostics` opt-in; bounded diagnostic facts minimized before encryption | Synthetic provider errors and native Headers; final HTTP batches captured and decrypted locally |
 | Telemetry | Usage events and runtime performance metrics are removed from this build; only automatic error diagnostics remain, disabled by default and requiring `telemetry.diagnostics`. `MCODE_DISABLE_TELEMETRY` / `DO_NOT_TRACK` still override it | Privacy regression tests intercept and decode the diagnostic request locally; no live upload |
 | Auto permissions | Cloud classifier restored; local rules and confirmation on failure retained | Classifier client, permission facade, and sandbox tests |
@@ -182,13 +182,7 @@ Automatic LLM error reports use an allowlist before buffering and encryption. Sc
 
 The separate TUI incident reporter uses schema 2. It retains a fixed event category, phase/severity/impact, handled flag, generated IDs, timestamps, numeric release/Node versions, known platform/architecture, known error names/codes and HTTP status, and up to 20 fixed breadcrumb names with an optional phase. It excludes free-form error text, stack/cause/aggregate contents, caller context, component/operation labels, terminal/OS strings, and original code locations. Fingerprints are derived only from the minimized category and error facts, so grouping is intentionally coarser. Legacy schema-1 pending and sent files are deleted best-effort at startup and never uploaded; current-schema pending files are projected again before encryption and replaced with their minimized copy before being marked sent. The gateway wire encryption format is unchanged. Production ingestion of schema 2 has not been tested.
 
-Feedback review describes the actual upload: user-reviewed feedback text, bounded client/platform and optional session metadata, and diagnostic **counts**, not original session files. Recognized credentials are redacted from the reviewed description; arbitrary personal text in that description is still sent, so review it before submitting.
-
-Every collected diagnostic artifact, including prioritized session artifacts, is projected through `diagnostic-counts-v1`. The ZIP contains counts of known roles, states, error types/codes, log levels and HTTP statuses, plus parsing/omission indicators. JSON/JSONL can contribute these facts; malformed data, binary attachments and free-text logs contribute no raw content. Source filenames and paths are replaced with opaque archive names; only a small fixed list of artifact kinds (such as `messages.jsonl`) is retained. Unrelated session manifests are not collected. Local source files are unchanged.
-
-There is no raw-attachment upload option in this flow. Prompts, conversation text, tool arguments/results, command output, workspace excerpts, raw errors and unknown fields are excluded even if they contain no recognizable credential pattern. This intentionally reduces diagnostic detail: reproducing an exact response or inspecting an original stack is not possible from these uploads. Future raw attachments would require a separate, explicit review and consent surface describing their contents and scope.
-
-The regression tests use temporary synthetic data and intercepted HTTP only. They decrypt the final automatic-report request as a receiver would, and unzip the actual feedback PUT body after real session-report collection. They do not validate production ingestion of the new schemas, retention policies, live services, other telemetry paths or other platforms.
+The regression tests use temporary synthetic data and intercepted HTTP only. They decrypt the final automatic-report request as a receiver would. They do not validate production ingestion of the new schemas, retention policies, live services, other telemetry paths or other platforms.
 
 
 ## Launch-scoped system prompt overrides
@@ -306,15 +300,13 @@ remain hidden from `/sessions` and `/resume`.
 When a side-conversation model request fails and can be retried, run `/retry`
 in the side view to resend the side conversation's last message without
 returning to the main view.
-`/doctor` and `/feedback` also work in the side view, so a failed side response
-can be diagnosed or reported without leaving it. `/quit` stays unavailable there.
+`/doctor` also works in the side view, so a failed side response can be
+diagnosed without leaving it. `/quit` stays unavailable there.
 
 Creation and activation failures record a bounded, redacted cause chain in the
-local `session.side.failed` diagnostic event. Feedback uploads still apply the
-existing diagnostic-counts projection; raw error text, stacks and session IDs
-are not added to the uploaded ZIP. Offline tests cover persisted tool histories,
-archives, concurrent parent output, side-session cleanup and local diagnostics;
-this does not establish native-terminal or live-model acceptance.
+local `session.side.failed` diagnostic event. Offline tests cover persisted tool
+histories, archives, concurrent parent output, side-session cleanup and local
+diagnostics; this does not establish native-terminal or live-model acceptance.
 
 ## Select a plugin for a message
 

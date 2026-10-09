@@ -21,7 +21,6 @@ import { statSync } from 'node:fs';
 import type { TuiTransportAttachment } from '../types/invocation.js';
 import { TuiRunProjection } from './state/run-projection.js';
 import { createTuiState, TuiEffectRunner, TuiStateStore } from './state/index.js';
-import { FeedbackFlow as Feedback } from './controller/product/feedback-flow.js';
 import { TranscriptStore } from './transcript/store.js';
 import { TranscriptVisibilityProjection } from './transcript/presentation/visibility.js';
 import { createLocalTranscriptAppender } from './transcript/local-appender.js';
@@ -309,15 +308,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     isStopped: () => stopped,
     hasLiveRun,
   });
-  const feedbackFlow = new Feedback(
-    options.runtime,
-    controller,
-    appendLocalCell,
-    (panel) => interactionSurface.show(panel),
-    (panel) => interactionSurface.close(panel),
-    requestInteractionRender,
-    () => resolveTuiInteractionMaxRows(terminal.rows),
-  );
   activeRunFlow = new TuiActiveRunFlow({
     runtime: options.runtime,
     controller,
@@ -589,7 +579,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     controller,
     activeRunFlow,
     featureFlow,
-    feedbackFlow,
     sessionMutationFlow,
     goalFlow,
     planModeFlow,
@@ -844,7 +833,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     activeRunFlow.stop();
     permissionModeFlow.stop();
     planModeFlow.stop();
-    feedbackFlow.stop();
     themeController.dispose();
     activity.dispose();
     widgets.imagePreview.dispose();

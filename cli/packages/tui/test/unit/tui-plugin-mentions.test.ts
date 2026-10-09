@@ -345,7 +345,6 @@ describe('Plugin mentions from Composer to durable text', () => {
         waitForWelcomeModelSelection: async () => undefined,
         applyPendingModelSelection: async () => undefined,
       } as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: { handleCommand: async () => false, hasPending: () => false } as never,
       sessionFlow: {} as never,

@@ -52,8 +52,6 @@ import {
   writeVerifiedCliAccountIdentity,
 } from '../auth/identity-storage.js';
 import { resolveMcodeDataEnvironment } from '../auth/environment.js';
-import { uploadTuiFeedbackDiagnostics } from './feedback/diagnostic-upload.js';
-import { TuiFeedbackService } from './feedback/service.js';
 import {
   createTuiBrowserProvider,
   disposeTuiBrowserSessionStorage,
@@ -514,28 +512,6 @@ export async function createTuiRuntime(
             ? { email: identity.userEmail, name: identity.userName ?? identity.subUserName }
             : undefined;
         },
-        feedback: new TuiFeedbackService({
-          appVersion: options.version,
-          authContextGetter,
-          authContextResolver: publicAuthContextResolver,
-          ...(dependencies.fetchImpl ? { fetchImpl: dependencies.fetchImpl } : {}),
-          region: () => authScope.region,
-          buildEnv: () => authScope.buildEnv,
-          diagnosticLogUploader: (input) =>
-            uploadTuiFeedbackDiagnostics(input, {
-              dataDir: options.dataDir,
-              appVersion: options.version,
-              ...(dependencies.fetchImpl ? { fetchImpl: dependencies.fetchImpl } : {}),
-              region: () => authScope.region,
-              buildEnv: () => authScope.buildEnv,
-              flushLogs: async () => {
-                await Promise.allSettled([observability.flush(), logging.flush()]);
-              },
-              collectSessionReport: (sessionId) => {
-                return host.cliService.collectSessionReport(sessionId);
-              },
-            }),
-        }),
       }),
       ...(browserProvider ? { browserProvider } : {}),
       logDirectory: logging.logDirectory,

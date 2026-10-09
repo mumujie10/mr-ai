@@ -59,7 +59,6 @@ function createReadinessCommandFlow(options: {
       copyLastAssistantReply: options.copyLastAssistantReply ?? vi.fn(),
       exportCurrentTranscript: options.exportCurrentTranscript ?? vi.fn(),
     } as never,
-    feedbackFlow: {} as never,
     updateFlow: {} as never,
     interactionFlow: {
       handleCommand: vi.fn(async () => false),
@@ -198,7 +197,6 @@ describe("TuiCommandFlow", () => {
       } as never,
       activeRunFlow: {} as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -438,7 +436,6 @@ describe("TuiCommandFlow", () => {
         } as never,
         activeRunFlow: {} as never,
         featureFlow: createFeatureFlowMock() as never,
-        feedbackFlow: {} as never,
         updateFlow: {} as never,
         interactionFlow: {
           handleCommand: vi.fn(async () => false),
@@ -535,7 +532,6 @@ describe("TuiCommandFlow", () => {
       } as never,
       activeRunFlow: {} as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -607,7 +603,6 @@ describe("TuiCommandFlow", () => {
       } as never,
       activeRunFlow: {} as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       goalFlow: { execute: executeGoal },
       interactionFlow: {
@@ -677,7 +672,6 @@ describe("TuiCommandFlow", () => {
       } as never,
       activeRunFlow: {} as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -750,7 +744,6 @@ describe("TuiCommandFlow", () => {
       } as never,
       activeRunFlow: {} as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -826,7 +819,6 @@ describe("TuiCommandFlow", () => {
       } as never,
       activeRunFlow: {} as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -931,7 +923,6 @@ describe("TuiCommandFlow", () => {
       controller: controller as never,
       activeRunFlow: {} as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -1033,7 +1024,6 @@ describe("TuiCommandFlow", () => {
       controller: controller as never,
       activeRunFlow: activeRunFlow as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -1125,7 +1115,6 @@ describe("TuiCommandFlow", () => {
         controller: controller as never,
         activeRunFlow: {} as never,
         featureFlow: createFeatureFlowMock() as never,
-        feedbackFlow: {} as never,
         updateFlow: {} as never,
         interactionFlow: {
           handleCommand: vi.fn(async () => false),
@@ -1209,7 +1198,6 @@ describe("TuiCommandFlow", () => {
       } as never,
       activeRunFlow: {} as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -1292,7 +1280,6 @@ describe("TuiCommandFlow", () => {
       controller: controller as never,
       activeRunFlow: {} as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -1352,7 +1339,6 @@ describe("TuiCommandFlow", () => {
       controller: controller as never,
       activeRunFlow: {} as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -1416,7 +1402,6 @@ describe("TuiCommandFlow", () => {
         } as never,
         activeRunFlow: {} as never,
         featureFlow: createFeatureFlowMock() as never,
-        feedbackFlow: {} as never,
         updateFlow: {} as never,
         interactionFlow: {
           handleCommand: vi.fn(async () => false),
@@ -1479,7 +1464,6 @@ describe("TuiCommandFlow", () => {
       controller: controller as never,
       activeRunFlow: {} as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -1541,7 +1525,6 @@ describe("TuiCommandFlow", () => {
     );
     const append = vi.fn();
     const queueFlow = { enqueue: vi.fn(async () => undefined) };
-    const feedbackFlow = { show: vi.fn(async () => undefined) };
     const activeRunFlow = {
       handle: vi.fn(async () => {
         throw loginError;
@@ -1575,7 +1558,6 @@ describe("TuiCommandFlow", () => {
       controller: controller as never,
       activeRunFlow: activeRunFlow as never,
       featureFlow: featureFlow as never,
-      feedbackFlow: feedbackFlow as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -1629,7 +1611,6 @@ describe("TuiCommandFlow", () => {
       controller: controller as never,
       activeRunFlow: activeRunFlow as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),
@@ -1677,7 +1658,6 @@ describe("TuiCommandFlow", () => {
       } as never,
       activeRunFlow: activeRunFlow as never,
       featureFlow: createFeatureFlowMock() as never,
-      feedbackFlow: {} as never,
       updateFlow: {} as never,
       interactionFlow: {
         handleCommand: vi.fn(async () => false),

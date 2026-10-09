@@ -17,27 +17,30 @@ describe("MiniMax Code TUI command catalog in side conversations", () => {
     sideMode: true,
   };
 
-  it("lets a side conversation run diagnostics and send feedback in place", async () => {
+  it("lets a side conversation run diagnostics in place", async () => {
     const doctorHandler = vi.fn();
-    const feedbackHandler = vi.fn();
     const quitHandler = vi.fn();
     const catalog = createTuiCommandCatalog(
       [],
-      { doctor: doctorHandler, feedback: feedbackHandler, quit: quitHandler },
+      { doctor: doctorHandler, quit: quitHandler },
       () => sideContext,
     );
 
     await expect(catalog.dispatch("/doctor")).resolves.toMatchObject({ status: "handled" });
-    await expect(catalog.dispatch("/feedback side reply failed")).resolves.toMatchObject({
-      status: "handled",
-    });
     expect(doctorHandler).toHaveBeenCalledOnce();
-    expect(feedbackHandler).toHaveBeenCalledOnce();
 
     // /quit stays blocked: leaving from the side view would abort only the
     // side Turn and skip side cleanup, unlike quitting from the main view.
     await expect(catalog.dispatch("/quit")).resolves.toMatchObject({ status: "unavailable" });
     expect(quitHandler).not.toHaveBeenCalled();
+  });
+
+  it("leaves /feedback out of the catalog now that feedback upload is gone", async () => {
+    const catalog = createTuiCommandCatalog([], {}, () => sideContext);
+
+    await expect(catalog.dispatch("/feedback side reply failed")).resolves.toMatchObject({
+      status: "unrecognized",
+    });
   });
 
   it("keeps commands that mutate Sessions unavailable in a side conversation", async () => {

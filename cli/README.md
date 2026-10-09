@@ -252,7 +252,7 @@ A profile uses `~/.minimax-<profile>`; `MINIMAX_DATA_DIR` or `MAVIS_DATA_DIR` ca
 | **Keep work moving** | Resume sessions, plan tasks, use subagents, and extend the agent with official, local, or GitHub plugins and built-in skills. |
 | **Connect your workflow** | Run scripted tasks with the headless CLI, or connect compatible editors and clients through ACP. |
 
-Account features, updates, feedback, and diagnostics are also included. Managed tools require network access and the relevant authorization. See [capabilities and service boundaries](docs/tui-capabilities.md) for details.
+Account features and bounded diagnostics are also included. This fork has no self-updater and sends no feedback report. Managed tools require network access and the relevant authorization. See [capabilities and service boundaries](docs/tui-capabilities.md) for details.
 
 
 ## Build from source

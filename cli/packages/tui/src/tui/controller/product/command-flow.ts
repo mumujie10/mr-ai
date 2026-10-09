@@ -20,7 +20,6 @@ import type { TuiRunProjection } from '../../state/run-projection.js';
 import type { TuiActiveRunFlow } from '../run/active-run-flow.js';
 import type { TuiChatController } from '../chat-controller.js';
 import type { TuiFeatureFlow } from './feature-flow.js';
-import type { FeedbackFlow } from './feedback-flow.js';
 import type { TuiSessionMutationFlow } from './session-mutation-flow.js';
 import type { TuiInteractionFlow } from '../interaction/interaction-flow.js';
 import type { TuiQueueFlow } from '../run/queue-flow.js';
@@ -62,7 +61,6 @@ export interface TuiCommandFlowOptions {
   readonly controller: TuiChatController;
   readonly activeRunFlow: TuiActiveRunFlow;
   readonly featureFlow: TuiFeatureFlow;
-  readonly feedbackFlow: FeedbackFlow;
   readonly sessionMutationFlow: Pick<
     TuiSessionMutationFlow,
     | 'startHistory'
@@ -1266,7 +1264,6 @@ export class TuiCommandFlow {
           return 'retained';
         }
       },
-      feedback: async ({ args }) => this.options.feedbackFlow.show(args),
       settings: () => this.showSettingsPicker(),
       statusline: () => this.options.showStatusLine?.(),
       theme: () => this.options.showTheme?.(),

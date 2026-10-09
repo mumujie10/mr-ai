@@ -73,12 +73,6 @@ const TUI_TIP_DEFINITIONS: readonly TuiTipDefinition[] = [
     text: 'Tip: /skills lists available Skills',
     shortText: 'Tip: /skills lists Skills',
   },
-  {
-    id: 'feedback',
-    command: 'feedback',
-    text: 'Tip: /feedback previews redacted feedback before upload',
-    shortText: 'Tip: /feedback previews reports',
-  },
 ];
 
 export function buildTuiTips(): readonly TuiTip[] {
