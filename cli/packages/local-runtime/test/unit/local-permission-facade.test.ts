@@ -20,10 +20,8 @@
  *     directory-wide searches require approval, including aliases.
  *   - rewrittenInput (rm → mavis-trash) survives the ask branch
  *   - localeHint is derived from inline latestUserMessages
- *   - cloud-gateway timeout / block / confirm route to ask-user with
- *     formatted reason prefixes (Auto classifier / Blocked / timed out)
- *   - cloud-gateway allow rewrites to allow with rewrittenInput preserved
- *   - cloud-gateway throw is caught and routed to ask-user
+ *   - auto mode is local-only: inconclusive local decisions ask, the
+ *     safety wall stays denied, and sandbox self-path reads still allow
  *   - acceptEdits seed adds 3 global rules; idempotent
  */
 
@@ -32,16 +30,9 @@ import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
-  configurePermissionHost,
   readWindowsTrashExecution,
-  resetPermissionHostForTesting,
 } from '@mavis/permission';
 import { describe, expect, it, vi } from 'vitest';
-import type {
-  CloudClassifyRequest,
-  CloudClassifyVerdict,
-  CloudGatewayClient,
-} from '@mavis/permission';
 
 import {
   LocalPermissionFacade,
@@ -61,7 +52,6 @@ function freshFacade(
   opts: {
     permissionMode?: LocalRuntimeConfig['permissionMode'];
     policyOwner?: 'engine' | 'core';
-    cloudGateway?: CloudGatewayClient;
     platform?: NodeJS.Platform;
     shellFamily?: 'cmd' | 'powershell';
     workspaceDir?: string;
@@ -98,7 +88,6 @@ function freshFacade(
     getSessionById: async () => undefined,
     getLocalAgent: async () =>
       opts.workspaceDir ? { defaultWorkspaceDir: opts.workspaceDir } : undefined,
-    cloudGateway: opts.cloudGateway,
     ...(opts.platform ? { platform: opts.platform } : {}),
     ...(opts.shellFamily ? { shellFamily: opts.shellFamily } : {}),
     ...(opts.platform === 'win32' ? { trashRuntimeProbe: () => true } : {}),
@@ -1715,13 +1704,8 @@ describe('LocalPermissionFacade', () => {
         it.each(['read', 'grep', 'glob', 'list'])(
           'allows %s for global, builtin and active-agent skill resources',
           async (toolName) => {
-            const classify = vi.fn(async (): Promise<CloudClassifyVerdict> => ({
-              kind: 'allow',
-              reasonLocalized: 'ok',
-            }));
             const { facade, dataDir } = freshFacade({
               permissionMode,
-              cloudGateway: { classify },
               dataDirParent: homedir(),
             });
             try {
@@ -1741,7 +1725,6 @@ describe('LocalPermissionFacade', () => {
                 });
                 expect(result.behavior).toBe('allow');
               }
-              expect(classify).not.toHaveBeenCalled();
             } finally {
               cleanup(dataDir);
             }
@@ -1753,13 +1736,8 @@ describe('LocalPermissionFacade', () => {
     it.each(['default', 'auto'] as const)(
       '%s mode keeps other agents and runtime state outside skill read access',
       async (permissionMode) => {
-        const classify = vi.fn(async (): Promise<CloudClassifyVerdict> => ({
-          kind: 'allow',
-          reasonLocalized: 'ok',
-        }));
         const { facade, dataDir } = freshFacade({
           permissionMode,
-          cloudGateway: { classify },
           dataDirParent: homedir(),
         });
         try {
@@ -1779,7 +1757,6 @@ describe('LocalPermissionFacade', () => {
             });
             expect(result.behavior).toBe('ask');
           }
-          expect(classify).not.toHaveBeenCalled();
         } finally {
           cleanup(dataDir);
         }
@@ -1817,22 +1794,7 @@ describe('LocalPermissionFacade', () => {
     it.each(['read', 'grep', 'glob', 'list'])(
       'keeps private runtime %s requests out of automatic approval',
       async (toolName) => {
-        const classify = vi.fn(async (): Promise<CloudClassifyVerdict> => ({
-          kind: 'allow',
-          reasonLocalized: 'ok',
-        }));
-        const { facade, dataDir } = freshFacade({
-          permissionMode: 'auto',
-          cloudGateway: { classify },
-        });
-        configurePermissionHost({
-          runtimeConfigProvider: {
-            getConfig: () => ({}),
-            getRuntimeRegion: () => 'cn',
-            getRuntimeBuildEnv: () => 'prod',
-            isManagedRuntime: () => true,
-          },
-        });
+        const { facade, dataDir } = freshFacade({ permissionMode: 'auto' });
         try {
           const result = await facade.checkPermission({
             toolName,
@@ -1842,10 +1804,8 @@ describe('LocalPermissionFacade', () => {
             },
           });
           expect(result.behavior).toBe('ask');
-          expect(classify).not.toHaveBeenCalled();
           expect(result.hookAutoApprovalEligible).toBeUndefined();
         } finally {
-          resetPermissionHostForTesting();
           cleanup(dataDir);
         }
       },
@@ -1993,25 +1953,16 @@ describe('LocalPermissionFacade', () => {
       }
     });
 
-    it('auto mode: read of a SKILL.md inside dataDir auto-allows without cloud call', async () => {
-      const calls: Array<unknown> = [];
-      const gw: CloudGatewayClient = {
-        async classify(req): Promise<CloudClassifyVerdict> {
-          calls.push(req);
-          return { kind: 'allow', reasonLocalized: 'ok' };
-        },
-      };
-      const { facade, dataDir } = freshFacade({ permissionMode: 'auto', cloudGateway: gw });
+    it('auto mode: read of a SKILL.md inside dataDir auto-allows without any classifier call', async () => {
+      const { facade, dataDir } = freshFacade({ permissionMode: 'auto', dataDirParent: homedir() });
       try {
         const r = await facade.checkPermission({
           toolName: 'read',
           input: { path: path.join(dataDir, 'skills', 'gif', 'SKILL.md') },
         });
-        // sandbox allow short-circuits BEFORE the cloud-gateway branch:
-        // we want the SKILL.md read to be free without paying a network
-        // round-trip per call.
+        // The sandbox allow short-circuits before any classifier could run:
+        // the read must be free without a network round-trip per call.
         expect(r.behavior).toBe('allow');
-        expect(calls.length).toBe(0);
       } finally {
         cleanup(dataDir);
       }
@@ -2265,31 +2216,42 @@ describe('LocalPermissionFacade', () => {
     });
   });
 
-  describe('cloud gateway (auto mode)', () => {
-    // We exercise the cloud-gateway branch by forcing shouldUseCloudClassify
-    // via an injected gateway and a managed-runtime fixture. Since
-    // shouldUseCloudClassify() reads runtime host state and we cannot easily
-    // enable it from a unit test without poking module internals, we instead
-    // verify the facade fall-through path (skipAutoClassifier OR no managed
-    // runtime → ask without calling the gateway).
-    it('auto mode without managed-runtime token falls through to ask without calling gateway', async () => {
-      const calls: CloudClassifyRequest[] = [];
-      const gw: CloudGatewayClient = {
-        async classify(req): Promise<CloudClassifyVerdict> {
-          calls.push(req);
-          return { kind: 'allow', reasonLocalized: 'ok' };
-        },
-      };
-      const { facade, dataDir } = freshFacade({ permissionMode: 'auto', cloudGateway: gw });
+  describe('auto mode is local-only (no cloud classifier in this fork)', () => {
+    it('asks when the local rules cannot settle the decision', async () => {
+      const { facade, dataDir } = freshFacade({ permissionMode: 'auto' });
       try {
         const r = await facade.checkPermission({
           toolName: 'bash',
           input: { command: 'npm publish' },
         });
-        // No managed token in unit test → shouldUseCloudClassify() = false
-        // → gateway not called.
-        expect(calls.length).toBe(0);
         expect(r.behavior).toBe('ask');
+      } finally {
+        cleanup(dataDir);
+      }
+    });
+
+    it('keeps the safety wall: `rm -rf /` stays denied in auto mode', async () => {
+      const { facade, dataDir } = freshFacade({ permissionMode: 'auto' });
+      try {
+        const r = await facade.checkPermission({
+          toolName: 'bash',
+          input: { command: 'rm -rf /' },
+        });
+        expect(r.behavior).toBe('deny');
+        expect(r.denySource).toBe('safety-immune');
+      } finally {
+        cleanup(dataDir);
+      }
+    });
+
+    it('still allows sandbox self-path reads without asking', async () => {
+      const { facade, dataDir } = freshFacade({ permissionMode: 'auto', dataDirParent: homedir() });
+      try {
+        const r = await facade.checkPermission({
+          toolName: 'read',
+          input: { path: path.join(dataDir, 'skills', 'gif', 'SKILL.md') },
+        });
+        expect(r.behavior).toBe('allow');
       } finally {
         cleanup(dataDir);
       }

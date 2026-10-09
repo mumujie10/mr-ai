@@ -1,14 +1,9 @@
 /**
- * Permission classifier runtime knobs. Extracted from `config.ts` to keep
- * the main schema file under the 2_000-line guard.
+ * Permission runtime knobs. Extracted from `config.ts` to keep the main
+ * schema file under the 2_000-line guard.
  *
- * `classifierTimeoutMs` is the single base for three coupled timeouts
- * preserving the invariant `plugin fetch > daemon outer race ≥ daemon LLM
- * SDK`:
- *   - daemon Stage 2 LLM SDK + outer race    = base
- *   - legacy local-runtime plugin permission-check fetch  = base + 5_000ms
- *
- * Plugin fetches via `GET /api/config` (mirrors `skill-evolve-trigger`).
+ * The former `classifierTimeoutMs` knob is gone with the cloud classifier:
+ * this fork settles permission decisions entirely with local rules.
  */
 
 export type PermissionPolicyOwner = 'engine' | 'core';
@@ -29,13 +24,6 @@ export interface PermissionConfig {
   storageWriteVersion: PermissionStorageWriteVersion;
 
   /**
-   * Base timeout (ms) for the auto-mode permission classifier. Default
-   * 60_000 calibrated for thinking-class LLMs. Hard floor 5_000ms — lower
-   * values silently fall back to the default. No ceiling.
-   */
-  classifierTimeoutMs: number;
-
-  /**
    * Whether permission checks may create user-confirmation requests.
    * Standard builds default to true. Headless builds may default this to
    * false so an ASK decision fails closed instead of waiting forever.
@@ -46,14 +34,11 @@ export interface PermissionConfig {
 export const PERMISSION_CONFIG_DEFAULTS: PermissionConfig = {
   policyOwner: 'core',
   storageWriteVersion: 2,
-  classifierTimeoutMs: 60_000,
   userConfirmationEnabled: true,
 };
 
 /**
- * Parse the `permission:` block from raw config. Values below the
- * 5_000ms hard floor silently fall back to the default rather than
- * crippling the gate.
+ * Parse the `permission:` block from raw config.
  */
 export function parsePermissionConfig(
   raw: Record<string, unknown>,
@@ -74,14 +59,9 @@ export function parsePermissionConfig(
     obj.storageWriteVersion === 1 || obj.storageWriteVersion === 2
       ? obj.storageWriteVersion
       : defaults.storageWriteVersion;
-  const t = obj.classifierTimeoutMs;
-  const classifierTimeoutMs =
-    typeof t === 'number' && Number.isFinite(t) && t >= 5_000
-      ? Math.floor(t)
-      : defaults.classifierTimeoutMs;
   const userConfirmationEnabled =
     typeof obj.userConfirmationEnabled === 'boolean'
       ? obj.userConfirmationEnabled
       : defaults.userConfirmationEnabled;
-  return { policyOwner, storageWriteVersion, classifierTimeoutMs, userConfirmationEnabled };
+  return { policyOwner, storageWriteVersion, userConfirmationEnabled };
 }

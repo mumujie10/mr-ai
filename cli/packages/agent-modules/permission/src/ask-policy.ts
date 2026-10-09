@@ -4,8 +4,7 @@
  *   PermissionMode (UI / config wire)  ──modeToAskPolicy──▶  AskForApproval
  *
  * `AskForApproval` is the internal policy the facade branches on; `ProposedRule`
- * is the optional rule suggestion a decision can carry (engine-derived, or
- * reserved on a cloud-gateway `allow` verdict).
+ * is the optional rule suggestion a decision can carry (engine-derived).
  */
 
 import type { PermissionMode, PermissionRule, PermissionRuleSource } from './types.js';
@@ -19,7 +18,9 @@ import type { PermissionMode, PermissionRule, PermissionRuleSource } from './typ
  *
  * Mapping to the UI mode selector:
  * - 'on-request'     → Ask (PermissionMode 'default')
- * - 'on-request-llm' → Smart approval (PermissionMode 'auto', cloud LLM in the loop)
+ * - 'on-request-llm' → Auto (PermissionMode 'auto'). The tag predates the fork:
+ *                      there is no cloud classifier any more, so an
+ *                      inconclusive local decision asks.
  * - 'never'          → Always allow (PermissionMode 'bypassPermissions' / 'off')
  * - 'deny'           → Do not ask; deny unless preauthorized (PermissionMode 'dontAsk')
  */
@@ -59,8 +60,7 @@ export function modeToAskPolicy(mode: PermissionMode): AskForApproval {
 
 /**
  * A rule suggestion attached to a decision, surfaced to the UI as the
- * "always allow" pre-filled value, or reserved on a cloud-gateway `allow`
- * verdict (`CloudClassifyVerdict.suggestedRule`).
+ * "always allow" pre-filled value.
  *
  * A plain (toolName, ruleContent, scope) triple compatible with the rule store
  * schema.
@@ -72,9 +72,9 @@ export interface ProposedRule {
   /** Suggested persistence scope; UI may override before commit. */
   defaultScope: 'session' | 'global';
   /**
-   * Provenance — distinguishes engine-derived suggestions (from the tool call)
-   * from cloud-gateway suggestions (an LLM `allow` verdict carrying a rule
-   * recommendation).
+   * Provenance — engine-derived suggestions come from the tool call. The
+   * `'cloud-gateway'` member is retained for wire/type compatibility only; no
+   * verdict produces it in this fork.
    */
   source: 'engine' | 'cloud-gateway';
 }

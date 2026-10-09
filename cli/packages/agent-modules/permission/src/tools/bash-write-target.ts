@@ -283,7 +283,7 @@ export function commandHasIoRedirect(command: string, ctx?: BashCheckContext): b
       // safe set as a conservative read-safety proxy: only `/dev/null`-class
       // discard sinks (and FD merges) are provably safe to read without the
       // resolver. Everything else fails closed and bails fast-allow so the
-      // command routes to the LLM gate / per-intent ASK instead.
+      // command routes to a per-intent ASK instead.
       const hasPathPermissionContext =
         ctx?.workingDirectory !== undefined ||
         ctx?.homeDir !== undefined ||
@@ -588,8 +588,8 @@ export function evaluateWriteTarget(
 
 /**
  * True when the command clearly writes to a target outside the selected
- * workspace / approved write paths. Used by the bash checker to bypass the
- * auto-mode LLM gate and show the user a permission prompt instead.
+ * workspace / approved write paths. Used by the bash checker to skip the
+ * auto-mode policy and show the user a permission prompt instead.
  */
 export function commandWritesOutsideAuthorizedTarget(
   command: string,

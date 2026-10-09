@@ -36,6 +36,15 @@ export const retiredSourceRoots = [
   "packages/local-runtime/src/error-reporting/",
   "packages/tui/src/observability/incident-reporter.ts",
   "packages/config/src/telemetry-policy.ts",
+  // Permission decisions stay on the machine: the cloud classifier client, its
+  // gateway contract, the HTTP transport, the test double and the conversation
+  // renderer that fed its payload are deleted. `auto` mode keeps its name but
+  // asks whenever local rules cannot settle the decision.
+  "packages/agent-modules/permission/src/classifier/cloud-classify-client.ts",
+  "packages/agent-modules/permission/src/cloud-gateway.ts",
+  "packages/agent-modules/permission/src/http-cloud-gateway-client.ts",
+  "packages/agent-modules/permission/src/in-memory-cloud-gateway-client.ts",
+  "packages/agent-modules/permission/src/conversation-renderer.ts",
 ];
 
 // May exist as public source, but must never be reachable from the standalone

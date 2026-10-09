@@ -674,7 +674,7 @@ function allSubcommandsMatchUserAllowRule(command: string, bashRules: Permission
  *     commands return `ask` so the user is asked to confirm.
  *   - `auto`: YOLO mode. Ambiguous / unclassified commands return
  *     `undecided`, signalling the caller to
- *     fall through to the cloud LLM gate.
+ *     fall through to a user ask.
  *   - `bypass`: bypass-permissions mode. Common-layer gates (user deny,
  *     user ask, HARD final-deny) still fire; everything else is allowed.
  *     The HARD sensitive-read gate is intentionally skipped — bypass is
@@ -689,8 +689,8 @@ export type EvaluationMode = 'default' | 'auto' | 'bypass';
  *   - `allow`: command is allowed (final).
  *   - `ask`: command requires user confirmation (final, both default + auto).
  *   - `deny`: command is blocked (final).
- *   - `undecided`: only emitted in `auto` mode. The caller (the
- *     cloud LLM gate) treats this as "fall through to the cloud LLM gate".
+ *   - `undecided`: only emitted in `auto` mode. The caller treats this as
+ *     "fall through to a user ask".
  *     `checkBashPermission` (default mode) normalises `undecided` → `ask`.
  *
  * `reason` mirrors {@link PermissionDecision.reason} so callers can
@@ -713,12 +713,12 @@ export interface BashEvaluationResult {
  *     6. SUBCOMMAND_DANGEROUS → ask (default) / undecided (auto → LLM)
  *     6.5 source-local-allow  → allow when target literal path is in
  *                                temp / workspace / writtenFiles
- *     7. SOFT pre-scan        → ask (default) / undecided (auto → LLM)
+ *     7. SOFT pre-scan        → ask (default) / undecided (auto → ask)
  *     8. rm rewrite           → allow (rewrites to mavis-trash even with
  *                                $() / backticks / brace expansion — trash
  *                                is recoverable, nothing is destroyed)
  *     9. fast-allow first word → allow
- *   TAIL: default → ask;  auto → undecided (→ cloud LLM gate)
+ *   TAIL: default → ask;  auto → undecided (→ ask)
  *
  * Whole-command pre-checks (DESTRUCTIVE_STANDALONE_COMMANDS, HARD final-deny,
  * SOFT pipe-to-shell) run BEFORE per-subcommand evaluation because they
@@ -857,7 +857,7 @@ export function evaluateBashStatic(
   // command so:
   //   - default mode prompts the user with an accurate "pipe to shell"
   //     reason (instead of generic "no matching rule")
-  //   - auto mode routes the same shape through the cloud LLM gate
+  //   - auto mode routes the same shape to a user ask
   //
   // Local-script exception: when the matched shape is `<sep> bash <script>`
   // (no pipe) AND `<script>` is an existing file inside a temp directory,
@@ -975,7 +975,7 @@ export function evaluateBashStatic(
   // GNU/POSIX convention: any binary's `--help` / `-h` / `--version` / `-V`
   // / `-v` / `-?` / `help` subcommand prints info to stdout and exits with
   // no side effects. Routing every unknown-first-word help/version request
-  // through the cloud LLM gate burns tokens on a class of commands that have no
+  // to a user ask wastes attention on a class of commands that have no
   // legitimate destructive interpretation.
   //
   // Conditions (whole command must satisfy all):
@@ -1379,7 +1379,7 @@ function evaluateSingleSubcommand(
   // setup script we're sourcing and we can statically resolve it. Without
   // this step the SOFT pre-scan (step 7) would catch any `source <path>`
   // via `bashCommandIsSafe`'s `^\s*source\s+` pattern and route to
-  // `ask` / `undecided`, forcing a cloud LLM round-trip in auto mode
+  // `ask` / `undecided`, forcing a user prompt in auto mode
   // for an unambiguously allow-able shape.
   //
   // Dynamic-shape sources (`source $VAR`, `source $(cat /tmp/x)`,

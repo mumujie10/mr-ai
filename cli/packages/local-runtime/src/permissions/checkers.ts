@@ -18,9 +18,9 @@ export type LocalPermissionCheckerBehavior = 'deny' | 'ask';
  *     toggle should make these reachable.
  *
  *   - `policy` — sensitive credential paths (`~/.ssh`, `~/.aws`, `*.pem`, …).
- *     These route to the LLM gate / user confirmation, not a flat
+ *     These route to user confirmation, not a flat
  *     deny. The facade demotes a `policy` deny to ask under default/auto
- *     so the cloud gateway or the user can clear it; under bypass we let
+ *     so the user can clear it; under bypass we let
  *     the engine's own allow-lists take over.
  *
  * Asks ride this same channel — they were never bypass-immune.
@@ -720,7 +720,7 @@ export function evaluateLocalPermissionCheck(
  *
  * Sensitive credential paths (`~/.ssh`, `*.pem`, …) are NOT here — they
  * live in `buildLocalPolicyDenyReason` so bypass mode can let the
- * engine's allow-list / cloud gateway decide.
+ * engine's allow-list decide.
  */
 export function buildLocalBypassImmuneDenyReason(
   toolName: string,
@@ -749,13 +749,13 @@ export function buildLocalBypassImmuneDenyReason(
 
 /**
  * Policy-grade deny — sensitive credential / system-secret paths. The
- * facade demotes this to an ask under default/auto so the LLM gate or the
- * user can authorize. Under bypassPermissions the engine's own fast-allow /
+ * facade demotes this to an ask under default/auto so the user can authorize.
+ * Under bypassPermissions the engine's own fast-allow /
  * rule store takes over (no facade-side block).
  *
  * Mirrors the design intent in
  * `packages/local-runtime/src/permission/tools/bash-fast-allow.ts` — sensitive
- * reads route to the LLM gate, not to a flat deny.
+ * reads route to an ask, not to a flat deny.
  */
 export function buildLocalPolicyDenyReason(
   toolName: string,

@@ -24,6 +24,3 @@ export type {
   HardBlockedCategory,
   SoftRiskCategory,
 } from './dangerous-patterns.js';
-
-// Cloud classify client (endpoint resolution + gating).
-export { shouldUseCloudClassify } from './cloud-classify-client.js';

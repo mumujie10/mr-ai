@@ -99,7 +99,7 @@ For tests, explicitly set `MINIMAX_DATA_DIR` to a temporary directory to keep no
 
 ## macOS terminal shortcuts: Ghostty Option+M
 
-In the composer, `Alt+M` (`Option+M` on macOS) cycles permission modes through Ask, Auto, and Full access. Its binding ID is `composer.cycle-permission`. `Shift+Tab` toggles **Plan mode**, a separate setting. You can also use `/permission` to choose a permission mode and `/permission status` to inspect it without an Option shortcut.
+In the composer, `Alt+M` (`Option+M` on macOS) cycles permission modes through Ask, Auto, and Full access. Its binding ID is `composer.cycle-permission`. `Shift+Tab` toggles **Plan mode**, a separate setting. You can also use `/permission` to choose a permission mode and `/permission status` to inspect it without an Option shortcut. Auto is local-only in this fork: it approves what the built-in rules prove safe and asks otherwise.
 
 If `Option+M` inserts `µ` instead, the terminal is sending text rather than the expected Alt shortcut. MCode preserves literal `µ` as text; it cannot safely infer a permission change from that character. The terminal must forward the modifier, or you can choose another binding.
 

@@ -3,36 +3,13 @@
  * implements and injects via {@link configurePermissionHost}. Mirrors the cron
  * host-port pattern (`cron/host-ports.ts`).
  *
- * Ports: the cloud-classifier managed-auth token getter, the prompt resolver,
- * and the rule store / session / agent / message resolvers.
+ * Ports: the rule store / session / agent / message resolvers.
  */
 
 // ── Service orchestration ports (consumed by the host wiring) ──
 
 import type { ToolPermissionContext, PermissionUpdate } from './types.js';
 import type { AgentMessageProtocol } from '@mavis/agent-core/protocol/agent-message';
-
-// ── Prompt content port ─────────────────────────────────────────────────────
-
-/**
- * Host-owned prompt resolver for permission classifier prompts.
- *
- * agent-core decides when a prompt is needed, but the host owns filesystem or
- * bundle lookup (including `{dataDir}/internal/prompts/*.md` overrides).
- */
-export interface PermissionPromptProvider {
-  resolvePrompt(name: string): string | undefined;
-}
-
-// ── Managed-auth token port (cloud classifier Bearer) ──
-
-/**
- * Returns the managed-login auth token used as the cloud classifier's Bearer
- * credential. Returns undefined when no managed token is available (BYO-key /
- * offline) — the cloud classifier then fail-closes to `confirm`/ask, matching
- * the original daemon behavior.
- */
-export type ManagedAuthTokenGetter = () => string | undefined;
 
 export type { PermissionRequestStore } from './permission-request-store.js';
 export type { PermissionRequestRecord } from './permission-request-store.js';

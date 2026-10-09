@@ -16,9 +16,6 @@
 
 import { randomUUID } from 'node:crypto';
 
-import type { ManagedAuthTokenGetter, PermissionPromptProvider } from './host-ports.js';
-import type { PermissionMode } from './types.js';
-
 // ─── Permission-owned cross-cutting helpers ────────────────────────────
 
 export interface RequestContext {
@@ -177,128 +174,7 @@ export function formatLocalDateTime(ts: number | Date): string {
   return _datetimeHelpers.formatLocalDateTime(ts);
 }
 
-export type MavisRegion = 'cn' | 'en';
-export type MavisBuildEnv = 'test' | 'prod' | 'dev' | 'staging';
-
-export interface PermissionCoreSkillEvolveProposalConfig {
-  enabled: boolean;
-  eligibleAgents?: string[];
-  minMessageCount: number;
-}
-
-export interface PermissionCoreConfig {
-  beta: {
-    autoMemory: boolean;
-    promptOverride?: boolean;
-  };
-  memory: {
-    dailyDigest: {
-      enabled: boolean;
-    };
-  };
-  contextManagement: {
-    disableSystemReminderModels: string[];
-  };
-  skillEvolve: {
-    disableModelPrefixes: string[];
-    proposal: PermissionCoreSkillEvolveProposalConfig;
-  };
-}
-
-/**
- * Config view the permission subsystem reads from the host's runtime config.
- *
- * agent-core stays pure: it declares exactly the fields permission code needs
- * rather than importing the full `@mavis/config` Config (which would violate
- * the agent-core package boundary — agent-core may only depend on protocol /
- * shared). The host (local-runtime / daemon) supplies a config object that
- * structurally satisfies this view; `getRuntimeConfig()` is typed as the narrow
- * `RuntimeCoreConfig`, so we assert to this richer permission-facing view.
- */
-export interface PermissionRuntimeConfig extends PermissionCoreConfig {
-  /** Root data directory. */
-  dataDir: string;
-  /** Agents root directory. */
-  agentsDir: string;
-  /** Active permission mode. */
-  permissionMode: PermissionMode;
-  /** Cloud classifier tuning. */
-  permission: { classifierTimeoutMs: number };
-  /** Beta feature flags read by the permission subsystem. */
-  beta: PermissionCoreConfig['beta'];
-  /** Model provider registry passed to the local LLM client. */
-  provider?: unknown;
-  /** Default model id ("providerID/modelID"). */
-  defaultModel?: string;
-  /** Optional lightweight model id; falls back to `defaultModel`. */
-  defaultLightModel?: string;
-}
-export function getPermissionConfig(): PermissionRuntimeConfig {
-  return _runtimeConfigProvider.getConfig();
-}
-
-export interface PermissionRuntimeConfigProvider {
-  getConfig(): PermissionRuntimeConfig;
-  getRuntimeRegion(): MavisRegion;
-  getRuntimeBuildEnv(): MavisBuildEnv;
-  isManagedRuntime(): boolean;
-}
-
-const fallbackRuntimeConfigProvider: PermissionRuntimeConfigProvider = {
-  getConfig: () => {
-    throw new Error(
-      '[@mavis/permission] No runtimeConfigProvider registered. Hosts must call ' +
-        'configurePermissionHost({ runtimeConfigProvider }) before permission checks run.',
-    );
-  },
-  getRuntimeRegion: () => 'cn',
-  getRuntimeBuildEnv: () => 'prod',
-  isManagedRuntime: () => false,
-};
-
-let _runtimeConfigProvider: PermissionRuntimeConfigProvider = fallbackRuntimeConfigProvider;
-
-export function getRuntimeConfig(): PermissionRuntimeConfig {
-  return _runtimeConfigProvider.getConfig();
-}
-
-export function getRuntimeRegion(): MavisRegion {
-  return _runtimeConfigProvider.getRuntimeRegion();
-}
-
-export function getRuntimeBuildEnv(): MavisBuildEnv {
-  return _runtimeConfigProvider.getRuntimeBuildEnv();
-}
-
-export function isManagedRuntime(): boolean {
-  return _runtimeConfigProvider.isManagedRuntime();
-}
-
-// ─── Permission-specific port slots ──────────────────────────────────────
-
-let _managedAuthTokenGetter: ManagedAuthTokenGetter = () => undefined;
-let _promptProvider: PermissionPromptProvider | undefined;
-
-/**
- * Managed-login token used as the cloud classifier Bearer credential.
- * Returns undefined when unavailable → cloud classifier fail-closes to confirm.
- */
-export function getPermissionManagedAuthToken(): string | undefined {
-  return _managedAuthTokenGetter();
-}
-
-/** Host-resolved permission prompt content. */
-export function getPermissionPrompt(name: string): string | undefined {
-  return _promptProvider?.resolvePrompt(name);
-}
-
 export interface PermissionHostUtils {
-  /** Runtime config and environment provider used by permission decisions. */
-  runtimeConfigProvider?: PermissionRuntimeConfigProvider;
-  /** Managed-login token getter for the cloud classifier Bearer header. */
-  managedAuthTokenGetter?: ManagedAuthTokenGetter;
-  /** Optional prompt resolver for classifier prompts and operator overrides. */
-  promptProvider?: PermissionPromptProvider;
   /** OPTIONAL: host logger for permission internals. */
   logger?: Logger;
   /** OPTIONAL: host metrics reporter for permission internals. */
@@ -313,13 +189,9 @@ export interface PermissionHostUtils {
 
 /**
  * Configure the permission-specific port slots. Hosts call this once at
- * startup. Ports left undefined keep safe fallbacks (no token / no local LLM →
- * cloud-or-confirm).
+ * startup. Ports left undefined keep safe fallbacks.
  */
 export function configurePermissionHost(opts: PermissionHostUtils): void {
-  if (opts.runtimeConfigProvider) _runtimeConfigProvider = opts.runtimeConfigProvider;
-  if (opts.managedAuthTokenGetter) _managedAuthTokenGetter = opts.managedAuthTokenGetter;
-  if (opts.promptProvider) _promptProvider = opts.promptProvider;
   if (opts.logger) _logger = opts.logger;
   if (opts.metricsReporter) _metricsReporter = opts.metricsReporter;
   if (opts.backgroundCtx) _backgroundCtxFactory = opts.backgroundCtx;
@@ -329,9 +201,6 @@ export function configurePermissionHost(opts: PermissionHostUtils): void {
 
 /** Reset permission host registry to fallbacks. Intended for tests. */
 export function resetPermissionHostForTesting(): void {
-  _runtimeConfigProvider = fallbackRuntimeConfigProvider;
-  _managedAuthTokenGetter = () => undefined;
-  _promptProvider = undefined;
   _logger = noopLogger;
   _metricsReporter = noopMetricsReporter;
   _backgroundCtxFactory = () => ({ traceId: randomUUID().replaceAll('-', '') });

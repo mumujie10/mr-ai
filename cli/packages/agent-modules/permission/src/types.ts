@@ -131,7 +131,7 @@ export type ToolCheckResult = {
   reason: PermissionDecision['reason'];
   /** When true, this result cannot be overridden by bypass mode (§4.2). */
   bypassImmune?: boolean;
-  /** When true, auto mode must surface ASK directly instead of consulting the LLM gate. */
+  /** When true, auto mode must surface ASK directly instead of falling through its policy. */
   skipAutoClassifier?: boolean;
   /** Rule content items extracted from tool input (e.g. subcommands, file paths). */
   ruleContents?: string[];

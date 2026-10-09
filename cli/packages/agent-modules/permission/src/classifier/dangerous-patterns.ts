@@ -5,14 +5,14 @@
  *
  *   - HARD_BLOCKED_REGISTRY: deterministic safety boundary registry.
  *     Catastrophic / irreversible / real exfiltration hits are final deny;
- *     sensitive credential/system-secret reads route to the LLM gate and ask
+ *     sensitive credential/system-secret reads require user confirmation and ask
  *     when the LLM cannot allow. `bypassPermissions` never silently overrides
  *     these hits.
  *
- *   - SOFT_RISK_REGISTRY: needs LLM judgement. Suspicious-but-possibly-legit
+ *   - SOFT_RISK_REGISTRY: needs human judgement. Suspicious-but-possibly-legit
  *     patterns (chmod 777, sudo, python -c, container exec, etc.). Hits force
- *     the bash classifier out of the fast-allow path and into the
- *     cloud LLM gate so the LLM can reason about intent / context.
+ *     the bash classifier out of the fast-allow path and into a user ask so
+ *     the person can weigh intent and context.
  *
  * Reference: agent-server desktop_rules_data.py (HARD_BLOCKED_*) and
  * desktop rules SOFT_RISK_PATTERNS plus archon-specific MR design notes.
@@ -658,7 +658,7 @@ const HARD_BLOCKED_BASH_PATTERNS: ReadonlyArray<{
   //     bypass-immune ASK (safety check). User is prompted with
   //     the curl/wget reason and can choose Allow once.
   //   - auto mode    → the classifier's second-check catches the same
-  //     shapes and forces cloud LLM judgement before deciding.
+  //     shapes and forces a user ask before deciding.
   //
   // `encoding-bypass` (`base64 -d | sh`, `source /dev/stdin`) STAYS HARD
   // because it has no comparable legitimate install idiom and is the
@@ -667,8 +667,7 @@ const HARD_BLOCKED_BASH_PATTERNS: ReadonlyArray<{
 
 /**
  * File-system paths that need explicit review before read/write access. Hits
- * route to the LLM gate in auto/bypass modes and fall back to user ask when
- * the LLM is unavailable or does not allow.
+ * require explicit user confirmation in auto/bypass modes.
  *
  * These are matched against a normalized + resolved absolute path; each
  * entry is a { matcher, category, description } where matcher is a regex.
@@ -786,7 +785,7 @@ export function matchHardBlockedFsRead(absPath: string): HardBlockedMatch | null
 }
 
 // ---------------------------------------------------------------------------
-// SOFT_RISK registry — kicks the fast-path into the cloud LLM gate
+// SOFT_RISK registry — kicks the fast-path into a user ask
 // ---------------------------------------------------------------------------
 
 export type SoftRiskCategory =
@@ -801,11 +800,11 @@ export type SoftRiskCategory =
   | 'scheduled-execution'
   // Explicit zero-out / null-write idioms. SOFT so benign log redirection stays fast.
   | 'content-clear'
-  // Common installer shape; the cloud LLM gate needs intent/context instead of blanket deny.
+  // Common installer shape; the user needs intent/context instead of a blanket deny.
   | 'remote-execution'
   // Windows administrative delete via WMI/CIM (process kill, service delete,
   // generic instance removal). Distinct from `wmic shadowcopy delete` which
-  // is HARD ransomware-indicator. The cloud LLM weighs admin intent vs harm.
+  // is HARD ransomware-indicator. The user weighs admin intent vs harm.
   | 'windows-management';
 
 const SOFT_RISK_BASH_PATTERNS: ReadonlyArray<{
@@ -906,7 +905,7 @@ const SOFT_RISK_BASH_PATTERNS: ReadonlyArray<{
   },
   // macOS osascript -e runs inline AppleScript / JXA, which can drive Finder,
   // shell, and System Events with arbitrary effect (e.g. `tell app "Finder" to
-  // delete ...`). Keep SOFT so the cloud LLM can read the script body and judge intent.
+  // delete ...`). Keep SOFT so the user can read the script body and judge intent.
   // Permissive between osascript and -e to allow flag/value pairs like
   // `osascript -l JavaScript -e "..."`.
   {
@@ -987,7 +986,7 @@ const SOFT_RISK_BASH_PATTERNS: ReadonlyArray<{
   // ---- windows-management: WMI/CIM administrative delete.
   // HARD `wmic shadowcopy delete` is matched earlier as ransomware-indicator;
   // the general shape (`wmic process where ... delete`,
-  // `wmic service where ... delete`, etc.) is SOFT so the cloud LLM can weigh
+  // `wmic service where ... delete`, etc.) is SOFT so the user can weigh
   // legitimate admin intent against blast radius.
   {
     pattern: /\bwmic\b[^|;&]*?\bdelete\b/i,
@@ -1058,7 +1057,7 @@ const SOFT_RISK_BASH_PATTERNS: ReadonlyArray<{
     description: 'CMD `type NUL > FILE` (overwrite with empty)',
   },
 
-  // ---- remote-execution: pipe/separator-to-shell forms that need cloud LLM context.
+  // ---- remote-execution: pipe/separator-to-shell forms that need human context.
   {
     pattern: PIPE_TO_SHELL_PATTERN,
     category: 'remote-execution',

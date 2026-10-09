@@ -7,10 +7,10 @@
  *
  *   - Final HARD_BLOCKED matches (catastrophic rm, disk wipe, shred, real
  *     data exfiltration, reverse shell, etc.) produce a final `deny` directly
- *     from `checkBashPermission`. Sensitive reads route through the LLM gate.
+ *     from `checkBashPermission`. Sensitive reads route to a user ask.
  *     NOTE: `remote-execution` (curl|bash / separator-then-shell) is
- *     SOFT_RISK, not HARD — surfaces as a normal ASK so auto mode routes it
- *     through the cloud LLM gate.
+ *     SOFT_RISK, not HARD — surfaces as a normal ASK so auto mode asks the
+ *     user.
  *   - Non-hard ASK results (safety checks, no-rule-matched ASKs,
  *     content-specific user ASK rules) propagate as `ask` and remain
  *     overridable by user explicit allow rules and (for non-immune cases)
@@ -291,7 +291,7 @@ function isIrrecoverableSafetyCheck(description: string): boolean {
     description.startsWith('Needs confirmation: command opens a raw shell/network channel') ||
     // Soft-risk labels such as pipe-to-shell, separator-then-shell,
     // base64 decode, eval, sudo, and protected-path access intentionally do
-    // NOT return true here. They must flow into the auto-mode LLM gate rather
+    // NOT return true here. They must flow into an auto-mode ask rather
     // than bypass it.
     false
   );
@@ -1192,7 +1192,7 @@ function isSimpleAuthorizedWriteRedirect(
   // read/search command (see REDIRECT_FAST_ALLOW_COMMANDS). Otherwise a
   // safe-to-run command that reads an UN-modeled file operand
   // (`jq . .env > /tmp/out`, `sort .env > /tmp/out`) would leak the sensitive
-  // read past the user-confirm / auto-LLM gate. The explicit cp/mv/tee/sed-i
+  // read past the user-confirm gate. The explicit cp/mv/tee/sed-i
   // danger reasons below are self-identifying (their reads/writes ARE modeled)
   // and need no first-word gate.
   const firstWordReadsModeled = REDIRECT_FAST_ALLOW_COMMANDS.has(firstWord);

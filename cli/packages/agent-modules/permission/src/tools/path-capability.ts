@@ -329,9 +329,9 @@ export function evaluatePathCapability(
   }
 
   // Outside workspace/scratch with no matching rule → ASK and delegate to
-  // the mode router (auto mode may run the LLM gate; default mode surfaces
-  // user confirmation). Mirrors dev policy 8d490e84d — path boundary asks
-  // must NOT skip the auto classifier. Non-workingDirectory reasons
+  // the mode router (auto and default both surface user confirmation).
+  // Mirrors dev policy 8d490e84d — path boundary asks must NOT skip the
+  // auto-mode policy. Non-workingDirectory reasons
   // (pathValidation, dangerousRemoval) stay hard denies.
   return {
     behavior: result.reason.type === 'workingDirectory' ? 'ask' : 'deny',

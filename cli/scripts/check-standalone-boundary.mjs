@@ -16,7 +16,6 @@ const required = [
   'packages/local-runtime-v2/src/service/plugin-system/plugin/runtime/registry-client.ts',
   'packages/local-runtime-v2/src/service/plugin-system/app/cloud-client.ts',
   'packages/local-runtime/src/web-search/local-web-search-client.ts',
-  'packages/agent-modules/permission/src/http-cloud-gateway-client.ts',
 ];
 const emitted = new Set(Object.values(metafile.outputs).flatMap(output =>
   Object.entries(output.inputs).filter(([, input]) => input.bytesInOutput > 0).map(([name]) => name)));

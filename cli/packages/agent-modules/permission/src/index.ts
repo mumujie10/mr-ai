@@ -10,13 +10,11 @@
  *     structured CommandIntent / ExecutionPlan contract.
  *   - HARD/SOFT dangerous-pattern registries in `classifier/dangerous-patterns.ts`
  *     consumed internally by the tool checkers.
- *   - `cloud-classify-client.ts` — utility for hosts to know whether to call
- *     the cloud gateway (`shouldUseCloudClassify`) and to resolve the API URL.
  *   - `reason-format.ts` — localized DecisionReason formatter shared by
- *     decision callers (facade, future cloud-runtime).
- *   - `cloud-gateway.ts` / `http-cloud-gateway-client.ts` /
- *     `conversation-renderer.ts` / `ask-policy.ts` — the cloud-gateway decision
- *     path the facade routes `auto` mode through.
+ *     decision callers.
+ *   - `ask-policy.ts` — the `PermissionMode` → `AskForApproval` mapping the
+ *     facade uses to route `auto` mode. This fork has no cloud classifier: an
+ *     inconclusive local decision always becomes a user ask.
  *
  * Hosts must call `configurePermissionHost(...)` once at startup to wire the
  * concrete ports declared in `host-ports.ts`. Cross-cutting helpers (logger,
@@ -138,24 +136,13 @@ export type {
   LegacyParserAdapterResult,
 } from './legacy-permission-adapter.js';
 
-// ── Cloud gateway gating ──
-export { shouldUseCloudClassify } from './classifier/cloud-classify-client.js';
-
-// ── Default cloud-gateway classifier budget. `HttpCloudGatewayClient` uses
-//    this as its per-call timeout default.
-export const AUTO_CLASSIFIER_TIMEOUT_MS_DEFAULT = 60_000;
-
 // ── Host-port surface (consumed by hosts to wire concrete deps) ──
 export {
   configurePermissionHost,
   resetPermissionHostForTesting,
-  getPermissionManagedAuthToken,
-  getPermissionPrompt,
   type PermissionHostUtils,
 } from './host-utils.js';
 export type {
-  PermissionPromptProvider,
-  ManagedAuthTokenGetter,
   PermissionStorePort,
   SessionResolverPort,
   AgentResolverPort,
@@ -168,7 +155,6 @@ export type {
 // ── Localized reason formatter (shared wire output) ──
 export {
   formatDecisionReason,
-  formatAutoClassifierReason,
   formatBlockedToolReason,
   localeOrDefault,
   type Lang,
@@ -179,17 +165,6 @@ export {
 // ── User-locale detection (used by hosts to pick zh/en templates) ──
 export { detectTextLocale, detectMessagesLocale, type UserLocaleHint } from './locale-detect.js';
 
-// ── Ask-policy + cloud gateway ──
+// ── Ask-policy ──
 export { modeToAskPolicy } from './ask-policy.js';
 export type { AskForApproval, ProposedRule, ProposedRuleScope } from './ask-policy.js';
-export { renderConversationContext } from './conversation-renderer.js';
-export type { RenderConversationContextInput } from './conversation-renderer.js';
-export type {
-  CloudGatewayClient,
-  CloudClassifyRequest,
-  CloudClassifyVerdict,
-} from './cloud-gateway.js';
-export { HttpCloudGatewayClient } from './http-cloud-gateway-client.js';
-export type { HttpCloudGatewayClientOptions } from './http-cloud-gateway-client.js';
-export { InMemoryCloudGatewayClient } from './in-memory-cloud-gateway-client.js';
-export type { InMemoryCloudGatewayClientOptions } from './in-memory-cloud-gateway-client.js';

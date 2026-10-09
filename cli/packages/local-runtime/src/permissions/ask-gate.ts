@@ -6,7 +6,7 @@
  *
  * The wider permission pipeline (agent-core `PermissionEngine`,
  * `path-capability`, `bash-permission`, `local-permission-checkers`,
- * `local-permission-facade`'s cloud-gateway branch — 22 distinct sites
+ * `local-permission-facade`'s decision branches — 22 distinct sites
  * as of this writing) produces verdicts with `behavior === 'ask'` for
  * many independent reasons:
  *
@@ -17,7 +17,6 @@
  *   - bash safe-first-words fallback
  *   - local hard-check ASK (curl-pipe-shell, shell substitution,
  *     slow whole-tree scan, recursive rm, workspace-escape)
- *   - cloud gateway verdicts of `block` / `confirm` / `timeout`
  *
  * Before this gate each of those sites was responsible for "is this
  * ask bypass-immune?". The verdict shape grew an ad-hoc

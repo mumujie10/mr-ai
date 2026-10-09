@@ -8,13 +8,12 @@
  * Semantics:
  *
  *   1. Sensitive FS paths run BEFORE the isPathAllowed check:
- *      system secrets, credentials, and private keys flow through the LLM gate
- *      in auto/bypass modes and fall back to user ask when not allowed.
- *   2. Workspace boundary asks delegate to the mode router: auto may use the
- *      LLM gate, while default mode surfaces user confirmation.
+ *      system secrets, credentials, and private keys require explicit user
+ *      confirmation.
+ *   2. Workspace boundary asks delegate to the mode router: auto and default
+ *      both surface user confirmation.
  *   3. Otherwise `isPathAllowed` decides; soft sensitive paths return
- *      normal ASK so auto mode can route them through the classifier gate
- *      (handled by PermissionService, not here).
+ *      normal ASK (handled by PermissionService, not here).
  */
 
 import type { ToolPermissionChecker, ToolCheckResult } from '../engine.js';

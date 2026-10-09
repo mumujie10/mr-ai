@@ -1,6 +1,6 @@
 /**
  * LocalPermissionFacade — permission orchestration backed by the deterministic
- * checkers + the cloud gateway.
+ * checkers.
  *
  * The split:
  *   - Deterministic layer: `PermissionEngine` dispatches
@@ -13,15 +13,14 @@
  *     `bypassPermissions`) is mapped to an `AskForApproval` policy
  *     (`on-request` / `on-request-llm` / `never`) for policy clarity, but the
  *     flow is routed through `PermissionEngine.checkPermission(...)` with a
- *     snapshotted `core` (default) or `engine` (rollback) policy owner.
- *   - LLM layer: `auto` mode consults `HttpCloudGatewayClient` →
- *     `POST /mavis/api/v1/permission/check`. acceptEdits is normalized to
+ *     snapshotted `core` (default) or `engine` (rollback) policy owner. This
+ *     fork has no cloud classifier, so `auto` (`on-request-llm`) asks whenever
+ *     the local rules do not settle the decision. acceptEdits is normalized to
  *     `default` at entry.
  *
  * `LocalPermissionApprovalService` owns pending/dedupe/waiter/persistence;
  * routes only adapt the typed `permission.ask` product-event flow. The facade is a pure
- * synchronous-ish decision function from their POV (modulo the cloud gateway
- * await for `auto` mode).
+ * synchronous decision function from their POV.
  */
 
 import path from 'node:path';
@@ -30,19 +29,12 @@ import { statSync } from 'node:fs';
 
 import {
   PermissionEngine,
-  reducePermissionClassifierDecision,
   registerDefaultCheckers,
-  HttpCloudGatewayClient,
   modeToAskPolicy,
-  renderConversationContext,
   formatDecisionReason,
-  formatAutoClassifierReason,
   createToolPermissionContext,
   createPermissionExecutionPlan,
-  shouldUseCloudClassify,
   detectMessagesLocale,
-  type CloudGatewayClient,
-  type CloudClassifyVerdict,
   type UserLocaleHint,
   type ToolDenialSource,
   type DecisionReason,
@@ -59,7 +51,6 @@ import {
 } from '@mavis/permission';
 import type { AgentMessageProtocol } from '@mavis/agent-core/protocol/agent-message';
 
-import type { LocalPermissionMessageSource } from './service.js';
 import { LocalPermissionStoreUnhealthyError, type LocalPermissionRuleStore } from './rules.js';
 import type {
   LocalPluginHookEffectivePermissions,
@@ -381,16 +372,6 @@ export interface LocalPermissionFacadeDeps {
   configGetter: () => LocalRuntimeConfig;
   getSessionById: (sessionId: string) => Promise<LocalSessionRecord | undefined>;
   getLocalAgent: (agentName: string) => Promise<{ defaultWorkspaceDir?: string } | undefined>;
-  messageStore?: LocalPermissionMessageSource;
-  /**
-   * Optional override for tests — swap the cloud gateway for an in-memory
-   * client. Production never passes this; the facade default-constructs an
-   * HttpCloudGatewayClient pointing at the
-   * /mavis/api/v1/permission/check endpoint via region routing.
-   */
-  cloudGateway?: CloudGatewayClient;
-  /** Per-call cloud-gateway timeout (ms). Default 60_000. */
-  cloudGatewayTimeoutMs?: number;
   /**
    * Optional metrics sink (bare metric names; the server-side pipeline owns
    * the `local_runtime_` prefix). Absent = noop, zero behavior change.
@@ -410,15 +391,10 @@ export interface LocalPermissionFacadeDeps {
 
 export class LocalPermissionFacade {
   private readonly deps: LocalPermissionFacadeDeps;
-  private readonly cloudGateway: CloudGatewayClient;
   private readonly engine: PermissionEngine;
-  private readonly cloudGatewayTimeoutMs: number;
 
   constructor(deps: LocalPermissionFacadeDeps) {
     this.deps = deps;
-    this.cloudGatewayTimeoutMs = deps.cloudGatewayTimeoutMs ?? 60_000;
-    this.cloudGateway =
-      deps.cloudGateway ?? new HttpCloudGatewayClient({ timeoutMs: this.cloudGatewayTimeoutMs });
     this.engine = new PermissionEngine();
     registerDefaultCheckers(this.engine);
   }
@@ -505,7 +481,7 @@ export class LocalPermissionFacade {
   /**
    * The unmodified decision pipeline. Returns whatever the chain
    * (runtime safety boundary → off short-circuit → engine →
-   * cloud-gateway for `auto`) decides, including `ask` verdicts that
+   * `auto`) decides, including `ask` verdicts that
    * would otherwise be downgraded under bypassPermissions.
    *
    * `effectiveMode` is the mode snapshot the caller wants this call to
@@ -639,8 +615,8 @@ export class LocalPermissionFacade {
     //   - policy        → sensitive credential paths (`~/.ssh`, `*.pem`,
     //     …). Under bypassPermissions we skip it entirely so the engine's
     //     fast-allow / rule store can speak; under default/auto we let the
-    //     engine run first and demote allow → ask so the cloud gateway or
-    //     the user can clear it (routes to the LLM gate, per bash-fast-allow).
+    //     engine run first and demote allow → ask so the user can clear it
+    //     (routes to an ask, per bash-fast-allow).
     //
     //   - ask           → curl-pipe-shell, shell substitution, slow
     //     unbounded scan, recursive rm, workspace-escape. Same upgrade
@@ -707,7 +683,7 @@ export class LocalPermissionFacade {
     );
 
     // policy deny (sensitive credential path) under default/auto — demote
-    // allow → ask so the LLM gate / user can authorize. Under
+    // allow → ask so the user can authorize. Under
     // bypassPermissions we skip this branch so the engine's allow stays
     // allow (matches "Always allow" semantics).
     //
@@ -788,116 +764,21 @@ export class LocalPermissionFacade {
       return baseAsk;
     }
 
-    const logClassifierDecision = (
-      classifierVerdict: string,
-      recommendationBehavior: 'allow' | 'ask',
-      skipReason?: 'policy' | 'unavailable',
-    ): void => {
-      logger.info(
-        {
-          ...(params.sessionId ? { session_id: params.sessionId } : {}),
-          tool_name: params.toolName,
-          policy_owner: policyOwner,
-          classifier_verdict: classifierVerdict,
-          recommendation_behavior: recommendationBehavior,
-          ...(skipReason ? { skip_reason: skipReason } : {}),
-        },
-        'permission.classifier.decision',
-      );
-    };
-
-    // 'on-request-llm' (Smart approval / auto): consult cloud gateway BEFORE ask.
-    // Cloud classify only fires in managed runtime contexts (a configured
-    // Bearer token resolver). Pure local dev daemons + tests fall through to
-    // ask so they don't hang on a real HTTP call.
-    if (decision.skipAutoClassifier || !shouldUseCloudClassify()) {
-      logClassifierDecision(
-        'skipped',
-        'ask',
-        decision.skipAutoClassifier ? 'policy' : 'unavailable',
-      );
-      return baseAsk;
-    }
-
-    const conversationContext = await this.buildConversationContext(
-      params.sessionId,
-      params.latestUserMessages,
-      params.recentMessages,
+    // 'on-request-llm' (auto): local rules are the only classifier in this
+    // fork. An inconclusive decision becomes a user ask — the same fail-closed
+    // route the cloud classifier used when it was unavailable.
+    logger.info(
+      {
+        ...(params.sessionId ? { session_id: params.sessionId } : {}),
+        tool_name: params.toolName,
+        policy_owner: policyOwner,
+        classifier_verdict: 'skipped',
+        recommendation_behavior: 'ask',
+        skip_reason: decision.skipAutoClassifier ? 'policy' : 'local_only',
+      },
+      'permission.classifier.decision',
     );
-    // Hardening: even though HttpCloudGatewayClient fails closed on every
-    // documented error branch, we wrap classifyViaCloud in a catch-all so
-    // any unexpected runtime throw (e.g. region-resolver glitch on first
-    // boot, AbortError before fetch is created) still routes to ASK rather
-    // than bubbling out and killing the turn.
-    let gatewayVerdict: CloudClassifyVerdict;
-    const classifyStartedAt = Date.now();
-    try {
-      gatewayVerdict = await this.classifyViaCloud({
-        toolName: params.toolName,
-        command: serializeToolInput(params.toolName, params.input),
-        workspaceRoot: workingDirectory,
-        conversationContext,
-        sessionId: params.sessionId,
-        agentName: params.agentName,
-      });
-    } catch {
-      this.emitLlmCheckMetrics('error', classifyStartedAt);
-      logClassifierDecision('error', 'ask');
-      return mapClassifierRecommendation(
-        decision,
-        'ask',
-        formatAutoClassifierReason(
-          'timeout',
-          formatTimeoutSuffixSeconds(this.cloudGatewayTimeoutMs),
-          localeHint,
-        ),
-        policyOwner,
-      );
-    }
-    this.emitLlmCheckMetrics(gatewayVerdict.kind, classifyStartedAt);
-    logClassifierDecision(gatewayVerdict.kind, gatewayVerdict.kind === 'allow' ? 'allow' : 'ask');
-
-    switch (gatewayVerdict.kind) {
-      case 'allow':
-        return mapClassifierRecommendation(
-          decision,
-          'allow',
-          formatAutoClassifierReason('allow', gatewayVerdict.reasonLocalized, localeHint),
-          policyOwner,
-        );
-      case 'block':
-        return mapClassifierRecommendation(
-          decision,
-          'ask',
-          formatAutoClassifierReason('block', gatewayVerdict.reasonLocalized, localeHint),
-          policyOwner,
-        );
-      case 'confirm':
-        return mapClassifierRecommendation(
-          decision,
-          'ask',
-          formatAutoClassifierReason('confirm', gatewayVerdict.reasonLocalized, localeHint),
-          policyOwner,
-        );
-      case 'timeout':
-      default:
-        // Surface the client's reasonLocalized as the suffix so 5xx /
-        // network / abort failures stay distinguishable on the UI card
-        // and in daemon logs. The client already prefixes its reason
-        // with "timed out", "permission/check returned 500",
-        // "permission/check biz error", etc.
-        return mapClassifierRecommendation(
-          decision,
-          'ask',
-          formatAutoClassifierReason(
-            'timeout',
-            gatewayVerdict.reasonLocalized ||
-              formatTimeoutSuffixSeconds(this.cloudGatewayTimeoutMs),
-            localeHint,
-          ),
-          policyOwner,
-        );
-    }
+    return baseAsk;
   }
 
   /**
@@ -1011,35 +892,6 @@ export class LocalPermissionFacade {
       const withSep = candidate.endsWith(path.sep) ? candidate : candidate + path.sep;
       return !resolvedWorkspace.startsWith(withSep) && resolvedWorkspace !== candidate;
     });
-  }
-
-  private async classifyViaCloud(input: {
-    toolName: string;
-    command: string;
-    workspaceRoot: string;
-    conversationContext: string;
-    sessionId?: string;
-    agentName?: string;
-  }): Promise<CloudClassifyVerdict> {
-    return this.cloudGateway.classify({
-      toolName: input.toolName,
-      input: input.command,
-      platform: process.platform,
-      homeDir: homedir(),
-      workspaceRoot: input.workspaceRoot,
-      mode: 'auto',
-      conversationContext: input.conversationContext,
-      agentId: input.agentName,
-      sessionId: input.sessionId,
-    });
-  }
-
-  /** `verdict` = CloudClassifyVerdict.kind or 'error' for an unexpected throw. */
-  private emitLlmCheckMetrics(verdict: string, startedAtMs: number): void {
-    const metrics = this.deps.metricsClient;
-    if (!metrics) return;
-    metrics.histogram('permission_llm_check_duration_ms', Date.now() - startedAtMs);
-    metrics.counter('permission_llm_check_total', 1, { verdict });
   }
 
   private async resolveWorkingDirectory(
@@ -1232,47 +1084,15 @@ export class LocalPermissionFacade {
    * Coarse user-locale hint from inline messages.
    *
    * Inline-only by design, to avoid burning a store round-trip on the deny /
-   * allow fast paths. The cloud-classifier path below already pulls recent
-   * messages from the store via `buildConversationContext`; in practice an
-   * inline hint is supplied by the daemon's HTTP route (it forwards
-   * `recent_user_messages`), so the inline path covers the live wire. The
-   * fallback returns `'unknown'`, which the formatter renders as the English
-   * template for messageless sessions.
+   * allow fast paths. The daemon's HTTP route forwards `recent_user_messages`,
+   * so the inline path covers the live wire. The fallback returns `'unknown'`,
+   * which the formatter renders as the English template for messageless
+   * sessions.
    */
   private resolveInlineLocaleHint(params: LocalPermissionCheckParams): UserLocaleHint {
     const inline = params.latestUserMessages ?? params.recentMessages;
     if (!inline || inline.length === 0) return 'unknown';
     return detectMessagesLocale(inline);
-  }
-
-  private async buildConversationContext(
-    sessionId: string | undefined,
-    inlineLatest?: AgentMessageProtocol[],
-    inlineRecent?: AgentMessageProtocol[],
-  ): Promise<string> {
-    if (inlineLatest !== undefined || inlineRecent !== undefined) {
-      return renderConversationContext({
-        latestUserMessages: inlineLatest,
-        recentMessages: inlineRecent,
-      });
-    }
-    if (!sessionId || !this.deps.messageStore) return '';
-    try {
-      const [latest, recent] = await Promise.all([
-        this.deps.messageStore.listRecentDisplayMessages(sessionId, {
-          limit: 3,
-          role: 'user',
-          excludePermissionResponses: true,
-        }),
-        this.deps.messageStore.listRecentDisplayMessages(sessionId, { limit: 5 }),
-      ]);
-      return renderConversationContext({
-        latestUserMessages: latest,
-        recentMessages: recent,
-      });
-    } catch {
-      return '';
-    }
   }
 }
 
@@ -1320,68 +1140,6 @@ function classifyDenySource(reason: DecisionReason): Exclude<ToolDenialSource, '
     return 'safety';
   }
   return 'safety';
-}
-
-function mapClassifierRecommendation(
-  decision: PermissionDecision,
-  behavior: 'allow' | 'ask',
-  reason: string,
-  policyOwner: 'engine' | 'core',
-): LocalPermissionCheckResult {
-  const reduced =
-    policyOwner === 'core'
-      ? reducePermissionClassifierDecision(decision, {
-          behavior,
-          reason: { type: 'safetyCheck', description: reason },
-        })
-      : behavior === 'allow'
-        ? {
-            behavior: 'allow' as const,
-            reason: { type: 'safetyCheck' as const, description: reason },
-            rewrittenInput: decision.rewrittenInput,
-          }
-        : { ...decision, reason: { type: 'safetyCheck' as const, description: reason } };
-  if (reduced.behavior === 'deny') {
-    return {
-      behavior: 'deny',
-      reason: formatDecisionReason(reduced.reason, 'deny'),
-      denySource: classifyDenySource(reduced.reason),
-    };
-  }
-  if (reduced.behavior === 'allow') {
-    return {
-      behavior: 'allow',
-      reason,
-      rewrittenInput: reduced.rewrittenInput,
-    };
-  }
-  return {
-    behavior: 'ask',
-    reason,
-    ruleContents: reduced.ruleContents,
-    ruleMatchers: reduced.ruleMatchers,
-    rewrittenInput: reduced.rewrittenInput,
-  };
-}
-
-function serializeToolInput(toolName: string, input: Record<string, unknown>): string {
-  if (toolName === 'bash' && typeof input.command === 'string') {
-    return input.command;
-  }
-  if (typeof input.file_path === 'string') return input.file_path;
-  if (typeof input.filePath === 'string') return input.filePath;
-  if (typeof input.path === 'string') return input.path;
-  if (typeof input.pattern === 'string') return input.pattern;
-  try {
-    return JSON.stringify(input);
-  } catch {
-    return '';
-  }
-}
-
-function formatTimeoutSuffixSeconds(timeoutMs: number): string {
-  const secs = Math.round(timeoutMs / 1000);
-  return ` (>${secs}s)`;
 }
 
 /**

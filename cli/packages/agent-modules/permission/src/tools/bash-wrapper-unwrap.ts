@@ -8,7 +8,7 @@
  * `parallel`, `watch`) the gate must look through to the inner cmd
  * word, otherwise common pipelines like `find … | xargs grep …` or
  * `nohup setsid pnpm install` trip on the wrapper (not in
- * SAFE_BASH_FIRST_WORDS) and fall through to the LLM gate.
+ * SAFE_BASH_FIRST_WORDS) and fall through to a user ask.
  *
  * Also consumed by Step 5 user-allow matching
  * ({@link stripTransparentWrappersForRuleMatch}) so a user-granted

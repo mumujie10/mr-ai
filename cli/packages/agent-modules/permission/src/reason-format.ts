@@ -239,51 +239,6 @@ export function formatDecisionReason(
 }
 
 // ---------------------------------------------------------------------------
-// Auto-mode classifier prefixes (used by the LocalPermissionFacade
-// cloud-gateway branch).
-// ---------------------------------------------------------------------------
-
-const AUTO_CLASSIFIER_ALLOW_PREFIX: Record<Lang, string> = {
-  en: 'Auto classifier',
-  zh: '自动判定',
-};
-
-const AUTO_CLASSIFIER_BLOCK_PREFIX: Record<Lang, string> = {
-  en: '⚠️ Blocked by auto classifier; explicit confirmation required to continue',
-  zh: '⚠️ 自动判定已阻止，需用户显式确认才能继续',
-};
-
-const AUTO_CLASSIFIER_CONFIRM_PREFIX: Record<Lang, string> = {
-  en: 'Needs confirmation',
-  zh: '需要确认',
-};
-
-const AUTO_CLASSIFIER_TIMEOUT_TEMPLATE: Record<Lang, (suffix: string) => string> = {
-  en: (suffix) => `⚠️ Auto classifier timed out${suffix}; asking user to confirm.`,
-  zh: (suffix) => `⚠️ 自动 classifier 超时${suffix}，请用户手动确认。`,
-};
-
-export function formatAutoClassifierReason(
-  verdict: 'allow' | 'block' | 'confirm' | 'timeout',
-  reasonText: string,
-  locale: UserLocaleHint,
-): string {
-  const lang = localeOrDefault(locale);
-  const sep = lang === 'zh' ? '：' : ': ';
-  switch (verdict) {
-    case 'allow':
-      return `${AUTO_CLASSIFIER_ALLOW_PREFIX[lang]}${sep}${reasonText}`;
-    case 'block':
-      return `${AUTO_CLASSIFIER_BLOCK_PREFIX[lang]}${sep}${reasonText}`;
-    case 'timeout':
-      return AUTO_CLASSIFIER_TIMEOUT_TEMPLATE[lang](reasonText);
-    case 'confirm':
-    default:
-      return `${AUTO_CLASSIFIER_CONFIRM_PREFIX[lang]}${sep}${reasonText}`;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Blocked-tool reason — the string handed to the LLM when a tool call is
 // denied at `beforeToolCall`. The model reads this to decide how to recover
 // (try another approach / explain to the user / drop a blocked rule), so the

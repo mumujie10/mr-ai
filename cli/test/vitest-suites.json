@@ -28,7 +28,6 @@
       "packages/tui/test/unit/acp-agent.test.ts",
       "packages/mcode-tools-host/test/unit/lease-broker.test.ts",
       "packages/mcode-tools-host/test/unit/resource.test.ts",
-      "packages/agent-modules/permission/test/unit/permission/cloud-classify-client.test.ts",
       "packages/local-runtime-v2/src/service/plugin-system/cloud-transport.test.ts",
       "packages/local-runtime-v2/src/service/plugin-system/app/runtime.test.ts",
       "packages/local-runtime-v2/src/service/mcp/runtime/builtin-matrix.test.ts",
