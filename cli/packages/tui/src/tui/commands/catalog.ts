@@ -499,7 +499,7 @@ const COMMAND_SOURCES: readonly TuiCommandSource[] = [
   {
     name: 'quit',
     aliases: ['exit'],
-    description: 'Exit Minimax Code',
+    description: 'Exit MireAI CLI',
     category: 'Application',
     readiness: 'immediate',
   },

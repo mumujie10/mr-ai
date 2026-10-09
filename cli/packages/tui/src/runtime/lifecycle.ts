@@ -572,7 +572,7 @@ export async function createTuiRuntime(
     if (cleanupFailures.length > 0) {
       throw new AggregateError(
         [error, ...cleanupFailures],
-        'Minimax Code Runtime startup cleanup failed.',
+        'MireAI CLI startup cleanup failed.',
       );
     }
     throw error;

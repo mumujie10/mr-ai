@@ -139,7 +139,7 @@ export async function launchTui(
     );
   }
   if (!options.terminal && (!process.stdin.isTTY || !process.stdout.isTTY)) {
-    throw new Error('Minimax Code interactive mode requires a TTY.');
+    throw new Error('MireAI CLI interactive mode requires a TTY.');
   }
 
   const homeDirectory = options.homeDir ?? homedir();
@@ -360,7 +360,7 @@ export async function launchTui(
         report: (error) => {
           try {
             process.stderr.write(
-              `Minimax Code TUI stopped unexpectedly: ${tuiErrorDiagnostic(error)}. Restart MCode; if it keeps happening, report it through an available support channel.\n`,
+              `MireAI CLI stopped unexpectedly: ${tuiErrorDiagnostic(error)}. Restart it; if it keeps happening, report it through an available support channel.\n`,
             );
           } catch {
             // The terminal may already be disconnected.

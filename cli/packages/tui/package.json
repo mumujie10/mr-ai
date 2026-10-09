@@ -2,7 +2,7 @@
   "name": "@mr/tui",
   "version": "0.6.3",
   "private": true,
-  "description": "Minimax Code CLI and TUI product entry.",
+  "description": "MireAI CLI — the agent runtime this app ships.",
   "type": "module",
   "exports": {
     "./package.json": "./package.json"
