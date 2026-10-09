@@ -297,9 +297,44 @@ fn upsert_provider_inner(
     json: Value,
 ) -> Result<(), String> {
     mutate_section(&store, &engine, |section| {
+        if engine == crate::engine::mr_providers::MR_ENGINE_ID {
+            push_channel_to_mr(&json)?;
+        }
         section.providers.insert(id.clone(), json);
         Ok(())
     })
+}
+
+/// The bundled `mr` CLI owns its provider store in `~/.minimax/config.yaml`, so
+/// a channel entered here has to go through the CLI's own commands; storing it
+/// only in our config would leave the runtime unable to answer. Doing it inside
+/// the mutation means a CLI failure aborts our write as well, so the two stores
+/// cannot drift apart.
+fn push_channel_to_mr(json: &Value) -> Result<(), String> {
+    let settings = crate::settings::read_settings().unwrap_or_default();
+    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MR_ENGINE_ID);
+    let channel = crate::engine::mr_providers::channel_from_json(json)?;
+    crate::engine::mr_providers::upsert_and_select(&bin, &channel)
+}
+
+fn mr_channel_name(json: &Value) -> Option<&str> {
+    json.get("name")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+}
+
+fn remove_channel_from_mr(name: &str) -> Result<(), String> {
+    let settings = crate::settings::read_settings().unwrap_or_default();
+    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MR_ENGINE_ID);
+    crate::engine::mr_providers::remove(&bin, name)
+}
+
+fn select_channel_in_mr(json: &Value) -> Result<(), String> {
+    let settings = crate::settings::read_settings().unwrap_or_default();
+    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MR_ENGINE_ID);
+    let channel = crate::engine::mr_providers::channel_from_json(json)?;
+    crate::engine::mr_providers::select_current(&bin, &channel)
 }
 
 #[tauri::command]
@@ -313,6 +348,16 @@ pub fn delete_provider(
 
 fn delete_provider_inner(store: &ConfigStore, engine: String, id: String) -> Result<(), String> {
     mutate_section(&store, &engine, |section| {
+        if engine == crate::engine::mr_providers::MR_ENGINE_ID {
+            if let Some(name) = section
+                .providers
+                .get(&id)
+                .and_then(mr_channel_name)
+                .map(str::to_string)
+            {
+                remove_channel_from_mr(&name)?;
+            }
+        }
         section.providers.remove(&id);
         if section.current.as_deref() == Some(id.as_str()) {
             // Fall back to 官方配置: spawn injects nothing for official.
@@ -378,6 +423,14 @@ fn set_current_provider_inner(
             && id != LEGACY_LOCAL_CONFIG_TOML_ID
         {
             if let Some((matched_key, _)) = find_provider(section, &id)? {
+                if engine == crate::engine::mr_providers::MR_ENGINE_ID {
+                    let json = section
+                        .providers
+                        .get(matched_key)
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                    select_channel_in_mr(&json)?;
+                }
                 section.current = Some(matched_key.to_string());
                 return Ok(());
             }
@@ -592,11 +645,20 @@ mod tests {
         assert_eq!(key, "custom_1");
     }
 
+    /// Engines whose channels must never touch the CLI's own files: switching
+    /// only re-points our config. The bundled `mr` runtime is the exception —
+    /// it has no env channel, so a saved key has to travel through its provider
+    /// commands or the runtime cannot answer at all; that path is covered by
+    /// `mr_provider_sync_aborts_before_any_secret_or_write` below.
     #[test]
     fn set_current_provider_does_not_write_native_files() {
         let _scratch = Scratch::new();
         let store = ConfigStore::default();
-        for engine in ENGINES {
+        for engine in ENGINES
+            .iter()
+            .copied()
+            .filter(|engine| *engine != crate::engine::mr_providers::MR_ENGINE_ID)
+        {
             seed_channel(
                 engine,
                 "chan-a",
@@ -653,5 +715,41 @@ mod tests {
                 assert!(!std::path::Path::new(&path).exists());
             }
         }
+    }
+
+    /// The bundled runtime has no env channel, so a dialog save has to reach the
+    /// CLI. A half-filled channel must fail BEFORE our store changes, instead of
+    /// recording a "current" channel the runtime cannot use and then showing it
+    /// as if it were configured.
+    #[test]
+    fn incomplete_mr_channel_is_refused_without_touching_either_store() {
+        let _scratch = Scratch::new();
+        let store = ConfigStore::default();
+        let engine = crate::engine::mr_providers::MR_ENGINE_ID;
+        let complete = json!({
+            "name": "Relay", "baseUrl": "https://r.example/v1",
+            "apiKey": "sk-x", "model": "m1"
+        });
+        seed_channel(engine, "chan-mr", Some("chan-mr"), complete.clone());
+        let error = upsert_provider_inner(
+            &store,
+            engine.into(),
+            "chan-mr".into(),
+            json!({ "baseUrl": "https://r.example/v1", "apiKey": "sk-x" }),
+        )
+        .expect_err("a channel without a name or model cannot be activated");
+        assert!(error.contains("name"), "{error}");
+        let stored = read_config()
+            .unwrap()
+            .section(engine)
+            .unwrap()
+            .providers
+            .get("chan-mr")
+            .cloned();
+        assert_eq!(
+            stored,
+            Some(complete),
+            "the aborted save must not replace the channel"
+        );
     }
 }

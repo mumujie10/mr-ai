@@ -32,6 +32,7 @@ mod kimi_acp;
 pub mod minimax;
 mod minimax_acp;
 pub mod models;
+pub(crate) mod mr_providers;
 pub mod opencode;
 pub mod opencode_server;
 mod opencode_session;
