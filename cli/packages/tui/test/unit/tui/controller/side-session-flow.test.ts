@@ -44,8 +44,6 @@ function createFlow(options: {
   const recordSideSessionFailure = vi.fn();
   const abortForegroundRun = options.abortForegroundRun ?? vi.fn(async () => true);
   const abortSessionRun = vi.fn(async () => true);
-  const onSideSessionOpened = vi.fn();
-  const onSideSessionClosed = vi.fn();
   const onSideConversationChanged = vi.fn();
 
   const runtime = {
@@ -90,10 +88,7 @@ function createFlow(options: {
     requestWelcomeRebuild: vi.fn(),
     hasLiveRun: () => options.hasLiveRun === true,
     abortForegroundRun,
-    currentRunId: () => (options.hasLiveRun ? 'turn-side' : undefined),
     abortSessionRun,
-    onSideSessionOpened,
-    onSideSessionClosed,
     onSideConversationChanged,
   });
 
@@ -106,8 +101,6 @@ function createFlow(options: {
     loadSessionProjection,
     abortForegroundRun,
     abortSessionRun,
-    onSideSessionOpened,
-    onSideSessionClosed,
     onSideConversationChanged,
   };
 }
@@ -128,7 +121,7 @@ describe('parent navigation during a live Turn', () => {
 
 describe('startSideSession', () => {
   it('creates a hidden Runtime fork child and presents it as the side view', async () => {
-    const { flow, createSession, loadSessionProjection, onSideSessionOpened } = createFlow({
+    const { flow, createSession, loadSessionProjection } = createFlow({
       current: { sessionId: PARENT_ID, workspaceDir: '/repo' },
     });
 
@@ -143,10 +136,6 @@ describe('startSideSession', () => {
       title: expect.any(String),
     });
     expect(loadSessionProjection).toHaveBeenCalledWith(SIDE_ID);
-    expect(onSideSessionOpened).toHaveBeenCalledWith({
-      parentSessionId: PARENT_ID,
-      sideSessionId: SIDE_ID,
-    });
     expect(flow.isSideModeActive()).toBe(true);
     expect(flow.sideConversationSnapshot()).toEqual({
       parentSessionId: PARENT_ID,
@@ -156,7 +145,7 @@ describe('startSideSession', () => {
   });
 
   it('replaces an existing side conversation instead of resuming it from the parent view', async () => {
-    const { flow, createSession, deleteSession, abortSessionRun, onSideSessionClosed } = createFlow(
+    const { flow, createSession, deleteSession, abortSessionRun } = createFlow(
       {
         current: { sessionId: PARENT_ID, workspaceDir: '/repo' },
       },
@@ -172,9 +161,6 @@ describe('startSideSession', () => {
     // delete) and a fresh fork starts from the current committed boundary.
     expect(abortSessionRun).toHaveBeenCalledWith(SIDE_ID);
     expect(deleteSession).toHaveBeenCalledWith(SIDE_ID);
-    expect(onSideSessionClosed).toHaveBeenCalledWith(
-      expect.objectContaining({ sideSessionId: SIDE_ID, exitReason: 'replaced' }),
-    );
     expect(createSession).toHaveBeenCalledTimes(2);
     expect(flow.isSideModeActive()).toBe(true);
   });
@@ -317,7 +303,7 @@ describe('toggleSideConversation', () => {
 
 describe('ordinary session navigation with an open side conversation', () => {
   it('disposes the hidden side session instead of leaking it', async () => {
-    const { flow, deleteSession, abortSessionRun, onSideSessionClosed, onSideConversationChanged } =
+    const { flow, deleteSession, abortSessionRun, onSideConversationChanged } =
       createFlow({
         current: { sessionId: PARENT_ID, workspaceDir: '/repo' },
       });
@@ -326,11 +312,8 @@ describe('ordinary session navigation with an open side conversation', () => {
     await flow.activateSessionById(PARENT_ID, { allowDuringLiveRun: true });
 
     // Mirrors Codex's background discard: interrupt any detached side Turn
-    // first, keep telemetry open/close paired, then delete the Session.
+    // first, then delete the ephemeral Session.
     expect(abortSessionRun).toHaveBeenCalledWith(SIDE_ID);
-    expect(onSideSessionClosed).toHaveBeenCalledWith(
-      expect.objectContaining({ sideSessionId: SIDE_ID, exitReason: 'navigation' }),
-    );
     expect(deleteSession).toHaveBeenCalledWith(SIDE_ID);
     expect(flow.sideConversationSnapshot()).toBeUndefined();
     expect(onSideConversationChanged).toHaveBeenLastCalledWith(undefined);
@@ -339,7 +322,7 @@ describe('ordinary session navigation with an open side conversation', () => {
 
 describe('closeSideConversation', () => {
   it('restores the parent view and then destroys the side session', async () => {
-    const { flow, deleteSession, loadSessionProjection, onSideSessionClosed } = createFlow({
+    const { flow, deleteSession, loadSessionProjection } = createFlow({
       current: {
         sessionId: SIDE_ID,
         sessionKind: 'peek',
@@ -353,27 +336,6 @@ describe('closeSideConversation', () => {
     expect(left).toBe(true);
     expect(loadSessionProjection).toHaveBeenCalledWith(PARENT_ID);
     expect(deleteSession).toHaveBeenCalledWith(SIDE_ID);
-    expect(onSideSessionClosed).toHaveBeenCalledWith({
-      parentSessionId: PARENT_ID,
-      sideSessionId: SIDE_ID,
-      exitReason: 'ctrl_c',
-    });
-  });
-
-  it('records Ctrl+D as its own exit reason', async () => {
-    const { flow, onSideSessionClosed } = createFlow({
-      current: {
-        sessionId: SIDE_ID,
-        sessionKind: 'peek',
-        purpose: BTW_SIDE_SESSION_PURPOSE,
-        parentSessionId: PARENT_ID,
-      },
-    });
-
-    expect(await flow.leaveSideSession('ctrl_d')).toBe(true);
-    expect(onSideSessionClosed).toHaveBeenCalledWith(
-      expect.objectContaining({ exitReason: 'ctrl_d' }),
-    );
   });
 
   it('is a no-op outside a side session', async () => {
@@ -384,7 +346,7 @@ describe('closeSideConversation', () => {
   });
 
   it('stops a live side Turn before restoring the parent and deleting the side session', async () => {
-    const { flow, abortForegroundRun, loadSessionProjection, deleteSession, onSideSessionClosed } =
+    const { flow, abortForegroundRun, loadSessionProjection, deleteSession } =
       createFlow({
         current: {
           sessionId: SIDE_ID,
@@ -403,12 +365,6 @@ describe('closeSideConversation', () => {
     const deleteOrder = deleteSession.mock.invocationCallOrder[0] ?? 0;
     expect(switchOrder).toBeGreaterThan(abortOrder);
     expect(deleteOrder).toBeGreaterThan(switchOrder);
-    expect(onSideSessionClosed).toHaveBeenCalledWith({
-      parentSessionId: PARENT_ID,
-      sideSessionId: SIDE_ID,
-      sideRunId: 'turn-side',
-      exitReason: 'ctrl_c',
-    });
   });
 
   it('stays in the side session when Runtime still reports its Turn running', async () => {

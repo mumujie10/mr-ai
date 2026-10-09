@@ -61,7 +61,7 @@ export interface TuiInputFlowOptions {
   /** Switches between the parent and side projections without ending either one. */
   readonly toggleSideConversation?: () => Promise<boolean>;
   /** Stops and destroys the visible side conversation. */
-  readonly closeSideConversation?: (exitReason: 'ctrl_c' | 'ctrl_d') => Promise<boolean>;
+  readonly closeSideConversation?: () => Promise<boolean>;
   readonly requestProcessSuspend?: () => void;
   readonly keybindings?: TuiKeybindingRegistry;
   readonly append: (content: string, kind?: 'final-summary' | 'warning' | 'error') => void;
@@ -419,7 +419,7 @@ export class TuiInputFlow {
         return undefined;
       }
       if (this.options.isSideModeActive?.()) {
-        void this.options.closeSideConversation?.('ctrl_d');
+        void this.options.closeSideConversation?.();
         return { consume: true };
       }
       void this.options.leaveUi();
@@ -491,7 +491,7 @@ export class TuiInputFlow {
       // it never arms the application-level quit latch.
       this.ctrlCExitArmed = false;
       this.options.setHint(undefined);
-      void this.options.closeSideConversation?.('ctrl_c').then(
+      void this.options.closeSideConversation?.().then(
         () => this.options.onChanged(),
         () => this.options.onChanged(),
       );

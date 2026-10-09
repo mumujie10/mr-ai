@@ -1,15 +1,8 @@
-import {
-  getRuntimeBuildEnv,
-  getRuntimeRegion,
-  isManagedRuntime,
-  isTelemetryChannelEnabled,
-} from '@mavis/config';
 import { createPiTurnHistogramBucketsByName } from '@mavis/agent-core/pi-turn-runner';
 
 import { logger } from '../common/logger.js';
 import { POST_BASH_GAP_HISTOGRAM_BUCKETS } from './bash-completion-correlation.js';
 import {
-  createLocalRuntimeDesktopReporter,
   createLocalRuntimeMetricsClient,
   type MetricsBatchReporter,
   type MetricsClient,
@@ -17,8 +10,6 @@ import {
 import type { LocalRuntimeMode } from './mode.js';
 
 export interface LocalRuntimeHostMetricsOptions {
-  /** Explicit `telemetry.metrics` opt-in; environment opt-outs always take precedence. */
-  readonly readTelemetryEnabled?: () => boolean | undefined;
   readonly runtimeOwnerKind: string;
   readonly runtimeMode?: LocalRuntimeMode;
   readonly appVersion?: string;
@@ -103,14 +94,15 @@ const HISTOGRAM_BUCKETS_BY_NAME: Record<string, number[]> = {
  * desktop reporter (Matrix metrics ingress). Under pnpm dev / CLI in
  * non-managed mode the client falls back to the noop reporter and the
  * factory logs why — no `console.log`, no swallowed errors.
+ *
+ * This fork never ships metrics: the desktop reporter that posted batches to
+ * MiniMax's matrix ingress has been removed, so only an explicitly injected
+ * `metricsReporter` (tests, or a future self-hosted sink) can receive them.
  */
 export function buildLocalRuntimeMetricsClient(
   options: LocalRuntimeHostMetricsOptions,
 ): MetricsClient {
-  const managed = isManagedRuntime();
-  // The built-in cloud transport additionally requires an explicit `telemetry.metrics` opt-in.
-  const cloudEnabled = managed && isTelemetryChannelEnabled('metrics', options.readTelemetryEnabled);
-  const reporter = options.metricsReporter ?? buildManagedReporter(cloudEnabled);
+  const reporter = options.metricsReporter;
 
   const onError = (err: unknown): void => {
     logger.warn(
@@ -119,13 +111,6 @@ export function buildLocalRuntimeMetricsClient(
     );
   };
 
-  if (!cloudEnabled && !options.metricsReporter) {
-    logger.info(
-      { reason: managed ? 'telemetry_metrics_opt_in_required' : 'unmanaged_runtime' },
-      'Local runtime metrics reporter disabled',
-    );
-  }
-
   return createLocalRuntimeMetricsClient({
     runtimeOwnerKind: options.runtimeOwnerKind,
     ...(options.runtimeMode ? { runtimeMode: options.runtimeMode } : {}),
@@ -133,17 +118,6 @@ export function buildLocalRuntimeMetricsClient(
     histogramBucketsByName: HISTOGRAM_BUCKETS_BY_NAME,
     ...(reporter ? { reporter } : {}),
     onError,
-  });
-}
-
-function buildManagedReporter(managed: boolean): MetricsBatchReporter | undefined {
-  if (!managed) return undefined;
-  const buildEnv = getRuntimeBuildEnv();
-  return createLocalRuntimeDesktopReporter({
-    isEn: getRuntimeRegion() === 'en',
-    isProd: buildEnv === 'prod',
-    isStaging: buildEnv === 'staging',
-    isDev: buildEnv === 'dev',
   });
 }
 

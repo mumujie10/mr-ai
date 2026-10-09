@@ -64,17 +64,6 @@ export interface TuiSessionFlowOptions {
   readonly hasLiveRun?: () => boolean;
   /** Stops the foreground side Turn before its ephemeral Session is removed. */
   readonly abortForegroundRun?: () => Promise<boolean>;
-  readonly currentRunId?: () => string | undefined;
-  readonly onSideSessionOpened?: (input: {
-    readonly parentSessionId: string;
-    readonly sideSessionId: string;
-  }) => void;
-  readonly onSideSessionClosed?: (input: {
-    readonly parentSessionId: string;
-    readonly sideSessionId: string;
-    readonly sideRunId?: string;
-    readonly exitReason: 'ctrl_c' | 'ctrl_d' | 'navigation' | 'replaced';
-  }) => void;
   /** Interrupts a possibly detached run owned by the given Session. */
   readonly abortSessionRun?: (sessionId: string) => Promise<boolean>;
   readonly onSideConversationChanged?: (snapshot: TuiSideConversationSnapshot | undefined) => void;
@@ -357,7 +346,7 @@ export class TuiSessionFlow {
     // Codex semantics: starting a side conversation from the parent view
     // replaces the previous one from the current committed boundary instead
     // of resuming the stale conversation.
-    await this.discardSideConversation('replaced');
+    await this.discardSideConversation();
     let side: TuiSession;
     try {
       side = await this.options.runtime.createSession({
@@ -411,10 +400,6 @@ export class TuiSessionFlow {
       return undefined;
     }
 
-    this.options.onSideSessionOpened?.({
-      parentSessionId: decision.parentSessionId,
-      sideSessionId: side.sessionId,
-    });
     this.options.onChanged();
     return side;
   }
@@ -442,10 +427,9 @@ export class TuiSessionFlow {
   }
 
   /** Stops and destroys the side conversation, then restores the parent projection. */
-  async closeSideConversation(exitReason: 'ctrl_c' | 'ctrl_d'): Promise<boolean> {
+  async closeSideConversation(): Promise<boolean> {
     const sideConversation = this.sideConversation;
     if (!sideConversation || !this.isSideModeActive()) return false;
-    const sideRunId = this.options.currentRunId?.();
     if (this.options.hasLiveRun?.()) {
       const stopped = await this.options.abortForegroundRun?.();
       const active = await this.options.runtime
@@ -468,19 +452,13 @@ export class TuiSessionFlow {
     });
     this.sideConversation = undefined;
     this.options.onSideConversationChanged?.(undefined);
-    this.options.onSideSessionClosed?.({
-      parentSessionId: sideConversation.parentSessionId,
-      sideSessionId: sideConversation.sideSessionId,
-      ...(sideRunId ? { sideRunId } : {}),
-      exitReason,
-    });
     await this.deleteSideSession(sideConversation.sideSessionId);
     this.options.onChanged();
     return true;
   }
 
   /** Backward-compatible name used by older callers; this is now a destructive close only. */
-  async leaveSideSession(exitReason: 'ctrl_c' | 'ctrl_d' = 'ctrl_c'): Promise<boolean> {
+  async leaveSideSession(): Promise<boolean> {
     if (!this.sideConversation) {
       const current = this.options.controller.snapshot().session;
       if (!current || !isSideSession(current) || !current.parentSessionId) return false;
@@ -490,14 +468,14 @@ export class TuiSessionFlow {
         activeView: 'side',
       };
     }
-    return this.closeSideConversation(exitReason);
+    return this.closeSideConversation();
   }
 
   private async disposeSideConversation(): Promise<void> {
     // Normal Session navigation must not leave a hidden ephemeral Session
     // behind. Best-effort cleanup is sufficient here because navigation has
     // already chosen a different public projection.
-    await this.discardSideConversation('navigation');
+    await this.discardSideConversation();
   }
 
   /**
@@ -505,10 +483,9 @@ export class TuiSessionFlow {
    *
    * Mirrors Codex's background discard: interrupt any detached side Turn
    * first, then delete the ephemeral Session. Both steps stay best-effort —
-   * the user has already moved on — but the closed telemetry event always
-   * fires so open/close stays paired.
+   * the user has already moved on.
    */
-  private async discardSideConversation(exitReason: 'navigation' | 'replaced'): Promise<void> {
+  private async discardSideConversation(): Promise<void> {
     const sideConversation = this.sideConversation;
     if (!sideConversation) return;
     this.sideConversation = undefined;
@@ -519,11 +496,6 @@ export class TuiSessionFlow {
       // A side Turn that cannot be interrupted must not block navigation;
       // deletion below still removes the Session record.
     }
-    this.options.onSideSessionClosed?.({
-      parentSessionId: sideConversation.parentSessionId,
-      sideSessionId: sideConversation.sideSessionId,
-      exitReason,
-    });
     await this.options.runtime.deleteSession(sideConversation.sideSessionId).catch(() => undefined);
   }
 

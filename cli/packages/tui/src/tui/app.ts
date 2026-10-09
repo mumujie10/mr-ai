@@ -7,7 +7,6 @@ import {
   createTuiApplicationSessionActions,
   createTuiApplicationSurface,
   createTuiApplicationWidgets,
-  createTuiBusinessEventTracker,
   createTuiChatControllerComposition,
   createTuiRunIdentity,
   resolveTuiInteractionMaxRows,
@@ -310,18 +309,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     isStopped: () => stopped,
     hasLiveRun,
   });
-  const businessEventTracker = createTuiBusinessEventTracker({
-    telemetry: options.businessTelemetry,
-    workspaceDir: options.workspaceDir,
-    controller,
-    featureFlow,
-    stateStore,
-    transcript,
-  });
-  editor.onAutocompleteView = (suggestions) =>
-    businessEventTracker?.trackAutocompleteView(suggestions);
-  editor.onAutocompleteSelect = (suggestions, item) =>
-    businessEventTracker?.trackAutocompleteSelection(suggestions, item);
   const feedbackFlow = new Feedback(
     options.runtime,
     controller,
@@ -580,9 +567,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     abortForegroundRun: () => abortLiveTurn(),
     abortSessionRun: (sessionId) =>
       options.runtime.abortSession({ id: sessionId, reason: 'user_stop' }),
-    currentRunId: liveRunId,
-    onSideSessionOpened: (input) => businessEventTracker?.trackBtwSessionOpened(input),
-    onSideSessionClosed: (input) => businessEventTracker?.trackBtwSessionClosed(input),
     onSideConversationChanged: () => {
       updateChrome(controller.snapshot());
       tui.requestRender();
@@ -657,9 +641,7 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
       updateChrome(controller.snapshot());
       tui.requestRender();
     },
-    userMessageCount: () => transcript.snapshot().filter((cell) => cell.kind === 'user').length,
-    onMessageAdmitted: (input) => {
-      businessEventTracker?.trackChatSend(input);
+    onMessageAdmitted: () => {
       layout.forceFollowBottom();
     },
   });
@@ -768,7 +750,7 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     leaveUi,
     isSideModeActive: () => sessionFlow.isSideModeActive(),
     toggleSideConversation: () => sessionFlow.toggleSideConversation(),
-    closeSideConversation: (exitReason) => sessionFlow.closeSideConversation(exitReason),
+    closeSideConversation: () => sessionFlow.closeSideConversation(),
     requestProcessSuspend: options.requestProcessSuspend,
     keybindings: options.keybindings,
     append: appendLocalCell,

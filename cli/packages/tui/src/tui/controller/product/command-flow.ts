@@ -114,11 +114,7 @@ export interface TuiCommandFlowOptions {
   readonly append: (content: string, kind?: 'final-summary' | 'warning' | 'error') => void;
   readonly setHint: (message: string | undefined) => void;
   readonly onChanged: () => void;
-  readonly userMessageCount?: () => number;
-  readonly onMessageAdmitted?: (input: {
-    readonly attachmentCount: number;
-    readonly isFirstMessage: boolean;
-  }) => void;
+  readonly onMessageAdmitted?: () => void;
 }
 
 export type TuiCommandSubmitDisposition = 'consumed' | 'retained';
@@ -456,7 +452,6 @@ export class TuiCommandFlow {
       return this.restoreSeed(seed, input);
     }
     if (!preservePreparingHint) this.options.setHint(undefined);
-    const isFirstMessage = (this.options.userMessageCount?.() ?? 0) === 0;
 
     const chat = this.options.controller.snapshot();
     if (
@@ -602,10 +597,7 @@ export class TuiCommandFlow {
                 };
               }
               options.onRuntimeAccepted?.();
-              this.options.onMessageAdmitted?.({
-                attachmentCount: submission.attachments.length,
-                isFirstMessage,
-              });
+              this.options.onMessageAdmitted?.();
               this.options.planModeFlow?.rejectSubmission(submission.submissionId);
               await this.completeSubmittedResources(submission);
               return { disposition: 'consumed' };
@@ -667,10 +659,7 @@ export class TuiCommandFlow {
               };
             }
             if (queuedItemId) {
-              this.options.onMessageAdmitted?.({
-                attachmentCount: submission.attachments.length,
-                isFirstMessage,
-              });
+              this.options.onMessageAdmitted?.();
             }
             return { disposition: 'consumed' };
           }
@@ -748,10 +737,7 @@ export class TuiCommandFlow {
                         .refreshSessionMetadata(sessionId)
                         .catch(() => undefined);
                       options.onRuntimeAccepted?.();
-                      this.options.onMessageAdmitted?.({
-                        attachmentCount: submission.attachments.length,
-                        isFirstMessage,
-                      });
+                      this.options.onMessageAdmitted?.();
                     },
                   }
                 : {}),
@@ -843,10 +829,7 @@ export class TuiCommandFlow {
           );
         }
         if (fallbackItemId) {
-          this.options.onMessageAdmitted?.({
-            attachmentCount: submission.attachments.length,
-            isFirstMessage,
-          });
+          this.options.onMessageAdmitted?.();
         }
         return 'consumed';
       } catch (error) {

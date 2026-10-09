@@ -27,7 +27,6 @@ import {
   type RawSystemPromptOptions,
   type SystemPromptOverrides,
 } from './system-prompt-options.js';
-import type { McodeTelemetryCliAction } from './telemetry-command.js';
 
 export type { TuiInteractiveLaunchRequest } from './contract.js';
 
@@ -51,7 +50,6 @@ export interface CreateTuiProgramOptions {
   runLogout: (region?: MavisRegion) => Promise<void>;
   runProvider?: (request: McodeProviderCliRequest, lane?: string) => Promise<void>;
   runPlugin?: (request: McodePluginCliRequest, lane?: string) => Promise<void>;
-  runTelemetry?: (action: McodeTelemetryCliAction) => Promise<void>;
   resolveLane?: typeof resolveTuiManagedBackendLane;
   allowStartupEnvironmentSelection?: boolean;
   commandContributions?: readonly TuiCliCommandContribution[];
@@ -163,22 +161,6 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
     .option('--region <region>', 'account region: cn or global', parseLoginRegion)
     .allowExcessArguments(false)
     .action((commandOptions: { region?: MavisRegion }) => options.runLogout(commandOptions.region));
-
-  const telemetry = program
-    .command('telemetry')
-    .description('Inspect anonymous TUI usage reporting');
-
-  telemetry
-    .command('status')
-    .description('Show whether usage reporting is enabled and why')
-    .allowExcessArguments(false)
-    .action(() => requireTelemetryRunner(options)('status'));
-
-  telemetry
-    .command('preview')
-    .description('Show a representative decoded request without sending it')
-    .allowExcessArguments(false)
-    .action(() => requireTelemetryRunner(options)('preview'));
 
   const provider = program
     .command('provider')
@@ -435,11 +417,6 @@ function requirePluginRunner(options: CreateTuiProgramOptions) {
 function requireAcpRunner(options: CreateTuiProgramOptions) {
   if (!options.runAcp) throw new Error('ACP server is unavailable.');
   return options.runAcp;
-}
-
-function requireTelemetryRunner(options: CreateTuiProgramOptions) {
-  if (!options.runTelemetry) throw new Error('Telemetry inspection is unavailable.');
-  return options.runTelemetry;
 }
 
 function parsePositiveSafeInteger(value: string): number {
