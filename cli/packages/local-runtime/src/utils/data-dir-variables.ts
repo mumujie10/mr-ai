@@ -7,12 +7,12 @@
  * active local-runtime data directory instead of leaking the literal
  * placeholder into the turn prompt.
  *
- * Returns the input unchanged when `MINIMAX_DATA_DIR` is unset or the
+ * Returns the input unchanged when `MIREAI_DATA_DIR` is unset or the
  * content has no `{{DATA_DIR}}` marker — this keeps unit tests and
  * callers without an initialized profile working verbatim.
  */
 export function resolveDataDirVariables(content: string): string {
-  const dataDir = process.env.MINIMAX_DATA_DIR;
+  const dataDir = process.env.MIREAI_DATA_DIR;
   if (!dataDir || !content.includes('{{DATA_DIR}}')) return content;
   const normalizedDir = dataDir.replace(/\\/g, '/');
   return content.split('{{DATA_DIR}}').join(normalizedDir);

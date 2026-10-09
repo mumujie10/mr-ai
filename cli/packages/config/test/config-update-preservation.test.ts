@@ -76,7 +76,7 @@ beforeEach(() => {
   dataDir = join(root, "profile");
   fs.mkdirSync(dataDir);
   vi.spyOn(os, "homedir").mockReturnValue(root);
-  vi.stubEnv("MINIMAX_DATA_DIR", dataDir);
+  vi.stubEnv("MIREAI_DATA_DIR", dataDir);
   vi.stubEnv("__MAVIS_RUNTIME_MANAGED", "0");
   resetConfig();
   setLegacyByokProviderMigrationEnabled(false);

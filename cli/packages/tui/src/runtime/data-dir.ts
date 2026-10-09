@@ -5,8 +5,7 @@ import { configureTuiRuntimeEnvironment } from '../cli/environment.js';
 export type TuiDefaultDataDirResolver = () => string;
 
 export interface TuiDataDirEnvironment {
-  MINIMAX_DATA_DIR?: string;
-  MAVIS_DATA_DIR?: string;
+  MIREAI_DATA_DIR?: string;
 }
 
 export interface PrepareTuiDataDirOptions {
@@ -29,11 +28,7 @@ function getDefaultTuiDataDir(): string {
 }
 
 function readDataDirOverride(environment: TuiDataDirEnvironment): string | undefined {
-  const minimaxDataDir = environment.MINIMAX_DATA_DIR?.trim();
-  if (minimaxDataDir) return minimaxDataDir;
-
-  const mavisDataDir = environment.MAVIS_DATA_DIR?.trim();
-  return mavisDataDir || undefined;
+  return environment.MIREAI_DATA_DIR?.trim() || undefined;
 }
 
 export function getTuiDataDirPath(

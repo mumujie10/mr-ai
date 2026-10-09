@@ -446,8 +446,9 @@ pub(super) fn engine_support(id: &str) -> &'static str {
         // PI CLI 明确不内置 MCP（上游文档：No MCP），本项目不伪造来源。
         "pi" => "none",
         "dsh" => "plugin",
-        // mcode 自己的 MCP 配置在 ~/.minimax/config.yaml 里管理；本项目尚未
-        // 接管其读写，先如实标 none，不要让它以 native 身份顶着空来源列表。
+        // mcode 各自的 MCP 配置在自己的数据目录里管理（内置运行时 ~/.mireai，
+        // 官方 MiniMax Code ~/.minimax）；本项目尚未接管其读写，先如实标 none,
+        // 不要让它以 native 身份顶着空来源列表。
         "mireai" | "minimax" => "none",
         _ => "native",
     }

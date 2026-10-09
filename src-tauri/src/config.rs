@@ -9,20 +9,9 @@ pub const LOCAL_PROVIDER_ID: &str = "__local_settings_json__";
 pub(crate) const LEGACY_LOCAL_CONFIG_TOML_ID: &str = "__local_config_toml__";
 pub const DISABLED_PROVIDER_ID: &str = "__disabled__";
 pub const ENGINES: [&str; 13] = [
-    "claude",
-    "kimi",
-    "grok",
-    "codex",
-    "pi",
-    "omp",
-    "dsh",
-    "agy",
-    "opencode",
-    "qoder",
-    "qoder-cn",
+    "claude", "kimi", "grok", "codex", "pi", "omp", "dsh", "agy", "opencode", "qoder", "qoder-cn",
     // This app's own agent runtime, bundled under `cli/` and staged as `mr`.
-    "mireai",
-    // The official MiniMax Code CLI, installed by the user himself.
+    "mireai", // The official MiniMax Code CLI, installed by the user himself.
     "minimax",
 ];
 
@@ -131,8 +120,6 @@ fn migrate_bundled_section(config: &mut CliConfig, raw: &Value) {
     }
     config.minimax = ProviderSection::default();
 }
-
-
 
 fn write_config(config: &CliConfig) -> Result<(), String> {
     let path = crate::paths::config_path();
@@ -356,7 +343,27 @@ fn upsert_provider_inner(
     })
 }
 
-/// The bundled `mr` CLI owns its provider store in `~/.minimax/config.yaml`, so
+/// Make the bundled runtime hold every channel the app has stored.
+///
+/// The dialog's channel list is what the user edited; the runtime keeps its own
+/// provider store in `~/.mireai`, and that directory starts empty — on first
+/// launch, and again after it moved off the shared `~/.minimax`. Channels the
+/// CLI already has are left alone, so the call is safe to repeat and belongs on
+/// the startup path rather than in front of the window.
+pub fn sync_bundled_channels() -> Result<usize, String> {
+    let engine = crate::engine::mr_providers::MIREAI_ENGINE_ID;
+    let settings = crate::settings::read_settings().unwrap_or_default();
+    let bin = crate::engine::engine_bin(&settings, engine);
+    let section = read_config()?.section(engine).cloned().unwrap_or_default();
+    let channels = section
+        .providers
+        .values()
+        .filter_map(|json| crate::engine::mr_providers::channel_from_json(json).ok())
+        .collect::<Vec<_>>();
+    crate::engine::mr_providers::sync_missing_channels(&bin, &channels)
+}
+
+/// The bundled `mr` CLI owns its provider store in `~/.mireai/config.yaml`, so
 /// a channel entered here has to go through the CLI's own commands; storing it
 /// only in our config would leave the runtime unable to answer. Doing it inside
 /// the mutation means a CLI failure aborts our write as well, so the two stores

@@ -30,8 +30,8 @@ import yaml
 def _default_data_dir() -> Path:
     return Path(
         os.environ.get('__MAVIS_PARENT_DATA_DIR')
-        or os.environ.get('MINIMAX_DATA_DIR')
-        or str(Path.home() / ".minimax")
+        or os.environ.get('MIREAI_DATA_DIR')
+        or str(Path.home() / ".mireai")
     )
 
 DEFAULT_CONFIG_PATH = _default_data_dir() / "config.yaml"
@@ -378,7 +378,7 @@ Examples:
         """,
     )
     parser.add_argument("--config", type=str, default=None,
-                        help="Path to config.yaml (default: active dataDir/config.yaml, normally ~/.minimax/config.yaml)")
+                        help="Path to config.yaml (default: active dataDir/config.yaml, normally ~/.mireai/config.yaml)")
     parser.add_argument("--model", "-m", type=str, default=None,
                         help="Model in provider/model format")
     parser.add_argument("--prompt", "-p", type=str, default=None,

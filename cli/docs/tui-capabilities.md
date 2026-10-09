@@ -143,7 +143,8 @@ they do not establish live-model or cross-platform acceptance.
 
 ## Skill directory links
 
-Workspace `.agents/skills`, `.claude/skills`, and `.minimax/skills` support
+Workspace `.agents/skills`, `.claude/skills`, `.mireai/skills`, and
+`.minimax/skills` (MiniMax Code's root, read for interop) support
 directory symlinks, both for the entire skill root and for individual skill
 directories. Targets may live outside the workspace. Existing external-source
 enable settings and duplicate-name priority still apply. Linked directories are

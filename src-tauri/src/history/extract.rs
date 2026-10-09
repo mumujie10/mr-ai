@@ -728,7 +728,8 @@ fn extract_line_messages(engine: &str, value: &Value, images: ImageMode) -> Line
 /// shape): `{message_id, turn_id, message:{role,
 /// content:[parts], timestamp(ms), usage?, model?, toolCallId?, toolName?}}`
 /// (shape verified against a live install's
-/// `~/.minimax/v2/sessions/<…>/messages.jsonl`). Content parts spell
+/// `~/.mireai/v2/sessions/<…>/messages.jsonl`; MiniMax Code writes the same
+/// shape under `~/.minimax/…`). Content parts spell
 /// `text` / `thinking` / `toolCall`; a `toolResult` message resolves the
 /// matching call by its `toolCallId`.
 fn extract_mcode_line(value: &Value) -> LineRows {

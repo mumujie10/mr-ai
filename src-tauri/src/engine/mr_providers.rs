@@ -1,5 +1,5 @@
 //! The bundled `mr` CLI keeps its model providers in its own
-//! `~/.minimax/config.yaml`; the desktop client is the only place a user can
+//! `~/.mireai/config.yaml`; the desktop client is the only place a user can
 //! enter a key, so a channel saved here has to reach the CLI or the first
 //! message cannot be answered.
 //!
@@ -151,11 +151,7 @@ fn invoke(bin: &str, args: &[String], envs: &[(&str, &str)]) -> Result<Invocatio
 /// unreachable, and 验证 a draft is what [`test_draft`] is for. A user choosing
 /// 当前渠道 is already the explicit act.
 pub(crate) fn upsert_and_select(bin: &str, channel: &MrChannel<'_>) -> Result<(), String> {
-    let added = invoke(
-        bin,
-        &add_args(channel),
-        &[(API_KEY_ENV, channel.api_key)],
-    )?;
+    let added = invoke(bin, &add_args(channel), &[(API_KEY_ENV, channel.api_key)])?;
     if added.status != 0 {
         return Err(failure("保存渠道", &added));
     }
@@ -176,6 +172,40 @@ pub(crate) fn upsert_and_select(bin: &str, channel: &MrChannel<'_>) -> Result<()
         return Err(failure("设为当前模型", &selected));
     }
     Ok(())
+}
+
+/// Make the CLI's provider store hold every channel the app has.
+///
+/// The app's channel list is the copy the user edited, while the runtime keeps
+/// providers in its own data directory — which starts empty on first launch, and
+/// started empty again when that directory moved to `~/.mireai`. Without this a
+/// saved channel would be unknown to the CLI and the first message could not be
+/// answered. Only missing names are added: the CLI's selection, ordering and any
+/// provider the user configured there directly stay untouched, so repeating the
+/// call is safe.
+pub(crate) fn sync_missing_channels(
+    bin: &str,
+    channels: &[MrChannel<'_>],
+) -> Result<usize, String> {
+    if channels.is_empty() {
+        return Ok(0);
+    }
+    let listed = invoke(bin, &list_args(), &[])?;
+    if listed.status != 0 {
+        return Err(failure("读取渠道", &listed));
+    }
+    let mut added = 0;
+    for channel in channels {
+        if provider_id_for_name(&listed.stdout, channel.name).is_some() {
+            continue;
+        }
+        let saved = invoke(bin, &add_args(channel), &[(API_KEY_ENV, channel.api_key)])?;
+        if saved.status != 0 {
+            return Err(failure("补齐渠道", &saved));
+        }
+        added += 1;
+    }
+    Ok(added)
 }
 
 /// Drop the channel from the CLI too, so a deleted relay cannot stay selected.
@@ -227,8 +257,8 @@ impl TempProfile {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|elapsed| elapsed.as_nanos())
             .unwrap_or_default();
-        let path = std::env::temp_dir()
-            .join(format!("mr-provider-test-{}-{nanos}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("mr-provider-test-{}-{nanos}", std::process::id()));
         create_private_dir(&path)?;
         Ok(Self { path })
     }
@@ -268,8 +298,7 @@ pub(crate) fn test_draft(bin: &str, channel: &MrChannel<'_>) -> Result<Value, St
     let data_dir = profile.path_str();
     let envs = [
         (API_KEY_ENV, channel.api_key),
-        ("MINIMAX_DATA_DIR", data_dir.as_str()),
-        ("MAVIS_DATA_DIR", data_dir.as_str()),
+        ("MIREAI_DATA_DIR", data_dir.as_str()),
     ];
     let added = invoke(bin, &add_args(channel), &envs)?;
     if added.status != 0 {
@@ -356,7 +385,10 @@ mod tests {
             api_format: "openai-completions",
         };
         let joined = add_args(&channel).join(" ");
-        assert!(!joined.contains("sk-secret-value"), "key must never be argv");
+        assert!(
+            !joined.contains("sk-secret-value"),
+            "key must never be argv"
+        );
         assert!(joined.contains("--api-key-env MCODE_PROVIDER_API_KEY"));
         assert!(joined.contains("--api-format openai-completions"));
     }
@@ -380,7 +412,10 @@ mod tests {
             "name": "Relay", "baseUrl": "https://a", "apiKey": "k",
             "model": "m", "apiFormat": "anthropic-messages"
         });
-        assert_eq!(channel_from_json(&json).unwrap().api_format, "anthropic-messages");
+        assert_eq!(
+            channel_from_json(&json).unwrap().api_format,
+            "anthropic-messages"
+        );
         let missing = serde_json::json!({ "name": "Relay", "baseUrl": "https://a", "model": "m" });
         let error = match channel_from_json(&missing) {
             Ok(_) => panic!("a channel without a key must be rejected"),
@@ -479,6 +514,80 @@ exit 0
         );
     }
 
+    /// A fresh runtime directory gets the app's channels, a provider the CLI
+    /// already holds is not re-added (that would disturb its selection), and the
+    /// key still only travels as child environment.
+    #[cfg(unix)]
+    #[test]
+    fn sync_adds_only_the_channels_the_cli_is_missing() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("mr-provider-sync-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let log = dir.join("calls.log");
+        let log_path = log.display().to_string();
+        let stub = dir.join("mr");
+        let script = format!(
+            r#"#!/bin/sh
+printf '%s\n' "ARGV:$*" "ENV:${{MCODE_PROVIDER_API_KEY:-unset}}" >> '{log_path}'
+case "$*" in
+  *provider*list*)
+    printf '%s\n' '{{"providers":[{{"providerId":"custom_provider:kept","name":"Kept"}}]}}' ;;
+  *)
+    printf '%s\n' 'ok' ;;
+esac
+exit 0
+"#
+        );
+        std::fs::write(&stub, script).expect("write stub");
+        let mut permissions = std::fs::metadata(&stub).expect("metadata").permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&stub, permissions).expect("chmod");
+        std::fs::write(&log, "").expect("clear log");
+
+        let channels = vec![
+            MrChannel {
+                name: "Kept",
+                base_url: "https://kept.example/v1",
+                api_key: "sk-kept",
+                model: "m-kept",
+                api_format: "openai-completions",
+            },
+            MrChannel {
+                name: "Fresh",
+                base_url: "https://fresh.example/v1",
+                api_key: "sk-fresh",
+                model: "m-fresh",
+                api_format: "anthropic-messages",
+            },
+        ];
+        let added = sync_missing_channels(stub.to_str().expect("stub path"), &channels)
+            .expect("the sync reaches the CLI");
+        let recorded = std::fs::read_to_string(&log).expect("read log");
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert_eq!(added, 1, "only the missing channel is added:\n{recorded}");
+        let adds: Vec<&str> = recorded
+            .lines()
+            .filter(|line| line.starts_with("ARGV:provider add"))
+            .collect();
+        assert_eq!(
+            adds.len(),
+            1,
+            "a provider the CLI already has must not be re-added:\n{recorded}"
+        );
+        assert!(adds[0].contains("Fresh"), "{}", adds[0]);
+        assert!(
+            adds[0].contains("--api-format anthropic-messages"),
+            "{}",
+            adds[0]
+        );
+        assert!(!adds[0].contains("sk-fresh"), "the key leaked into argv");
+        assert!(
+            recorded.contains("ENV:sk-fresh"),
+            "the key never reached the CLI:\n{recorded}"
+        );
+    }
+
     #[test]
     fn test_argv_carries_no_secret() {
         let joined = test_args("custom_provider:my-relay", "gpt-x").join(" ");
@@ -527,7 +636,7 @@ exit 0
         let stub = dir.join("mr");
         let script = format!(
             r#"#!/bin/sh
-printf '%s\n' "ARGV:$*" "KEY:${{MCODE_PROVIDER_API_KEY:-unset}}" "DIR:${{MINIMAX_DATA_DIR:-unset}}:${{MAVIS_DATA_DIR:-unset}}" >> '{log_path}'
+printf '%s\n' "ARGV:$*" "KEY:${{MCODE_PROVIDER_API_KEY:-unset}}" "DIR:${{MIREAI_DATA_DIR:-unset}}" >> '{log_path}'
 case "$*" in
   *provider*list*)
     printf '%s\n' '{{"providers":[{{"providerId":"custom_provider:my-relay","name":"My Relay"}}]}}' ;;
@@ -578,17 +687,15 @@ exit 0
             .filter_map(|line| line.strip_prefix("DIR:"))
             .collect();
         assert_eq!(scratch_dirs.len(), 3, "add, list and test all run in it");
-        for both in &scratch_dirs {
-            let (minimax, mavis) = both.split_once(':').expect("both vars recorded");
-            let name = std::path::Path::new(minimax)
+        for recorded_dir in &scratch_dirs {
+            let name = std::path::Path::new(recorded_dir)
                 .file_name()
                 .and_then(|name| name.to_str())
                 .unwrap_or_default();
-            assert!(name.starts_with("mr-provider-test-"), "{minimax}");
-            assert_eq!(minimax, mavis, "the CLI honors either name; send both");
+            assert!(name.starts_with("mr-provider-test-"), "{recorded_dir}");
             assert!(
-                !std::path::Path::new(minimax).exists(),
-                "the scratch profile survived the test: {minimax}"
+                !std::path::Path::new(recorded_dir).exists(),
+                "the scratch profile survived the test: {recorded_dir}"
             );
         }
         for line in recorded.lines().filter(|line| line.starts_with("ARGV:")) {
@@ -609,9 +716,12 @@ exit 0
         let dir = std::env::temp_dir().join(format!("mr-private-dir-{}", std::process::id()));
         std::fs::remove_dir_all(&dir).ok();
         create_private_dir(&dir).expect("created");
-        let mode = std::fs::metadata(&dir).expect("metadata").permissions().mode() & 0o777;
+        let mode = std::fs::metadata(&dir)
+            .expect("metadata")
+            .permissions()
+            .mode()
+            & 0o777;
         std::fs::remove_dir_all(&dir).ok();
         assert_eq!(mode, 0o700, "other accounts could read the stored key");
     }
-
 }

@@ -778,7 +778,7 @@ describe('TranscriptView', () => {
               rows: [
                 {
                   label: 'Source',
-                  value: '/home/dev/.minimax/config.yaml',
+                  value: '/home/dev/.mireai/config.yaml',
                 },
               ],
             },
@@ -791,7 +791,7 @@ describe('TranscriptView', () => {
     const rendered = stripVTControlCharacters(view.render(28).join('\n'));
 
     expect(rendered).toMatch(/│ Source\s+│/u);
-    expect(rendered).toContain('│   /home/dev/.minimax');
+    expect(rendered).toContain('│   /home/dev/.mireai');
     expect(rendered).toContain('│   /config.yaml');
     expect(rendered).not.toMatch(/│ Source\s+│?\s*\/home/u);
     expect(rendered).toContain('╰─');

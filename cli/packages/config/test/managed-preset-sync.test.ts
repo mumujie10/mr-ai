@@ -28,7 +28,7 @@ beforeEach(() => {
   file = join(root, "config.yaml");
   vi.stubEnv("__MAVIS_RUNTIME_MANAGED", "1");
   vi.stubEnv("__MAVIS_RUNTIME_DATA_DIR", root);
-  vi.stubEnv("MINIMAX_DATA_DIR", root);
+  vi.stubEnv("MIREAI_DATA_DIR", root);
   vi.stubEnv("MAVIS_REGION", "en");
   vi.stubEnv("MAVIS_BUILD_ENV", "staging");
   setLegacyByokProviderMigrationEnabled(false);

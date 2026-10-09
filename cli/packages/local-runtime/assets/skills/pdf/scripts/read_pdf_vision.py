@@ -93,8 +93,8 @@ def _runtime_port() -> int:
     data_dir = Path(
         os.environ.get("__MAVIS_RUNTIME_DATA_DIR")
         or os.environ.get("__MAVIS_PARENT_DATA_DIR")
-        or os.environ.get("MINIMAX_DATA_DIR")
-        or str(Path.home() / ".minimax")
+        or os.environ.get("MIREAI_DATA_DIR")
+        or str(Path.home() / ".mireai")
     )
     port_file = data_dir / "daemon.port"
     if port_file.is_file():

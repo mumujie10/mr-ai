@@ -139,6 +139,17 @@ pub fn run() {
             if let Ok(resource_dir) = app.path().resource_dir() {
                 engine::bundled::init(&resource_dir);
             }
+            // The bundled runtime owns its provider store in its own data
+            // directory. Push whatever the app has that the CLI is missing, off
+            // the startup path: a slow, busy or absent CLI must not delay or
+            // fail the window, and the first message would otherwise fail.
+            tauri::async_runtime::spawn_blocking(|| match config::sync_bundled_channels() {
+                Ok(0) => {}
+                Ok(added) => {
+                    eprintln!("[config] pushed {added} channel(s) to the bundled runtime")
+                }
+                Err(error) => eprintln!("[config] bundled channel sync failed: {error}"),
+            });
             if let Err(error) = db::import_legacy_workspaces_once(&db) {
                 // Import failure must never block startup; the sidebar simply
                 // starts empty and the user adds workspaces by hand.

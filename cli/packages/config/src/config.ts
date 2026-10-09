@@ -1187,12 +1187,12 @@ export interface NexusConfig {
 // Brand constants — single source of truth for all brand-related strings.
 // ---------------------------------------------------------------------------
 export const BRAND = {
-  /** Data directory basename (e.g. '.minimax'). */
-  APP_DIR: ".minimax",
-  /** Environment variable prefix (e.g. 'minimax'). */
-  ENV_PREFIX: "minimax",
-  /** CLI binary name. */
-  CLI_NAME: "minimax",
+  /** Data directory basename ('.mireai') — see config/data-dir.ts. */
+  APP_DIR: ".mireai",
+  /** Environment variable prefix for this product's own variables. */
+  ENV_PREFIX: "mireai",
+  /** CLI binary name (staged by scripts/stage-runtime.mjs). */
+  CLI_NAME: "mr",
 } as const;
 
 /** Legacy runtime env prefix. New runtime identity travels via args/files. */
@@ -1305,10 +1305,11 @@ function parseRepoName(remoteUrl: string): string | null {
   return match?.[1] ?? null;
 }
 
+/// This product's own data-directory override. `MINIMAX_DATA_DIR` and
+/// `MAVIS_DATA_DIR` are deliberately not read: they belong to other installs,
+/// and honoring them would let one product reach into the other's data.
 function getExplicitPublicDataDirEnv(): string | undefined {
-  return (
-    process.env.MINIMAX_DATA_DIR?.trim() || process.env.MAVIS_DATA_DIR?.trim()
-  );
+  return process.env.MIREAI_DATA_DIR?.trim();
 }
 
 function shouldUseGitAutoConfig(): boolean {
@@ -1478,7 +1479,7 @@ export function getDataDir(): string {
   //    incorrectly override the per-branch isolation that git detection provides.
   // 3. ${RUNTIME_ENV_PREFIX}_DATA_DIR env var → used only when git detection is not active
   // 4. ${RUNTIME_ENV_PREFIX}_PROFILE env var → manual profile override
-  // 5. resolveDataDir() → non-git / non-mavis default data directory
+  // 5. resolveDataDir() → this product's own default data directory
   const explicitProfile = getExplicitProfileEnv();
   if (shouldPreferExplicitDataDir()) {
     return getExplicitDataDirArg()!;

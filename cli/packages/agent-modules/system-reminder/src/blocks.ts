@@ -317,7 +317,7 @@ export function buildMemorySkillReminder(
   const proposalEnabled = opts.skillProposalEnabled === true;
   const anySkillSection = signalEnabled || proposalEnabled;
   const isCloud = opts.scene === 'cloud';
-  const dataDirDisplay = opts.dataDir || '~/.minimax';
+  const dataDirDisplay = opts.dataDir || '~/.mireai';
 
   const statusLines = [
     '<memory-skill-reminder>',

@@ -24,6 +24,7 @@ const EXTERNAL_SOURCE_KINDS = [
   'user-cc',
   'user-codex',
   'user-agents',
+  'workspace-mireai',
   'workspace-minimax',
   'workspace-cc',
   'workspace-agents',
@@ -65,6 +66,7 @@ export const DEFAULT_SKILLS_CONFIG: SkillsConfig = {
     walkUp: true,
     duplicateWarn: true,
     sources: {
+      'workspace-mireai': { enabled: true, priority: 70 },
       'workspace-minimax': { enabled: true, priority: 65 },
       'workspace-cc': { enabled: true, priority: 60 },
       'workspace-agents': { enabled: true, priority: 55 },

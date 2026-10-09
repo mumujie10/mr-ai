@@ -41,8 +41,7 @@ function fixture(t, environment = process.env) {
     cwd: dataDir,
     env: {
       ...withoutProxyEnvironment(environment),
-      MINIMAX_DATA_DIR: dataDir,
-      MAVIS_DATA_DIR: dataDir,
+      MIREAI_DATA_DIR: dataDir,
       MCODE_TEST_NETWORK_AUDIT: audit,
       MCODE_TEST_MANAGED_OFFLINE: "1",
       MCODE_TEST_PROCESS_PROBE: "1",
@@ -69,7 +68,7 @@ test("CLI version and command help work outside the source directory", (t) => {
 test("CLI defaults to the shared user config without migrating the old source directory", (t) => {
   const options = fixture(t);
   const home = options.cwd;
-  const config = path.join(home, ".minimax", "config.yaml");
+  const config = path.join(home, ".mireai", "config.yaml");
   const oldConfig = path.join(home, ".minimax-code", "config.yaml");
   for (const file of [config, oldConfig]) mkdirSync(path.dirname(file));
   // A provider that exists only in the shared config identifies which file the CLI read.
@@ -92,8 +91,7 @@ test("CLI defaults to the shared user config without migrating the old source di
   for (const name of Object.keys(options.env)) {
     if (name.startsWith("__MAVIS_RUNTIME")) delete options.env[name];
   }
-  delete options.env.MINIMAX_DATA_DIR;
-  delete options.env.MAVIS_DATA_DIR;
+  delete options.env.MIREAI_DATA_DIR;
   Object.assign(options.env, {
     HOME: home,
     USERPROFILE: home,
@@ -161,7 +159,7 @@ test("config permission failures preserve private reads and terminate unsafe sta
   skip: process.platform !== "darwin",
 }, (t) => {
   const options = fixture(t);
-  const config = path.join(options.env.MINIMAX_DATA_DIR, "config.yaml");
+  const config = path.join(options.env.MIREAI_DATA_DIR, "config.yaml");
   const backup = `${config}.bak.byok-legacy-provider.smoke`;
   const flag = (file, value) => {
     const result = spawnSync("chflags", [value, file], { encoding: "utf8" });
@@ -391,8 +389,7 @@ test("provider add rejects invalid token limits without saving a provider", asyn
       // Keep data separate from cwd so assertions must use the CLI's config location.
       const dataDir = path.join(options.cwd, "data");
       mkdirSync(dataDir);
-      options.env.MINIMAX_DATA_DIR = dataDir;
-      options.env.MAVIS_DATA_DIR = dataDir;
+      options.env.MIREAI_DATA_DIR = dataDir;
       const configPath = path.join(dataDir, "config.yaml");
       if (seeded) writeFileSync(configPath, "logLevel: info\ndefaultModel: minimax/MiniMax-M3\n", { mode: 0o600 });
       for (const flag of ["--context-limit", "--output-limit"]) {

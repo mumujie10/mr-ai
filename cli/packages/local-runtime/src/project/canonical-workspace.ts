@@ -112,7 +112,7 @@ export function normalizeAbsolutePath(value: string | undefined): string | undef
 
 /**
  * Match the one-way read alias from the historical `.mavis[-profile]` data
- * directory to the current `.minimax[-profile]` data directory.
+ * directory to the current `.mireai[-profile]` data directory.
  *
  * The alias is deliberately narrower than a general path migration: both
  * paths must be under the same parent, use the same profile suffix, contain

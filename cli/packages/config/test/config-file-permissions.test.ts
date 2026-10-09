@@ -35,7 +35,7 @@ describe.skipIf(process.platform === "win32")(
       dataDir = join(root, "profile");
       fs.mkdirSync(dataDir);
       vi.spyOn(os, "homedir").mockReturnValue(root);
-      vi.stubEnv("MINIMAX_DATA_DIR", dataDir);
+      vi.stubEnv("MIREAI_DATA_DIR", dataDir);
       vi.stubEnv("__MAVIS_RUNTIME_MANAGED", "0");
       resetConfig();
       setLegacyByokProviderMigrationEnabled(false);
@@ -183,7 +183,7 @@ describe.skipIf(process.platform === "win32")(
     });
 
     it("copies default-profile credentials into a private config", () => {
-      const defaults = join(root, ".minimax");
+      const defaults = join(root, ".mireai");
       fs.mkdirSync(defaults);
       fs.writeFileSync(join(defaults, "config.yaml"), document, {
         mode: 0o644,

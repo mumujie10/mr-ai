@@ -81,13 +81,13 @@ Source builds and the published npm CLI use the same default user data directory
 | CLI artifact | Default user data directory |
 | --- | --- |
 | Published npm `@minimax-ai/code@0.4.12` | `~/.minimax` |
-| Build from this repository | `~/.minimax` |
+| Build from this repository | `~/.mireai` |
 
-The npm 0.4.12 default was checked against the [public registry artifact](https://registry.npmjs.org/@minimax-ai/code/0.4.12) on 2026-09-19, with its SHA-512 integrity verified. This applies to that published version, including local npm dependencies; do not infer the default of another release from its version label alone. A selected profile uses `~/.minimax-<profile>`. The source default is defined in [`data-dir.ts`](../packages/tui/src/runtime/data-dir.ts). Login state, provider configuration such as `config.yaml`, caches, and sessions belong to the selected data directory.
+The npm 0.4.12 default was checked against the [public registry artifact](https://registry.npmjs.org/@minimax-ai/code/0.4.12) on 2026-09-19, with its SHA-512 integrity verified. This applies to that published version, including local npm dependencies; do not infer the default of another release from its version label alone. A selected profile appends its name to that default (`~/.minimax-<profile>` for the npm CLI, `~/.mireai-<profile>` for a build from this repository). The default for this repository is `NEW_DATA_DIR_BASENAME` in [`packages/config/src/data-dir.ts`](../packages/config/src/data-dir.ts). Login state, provider configuration such as `config.yaml`, caches, and sessions belong to the selected data directory.
 
-Both accept a non-empty `MINIMAX_DATA_DIR`, falling back to a non-empty `MAVIS_DATA_DIR`, before the default. The [macOS / Linux / WSL installer](https://filecdn.minimax.chat/public/install.sh) installs the npm package under `~/.minimax-code` by default (`MCODE_INSTALL_DIR` changes the installation location). It does not set either data-directory override. Installation files and user data are separate concerns, even when their directories have the same name.
+A build from this repository reads only `MIREAI_DATA_DIR` (or `--data-dir`) before its default. `MINIMAX_DATA_DIR` and `MAVIS_DATA_DIR` are the published CLI's own overrides and are deliberately not read here, so one install cannot be redirected into the other's data. There is also no migration or compatibility link between the two directories: `~/.minimax` stays MiniMax Code's, `~/.mireai` stays ours. The [macOS / Linux / WSL installer](https://filecdn.minimax.chat/public/install.sh) installs the npm package under `~/.minimax-code` by default (`MCODE_INSTALL_DIR` changes the installation location). It does not set either data-directory override. Installation files and user data are separate concerns, even when their directories have the same name.
 
-Earlier source builds used `~/.minimax-code` for user data. The new default does not move or merge that data. To keep using an existing source-build data directory, explicitly set `MINIMAX_DATA_DIR` to its path.
+Earlier source builds used `~/.minimax-code`, and builds before the `~/.mireai` split used `~/.minimax`, for user data. The current default does not move or merge that data. To keep working in one of those existing directories, set `MIREAI_DATA_DIR` to its path explicitly — and remember that `~/.minimax` is shared with MiniMax Code, so sessions and provider configuration there are visible to both.
 
 To locate data safely:
 
@@ -95,7 +95,7 @@ To locate data safely:
 2. Check whether either data-directory override is set in that launcher's environment. Otherwise use the artifact-specific default above. Inspect directory and file names/permissions locally, without printing `config.yaml`, authentication files, or session contents.
 3. If both directories exist, their presence alone does not identify the active one. Keep both protected, and include the launcher, version, installation method, and whether overrides are set when requesting help. Redact personal path components; do not attach configuration or authentication files. Changing an override does not migrate existing data, so do not move or delete either directory merely to match these docs.
 
-For tests, explicitly set `MINIMAX_DATA_DIR` to a temporary directory to keep normal sessions separate. Use `$env:MINIMAX_DATA_DIR = 'C:\path\to\test-profile'` in PowerShell or `export MINIMAX_DATA_DIR=/path/to/test-profile` in a POSIX shell.
+For tests, explicitly set `MIREAI_DATA_DIR` to a temporary directory to keep normal sessions separate. Use `$env:MIREAI_DATA_DIR = 'C:\path\to\test-profile'` in PowerShell or `export MIREAI_DATA_DIR=/path/to/test-profile` in a POSIX shell.
 
 ## macOS terminal shortcuts: Ghostty Option+M
 
@@ -135,7 +135,7 @@ Alternatively, merge this entry into `<data-dir>/tui/keybindings.json`, preservi
 }
 ```
 
-For the default profile this is `~/.minimax/tui/keybindings.json`; [profiles and data-directory overrides](#accounts-and-data) change the path. Create the `tui` directory if needed. After editing the file, run `/reload` while idle with no pending interaction or queued message, or restart MCode. This replaces `Alt+M`; use `["alt+m", "ctrl+x"]` as the value to retain both bindings. `/hotkeys` shows the effective binding.
+For the default profile this is `~/.mireai/tui/keybindings.json`; [profiles and data-directory overrides](#accounts-and-data) change the path. Create the `tui` directory if needed. After editing the file, run `/reload` while idle with no pending interaction or queued message, or restart MCode. This replaces `Alt+M`; use `["alt+m", "ctrl+x"]` as the value to retain both bindings. `/hotkeys` shows the effective binding.
 
 ### Verify the result
 

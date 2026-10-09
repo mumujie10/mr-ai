@@ -180,8 +180,7 @@ test(
     });
     const baseUrl = `http://127.0.0.1:${server.address().port}/v1`;
     const env = {
-      MINIMAX_DATA_DIR: dataDir,
-      MAVIS_DATA_DIR: dataDir,
+      MIREAI_DATA_DIR: dataDir,
       MCODE_PROVIDER_API_KEY: "fixture-only-key",
       MCODE_TEST_ALLOWED_ORIGIN: new URL(baseUrl).origin,
       MCODE_TEST_NETWORK_AUDIT: networkAudit,
@@ -768,8 +767,7 @@ test(
           HOME: homeDir,
           XDG_CONFIG_HOME: path.join(homeDir, "config"),
           XDG_DATA_HOME: path.join(homeDir, "data"),
-          MINIMAX_DATA_DIR: dataDir,
-          MAVIS_DATA_DIR: dataDir,
+          MIREAI_DATA_DIR: dataDir,
           MCODE_TEST_ALLOWED_ORIGIN: origin,
           MCODE_TEST_NETWORK_AUDIT: networkAudit,
           MCODE_TEST_MANAGED_OFFLINE: "1",
@@ -1000,8 +998,7 @@ function cancellationTest(cancellation) {
           HOME: homeDir,
           XDG_CONFIG_HOME: path.join(homeDir, "config"),
           XDG_DATA_HOME: path.join(homeDir, "data"),
-          MINIMAX_DATA_DIR: dataDir,
-          MAVIS_DATA_DIR: dataDir,
+          MIREAI_DATA_DIR: dataDir,
           MCODE_TEST_ALLOWED_ORIGIN: origin,
           MCODE_TEST_NETWORK_AUDIT: networkAudit,
           MCODE_TEST_MANAGED_OFFLINE: "1",

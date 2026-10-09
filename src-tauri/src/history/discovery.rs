@@ -600,14 +600,10 @@ pub(crate) fn dir_session_anchor_roots(engine: &str) -> Vec<PathBuf> {
             roots
         }
         "dsh" => vec![crate::engine::engine_home(Some("DSH_HOME"), ".dsh").join("sessions")],
-        // mcode 系(内置 `mr` = mireai、官方 `mcode` = minimax)共用这一份会话布局:
-        // <data>/v2/sessions/<日期>/…-session_<id>/。两者的数据目录尚未分离,锚定根
-        // 因此也同源;真正分开之后各自指向自己的 home。
-        "mireai" | "minimax" => {
-            vec![crate::engine::engine_home(Some("MINIMAX_DATA_DIR"), ".minimax")
-                .join("v2")
-                .join("sessions")]
-        }
+        // mcode 系的会话布局两份相同:<data>/v2/sessions/<日期>/…-session_<id>/,
+        // 但 <data> 各不相同——内置运行时用自己的 ~/.mireai,官方 MiniMax Code
+        // 仍是 ~/.minimax。锚定根与发现同源,所以删除只会落在本引擎的目录里。
+        "mireai" | "minimax" => vec![mcode_sessions_root(engine)],
         _ => Vec::new(),
     }
 }
@@ -711,6 +707,21 @@ pub(super) fn discover_agy(workspace: &Path) -> Vec<SessionFile> {
         .collect()
 }
 
+/// The data directory behind one mcode engine. The bundled runtime answers to
+/// `MIREAI_DATA_DIR` and nothing else, so another product's environment can
+/// never point it into someone else's data; MiniMax Code reads its own
+/// `MINIMAX_DATA_DIR` override, defaulting to `~/.minimax`.
+pub(crate) fn mcode_data_dir(engine: &str) -> PathBuf {
+    if engine == crate::engine::mr_providers::MIREAI_ENGINE_ID {
+        return crate::engine::engine_home(Some("MIREAI_DATA_DIR"), ".mireai");
+    }
+    crate::engine::engine_home(Some("MINIMAX_DATA_DIR"), ".minimax")
+}
+
+fn mcode_sessions_root(engine: &str) -> PathBuf {
+    mcode_data_dir(engine).join("v2").join("sessions")
+}
+
 /// The mcode runtimes index their conversations in the runtime sqlite
 /// (`<data>/v2/sqlite/runtime-state.sqlite`, columns `workspace_dir` /
 /// `history_relative_dir`); transcripts live at
@@ -718,11 +729,11 @@ pub(super) fn discover_agy(workspace: &Path) -> Vec<SessionFile> {
 /// directory names carry no workspace, so the db row is the only
 /// workspace→session link.
 ///
-/// One CLI data directory holds both runtimes' sessions and a row does not say
-/// which product wrote it, so the scan attributes every session to `engine` —
-/// the runtime this app actually drives.
+/// Sessions come from that engine's own data directory, so a session written
+/// by the bundled runtime is never attributed to MiniMax Code, or the other way
+/// around.
 pub(super) fn discover_mcode(workspace: &Path, engine: &'static str) -> Vec<SessionFile> {
-    let data_dir = crate::engine::engine_home(Some("MINIMAX_DATA_DIR"), ".minimax");
+    let data_dir = mcode_data_dir(engine);
     let sessions_root = data_dir.join("v2").join("sessions");
     let db_path = data_dir.join("v2").join("sqlite").join("runtime-state.sqlite");
     let mut out = Vec::new();
@@ -1578,12 +1589,12 @@ mod tests {
         ))
         .unwrap();
 
-        let prev = std::env::var_os("MINIMAX_DATA_DIR");
-        std::env::set_var("MINIMAX_DATA_DIR", &data);
+        let prev = std::env::var_os("MIREAI_DATA_DIR");
+        std::env::set_var("MIREAI_DATA_DIR", &data);
         let found = discover_mcode(&workspace, "mireai");
         match &prev {
-            Some(value) => std::env::set_var("MINIMAX_DATA_DIR", value),
-            None => std::env::remove_var("MINIMAX_DATA_DIR"),
+            Some(value) => std::env::set_var("MIREAI_DATA_DIR", value),
+            None => std::env::remove_var("MIREAI_DATA_DIR"),
         }
         assert_eq!(found.len(), 1, "only the matching visible conversation");
         assert_eq!(found[0].session_id, "mvs_hit");

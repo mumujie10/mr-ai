@@ -15,7 +15,7 @@ let dataDir: string;
 
 beforeEach(() => {
   dataDir = fs.mkdtempSync(join(os.tmpdir(), "mcode-model-fallback-"));
-  vi.stubEnv("MINIMAX_DATA_DIR", dataDir);
+  vi.stubEnv("MIREAI_DATA_DIR", dataDir);
   vi.stubEnv("__MAVIS_RUNTIME_DATA_DIR", dataDir);
   vi.stubEnv("__MAVIS_RUNTIME_MANAGED", "1");
   vi.stubEnv("__MAVIS_RUNTIME_DISABLE_GIT_AUTO_CONFIG", "1");

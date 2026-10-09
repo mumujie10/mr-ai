@@ -72,8 +72,6 @@ export {
   NEW_DATA_DIR_BASENAME,
   getLegacyDataDirPath,
   getPrimaryDataDirPath,
-  migrateDefaultDataDir,
-  migrateProfileDataDir,
   resolveDataDir,
 } from './data-dir.js';
 export type { DataDirMigrationLogger, ResolveDataDirOptions } from './data-dir.js';

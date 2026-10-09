@@ -75,7 +75,7 @@ Build with `pnpm build` in the repository. To select a test workspace, change th
 shell's working directory before launching the built CLI by its absolute path.
 The interactive TUI does not accept the headless `exec --cwd` option.
 
-With a dedicated `MINIMAX_DATA_DIR` and an enabled test Plugin:
+With a dedicated `MIREAI_DATA_DIR` and an enabled test Plugin:
 
 1. Ask for a short answer without tools. Confirm one Stop notice after completion.
 2. Repeat the prompt. Confirm a second notice even when its text is identical.

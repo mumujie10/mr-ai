@@ -3,6 +3,7 @@ import { lstat, open, readlink, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { TextDecoder } from 'node:util';
 
+import { LEGACY_DATA_DIR_BASENAME, NEW_DATA_DIR_BASENAME } from '@mavis/config';
 import { isDefaultAgentAvatarMarker } from '@mavis/shared/agent-avatar';
 import yaml from 'yaml';
 
@@ -711,10 +712,18 @@ function dataDirSource(): string {
   return source && KNOWN_DATA_DIR_SOURCES.has(source) ? source : 'unknown';
 }
 
-function agentDirectoryRootKind(root: string): '.minimax' | '.mavis' | 'other' {
+function agentDirectoryRootKind(
+  root: string,
+): typeof NEW_DATA_DIR_BASENAME | typeof LEGACY_DATA_DIR_BASENAME | 'other' {
   const name = basename(root).toLowerCase();
-  if (name === '.minimax' || name.startsWith('.minimax-')) return '.minimax';
-  if (name === '.mavis' || name.startsWith('.mavis-')) return '.mavis';
+  if (name === NEW_DATA_DIR_BASENAME || name.startsWith(`${NEW_DATA_DIR_BASENAME}-`)) {
+    return NEW_DATA_DIR_BASENAME;
+  }
+  if (name === LEGACY_DATA_DIR_BASENAME || name.startsWith(`${LEGACY_DATA_DIR_BASENAME}-`)) {
+    return LEGACY_DATA_DIR_BASENAME;
+  }
+  // `.minimax` lands here on purpose: it is MiniMax Code's directory, not data
+  // this product owns.
   return 'other';
 }
 
@@ -749,20 +758,22 @@ async function isExpectedDefaultDataDirTarget(
   current: string,
   resolvedTarget: string,
 ): Promise<boolean> {
-  if (current !== root || agentDirectoryRootKind(root) !== '.mavis') return false;
+  if (current !== root || agentDirectoryRootKind(root) !== LEGACY_DATA_DIR_BASENAME) return false;
   try {
     return samePath(
       resolvedTarget,
-      await realpath(join(dirname(root), expectedDefaultMinimaxDataDirName(root))),
+      await realpath(join(dirname(root), expectedDefaultCurrentDataDirName(root))),
     );
   } catch {
     return false;
   }
 }
 
-function expectedDefaultMinimaxDataDirName(root: string): string {
+function expectedDefaultCurrentDataDirName(root: string): string {
   const name = basename(root);
-  return name.startsWith('.mavis-') ? `.minimax${name.slice('.mavis'.length)}` : '.minimax';
+  return name.startsWith(`${LEGACY_DATA_DIR_BASENAME}-`)
+    ? `${NEW_DATA_DIR_BASENAME}${name.slice(LEGACY_DATA_DIR_BASENAME.length)}`
+    : NEW_DATA_DIR_BASENAME;
 }
 
 function samePath(left: string, right: string): boolean {

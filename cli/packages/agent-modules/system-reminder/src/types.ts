@@ -166,7 +166,7 @@ export interface AgentEnv {
   runtimePort?: number | undefined;
   /** Active profile name (e.g. "dev"), null when running the default profile. */
   profile?: string | null | undefined;
-  /** Local runtime data directory (e.g. ~/.minimax-dev). */
+  /** Local runtime data directory (e.g. ~/.mireai-dev). */
   dataDir?: string | undefined;
   /**
    * Absolute path to the shared root-session scratchpad file. Inherited by

@@ -229,7 +229,7 @@ export function renderPosixLauncher(options: {
 }): string {
   const lines = [
     '#!/bin/sh',
-    'unset MAVIS_ACCESS_TOKEN MAVIS_DATA_DIR MINIMAX_DATA_DIR MAVIS_PORT MAVIS_PROFILE IS_SANDBOX MCODE_API_BASE_URL MCODE_AUTH_BASE_URL MCODE_CLIENT_ID MCODE_SCOPE MCODE_AUTH_PROVIDER MCODE_AUTH_BROKER_ENDPOINT MCODE_AUTH_BROKER_CAPABILITY_FILE MCODE_EXTRA_HEADERS',
+    'unset MAVIS_ACCESS_TOKEN MIREAI_DATA_DIR MAVIS_PORT MAVIS_PROFILE IS_SANDBOX MCODE_API_BASE_URL MCODE_AUTH_BASE_URL MCODE_CLIENT_ID MCODE_SCOPE MCODE_AUTH_PROVIDER MCODE_AUTH_BROKER_ENDPOINT MCODE_AUTH_BROKER_CAPABILITY_FILE MCODE_EXTRA_HEADERS',
     "for mcode_tools_name in $(env | sed -n 's/^\\([^=]*\\)=.*$/\\1/p'); do",
     '  case "$mcode_tools_name" in',
     '    __MAVIS_PARENT_*|__MAVIS_RUNTIME_*|AGENTARCHON_*|AGENT_ARCHON_*) unset "$mcode_tools_name" ;;',
@@ -267,8 +267,7 @@ export function renderWindowsLauncher(options: {
     '@echo off',
     'setlocal DisableDelayedExpansion',
     'set "MAVIS_ACCESS_TOKEN="',
-    'set "MAVIS_DATA_DIR="',
-    'set "MINIMAX_DATA_DIR="',
+    'set "MIREAI_DATA_DIR="',
     'set "MAVIS_PORT="',
     'set "MAVIS_PROFILE="',
     'set "IS_SANDBOX="',

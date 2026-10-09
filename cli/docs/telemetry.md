@@ -33,9 +33,9 @@ variable can re-enable a send. `scripts/check-standalone-boundary.mjs` treats th
 
 ## Locating the active config file
 
-Builds from this repository use `~/.minimax/config.yaml` (or
-`~/.minimax-<profile>/config.yaml` when a profile is selected) unless a data-directory
-override is set; see [Accounts and data](installation.md#accounts-and-data).
+Builds from this repository use `~/.mireai/config.yaml` (or
+`~/.mireai-<profile>/config.yaml` when a profile is selected) unless
+`MIREAI_DATA_DIR` or `--data-dir` overrides it; see [Accounts and data](installation.md#accounts-and-data).
 
 Server-side retention for any channel is not defined or verified by this repository. Login and
 model requests have separate network behavior described in

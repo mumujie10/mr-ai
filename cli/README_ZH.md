@@ -82,7 +82,7 @@ mcode login --region global
 
 在浏览器中完成登录，再启动 `mcode`，通过 `/status` 检查账号、通过 `/provider` 选择模型。退出登录使用 `mcode logout`。
 
-Token Plan 需要账号与可用额度。从本仓库构建的版本与已发布的 npm CLI `@minimax-ai/code@0.4.12` 均默认将用户数据保存在 `~/.minimax`（选择 profile 时为 `~/.minimax-<profile>`）。`MINIMAX_DATA_DIR` 或 `MAVIS_DATA_DIR` 可以覆盖数据目录。安装脚本使用的 `~/.minimax-code` 安装目录与数据目录的选择是两回事。查找或删除配置和会话前，请参阅[账号与数据](docs/installation.md#accounts-and-data)。
+从本仓库构建的版本把自己的用户数据放在独立目录：默认 `~/.mireai`（选择 profile 时为 `~/.mireai-<profile>`）。已发布的 npm CLI `@minimax-ai/code@0.4.12` 仍使用 `~/.minimax`；本仓库的构建既不读取也不写入该目录，两个安装不会互相看到或删除对方的会话与渠道配置。覆盖位置请用 `MIREAI_DATA_DIR` 或 `--data-dir`——本 fork 刻意不读 `MINIMAX_DATA_DIR` 与 `MAVIS_DATA_DIR`，那两个变量属于其他安装。安装脚本使用的 `~/.minimax-code` 是安装目录，不是数据目录。查找或删除配置和会话前，请参阅[账号与数据](docs/installation.md#accounts-and-data)。
 
 <details>
 <summary>使用自己的 API Key（BYOK）</summary>
@@ -193,7 +193,7 @@ mcode --session
 
 ### 通过脚本安装
 
-以下命令会删除默认安装目录，包括两个启动器、下载的版本，以及安装器管理的 Node.js 运行时。如果使用过 `MCODE_INSTALL_DIR`，请替换为实际安装目录。删除前请先检查：早期源码构建曾将用户数据保存在 `~/.minimax-code`，自定义数据目录也可能与安装目录重合。请先备份需要保留的配置和会话。
+以下命令会删除默认安装目录，包括两个启动器、下载的版本，以及安装器管理的 Node.js 运行时。如果使用过 `MCODE_INSTALL_DIR`，请替换为实际安装目录。删除前请先检查：更早的源码构建曾把用户数据放在 `~/.minimax-code`，自定义数据目录也可能与安装目录重合。请先备份需要保留的配置和会话。
 
 **macOS / Linux / WSL**
 
@@ -225,19 +225,19 @@ npm uninstall -g @minimax-ai/code
 
 ### 可选：删除用户数据
 
-移除程序会保留单独存储的用户数据。如果还要删除本地登录状态、提供方配置、缓存和会话，请先按[账号与数据](docs/installation.md#accounts-and-data)确认实际数据目录，并备份需要保留的内容。其他 MCode 安装可能共用该目录。以下命令仅适用于默认的 `~/.minimax`：
+移除程序会保留单独存储的用户数据。如果还要删除本地登录状态、提供方配置、缓存和会话，请先按[账号与数据](docs/installation.md#accounts-and-data)确认实际数据目录，并备份需要保留的内容。该目录只属于从本仓库构建的版本——MiniMax Code 自己的 `~/.minimax` 是另一个位置，这里不会删除它。以下命令仅适用于默认的 `~/.mireai`：
 
 ```bash
 # macOS / Linux / WSL — 永久删除默认用户数据
-rm -rf -- "$HOME/.minimax"
+rm -rf -- "$HOME/.mireai"
 ```
 
 ```powershell
 # Windows — 永久删除默认用户数据
-Remove-Item -LiteralPath "$env:USERPROFILE\.minimax" -Recurse -Force
+Remove-Item -LiteralPath "$env:USERPROFILE\.mireai" -Recurse -Force
 ```
 
-profile 使用 `~/.minimax-<profile>`；`MINIMAX_DATA_DIR` 或 `MAVIS_DATA_DIR` 可以指定其他位置。只删除确定不再需要的具体目录，不要使用通配符批量删除。如果不再需要自行添加的 MCode 环境变量，也请从 shell 配置或用户环境变量设置中移除对应赋值。
+profile 使用 `~/.mireai-<profile>`；`MIREAI_DATA_DIR`（或 `--data-dir`）可以指定其他位置。只删除确定不再需要的具体目录，不要使用通配符批量删除。如果不再需要自行添加的 MCode 环境变量，也请从 shell 配置或用户环境变量设置中移除对应赋值。
 
 ## 可以做什么
 

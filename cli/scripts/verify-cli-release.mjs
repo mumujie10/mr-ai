@@ -25,7 +25,7 @@ try {
   mkdirSync(home);
   const env = {
     ...process.env, HOME: home, USERPROFILE: home,
-    MINIMAX_DATA_DIR: path.join(home, 'data'), MAVIS_DATA_DIR: path.join(home, 'data'),
+    MIREAI_DATA_DIR: path.join(home, 'data'),
   };
   for (const name of Object.keys(env)) {
     if (/^npm_config_/i.test(name)) delete env[name];

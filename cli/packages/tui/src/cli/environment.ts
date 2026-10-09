@@ -66,8 +66,7 @@ export function configureTuiRuntimeEnvironment(
       'cn',
   });
   if (dataDir) {
-    target.MINIMAX_DATA_DIR = dataDir;
-    target.MAVIS_DATA_DIR = dataDir;
+    target.MIREAI_DATA_DIR = dataDir;
   }
   target.MAVIS_REGION = environment.region;
   target.MAVIS_BUILD_ENV = environment.buildEnv;

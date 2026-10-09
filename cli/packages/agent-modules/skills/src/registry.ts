@@ -62,7 +62,7 @@ interface SkillFileCandidate {
  * Windows paths are normalized to forward slashes for cross-platform consistency.
  */
 export function resolveSkillContentVariables(content: string): string {
-  const dataDir = process.env.MINIMAX_DATA_DIR;
+  const dataDir = process.env.MIREAI_DATA_DIR;
   if (!dataDir || !content.includes('{{DATA_DIR}}')) return content;
   // Normalize Windows backslashes to forward slashes
   const normalizedDir = dataDir.replace(/\\/g, '/');

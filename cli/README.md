@@ -82,7 +82,7 @@ mcode login --region global
 
 Complete sign-in in your browser, then open `mcode` and use `/status` to check your account and `/provider` to choose a model. Run `mcode logout` to sign out.
 
-Token Plan requires an account with available credits. Builds from this repository and the published npm CLI `@minimax-ai/code@0.4.12` default to `~/.minimax` for user data (or `~/.minimax-<profile>` when a profile is selected). `MINIMAX_DATA_DIR` or `MAVIS_DATA_DIR` can override the data directory. The installer's `~/.minimax-code` installation directory is separate from this choice. See [Accounts and data](docs/installation.md#accounts-and-data) before locating or removing configuration and sessions.
+Builds from this repository keep user data in their own directory: `~/.mireai` (or `~/.mireai-<profile>` for a selected profile). The published npm CLI `@minimax-ai/code@0.4.12` keeps using `~/.minimax`; this fork never reads or writes it, so the two installs cannot see or delete each other's sessions and provider configuration. Override the location with `MIREAI_DATA_DIR` or `--data-dir` — the fork deliberately ignores `MINIMAX_DATA_DIR` and `MAVIS_DATA_DIR`, which belong to other installs. The installer's `~/.minimax-code` directory is an installation location, not a data directory. See [Accounts and data](docs/installation.md#accounts-and-data) before locating or removing configuration and sessions.
 
 <details>
 <summary>Use your own API key (BYOK)</summary>
@@ -228,19 +228,19 @@ After uninstalling, reopen your terminal (fully restart the editor for integrate
 
 ### Optional: delete user data
 
-Removing the program leaves separately stored user data in place. To also delete local login state, provider configuration, caches, and sessions, first confirm the selected directory using [Accounts and data](docs/installation.md#accounts-and-data) and back up anything you need. Other MCode installations can share this directory. For the default `~/.minimax` directory only:
+Removing the program leaves separately stored user data in place. To also delete local login state, provider configuration, caches, and sessions, first confirm the selected directory using [Accounts and data](docs/installation.md#accounts-and-data) and back up anything you need. This directory belongs to builds from this repository only — MiniMax Code's own `~/.minimax` is a separate location and is not removed here. For the default `~/.mireai` directory only:
 
 ```bash
 # macOS / Linux / WSL — permanently deletes the default user data
-rm -rf -- "$HOME/.minimax"
+rm -rf -- "$HOME/.mireai"
 ```
 
 ```powershell
 # Windows — permanently deletes the default user data
-Remove-Item -LiteralPath "$env:USERPROFILE\.minimax" -Recurse -Force
+Remove-Item -LiteralPath "$env:USERPROFILE\.mireai" -Recurse -Force
 ```
 
-A profile uses `~/.minimax-<profile>`; `MINIMAX_DATA_DIR` or `MAVIS_DATA_DIR` can select a different location. Remove only the specific directories you intend to discard, without wildcard deletion. Remove any MCode-specific environment variable assignments you added to shell profiles or user environment settings if you no longer need them.
+A profile uses `~/.mireai-<profile>`; `MIREAI_DATA_DIR` (or `--data-dir`) can select a different location. Remove only the specific directories you intend to discard, without wildcard deletion. Remove any MCode-specific environment variable assignments you added to shell profiles or user environment settings if you no longer need them.
 
 ## What you can do
 

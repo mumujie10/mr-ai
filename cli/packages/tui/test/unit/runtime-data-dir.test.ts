@@ -12,30 +12,38 @@ describe('TUI data directory', () => {
     'uses the shared user directory for %s builds',
     (buildEnv) => {
       expect(resolveDefaultTuiDataDir(buildEnv, undefined, () => null)).toBe(
-        join(homedir(), '.minimax'),
+        join(homedir(), '.mireai'),
       );
     },
   );
 
   it('keeps the shared profile suffix', () => {
     expect(resolveDefaultTuiDataDir('prod', undefined, () => 'smoke')).toBe(
-      join(homedir(), '.minimax-smoke'),
+      join(homedir(), '.mireai-smoke'),
     );
   });
 
-  it.each([
-    [{}, '/default'],
-    [{ MINIMAX_DATA_DIR: '  ', MAVIS_DATA_DIR: ' ' }, '/default'],
-    [{ MINIMAX_DATA_DIR: ' /public ', MAVIS_DATA_DIR: '/legacy' }, '/public'],
-    [{ MINIMAX_DATA_DIR: ' ', MAVIS_DATA_DIR: ' /legacy ' }, '/legacy'],
-  ])('preserves override precedence for %j', (environment, expected) => {
-    expect(getTuiDataDirPath(environment, () => '/default')).toBe(expected);
-  });
+  const precedenceCases: Array<{ environment: Record<string, string>; expected: string }> = [
+    { environment: {}, expected: '/default' },
+    { environment: { MIREAI_DATA_DIR: '  ' }, expected: '/default' },
+    { environment: { MIREAI_DATA_DIR: ' /selected ' }, expected: '/selected' },
+    // MiniMax Code's own override variables must not redirect this CLI into
+    // another install's data directory.
+    { environment: { MINIMAX_DATA_DIR: '/vendor' }, expected: '/default' },
+    { environment: { MAVIS_DATA_DIR: '/vendor' }, expected: '/default' },
+  ];
+
+  it.each(precedenceCases)(
+    'resolves $environment to $expected',
+    ({ environment, expected }) => {
+      expect(getTuiDataDirPath(environment, () => '/default')).toBe(expected);
+    },
+  );
 
   it('passes the selected directory to runtime initialization', async () => {
     const configureRuntimeEnvironment = vi.fn();
     await expect(prepareTuiDataDir({
-      environment: { MINIMAX_DATA_DIR: ' /selected ' },
+      environment: { MIREAI_DATA_DIR: ' /selected ' },
       getBuildEnv: () => 'prod',
       configureRuntimeEnvironment,
     })).resolves.toBe('/selected');

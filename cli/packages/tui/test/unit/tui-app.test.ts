@@ -330,8 +330,8 @@ function createRuntime(): TuiRuntime {
       runtimeMode: "clean",
       runtimeOwnerKind: "cli",
       runtimeOwnerId: "minimax-code",
-      dataDir: "/home/dev/.minimax",
-      configPath: "/home/dev/.minimax/config.yaml",
+      dataDir: "/home/dev/.mireai",
+      configPath: "/home/dev/.mireai/config.yaml",
       configPresent: true,
       authCachePresent: true,
       defaultModel: "minimax/MiniMax-M2.7",
@@ -5024,7 +5024,7 @@ describe("createTuiApp", () => {
       terminal,
       version: "0.1.0",
       workspaceDir: "/workspace",
-      runtimeLogDirectory: "/home/dev/.minimax/v2/observability/logs",
+      runtimeLogDirectory: "/home/dev/.mireai/v2/observability/logs",
     });
 
     await app.submit("/logs");
