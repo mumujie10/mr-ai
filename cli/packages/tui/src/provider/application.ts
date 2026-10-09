@@ -35,16 +35,9 @@ export class McodeProviderApplication {
         ...(!codexOAuthStatus || codexOAuthStatus.state === 'hidden'
           ? []
           : [normalizeCodexOAuthProvider(codexOAuthStatus)]),
-        {
-          providerId: 'minimax_oauth',
-          name: 'MiniMax OAuth',
-          kind: 'minimax-oauth',
-          active: minimaxModelSource === 'token_plan',
-          enabled: true,
-          readOnly: true,
-          hasApiKey: false,
-          models: [],
-        },
+        // No `minimax_oauth` row: this fork has no MiniMax account to be a
+        // provider for, and listing it made 官方账号 look like a channel the
+        // user could route a model request through.
         {
           providerId: 'minimax_api',
           name: 'MiniMax API Key',

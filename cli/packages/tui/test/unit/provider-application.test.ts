@@ -97,44 +97,38 @@ describe('McodeProviderApplication', () => {
     const snapshot = await application.snapshot();
 
     expect(snapshot.providers.map((provider) => provider.providerId)).toEqual([
-      'minimax_oauth',
       'minimax_api',
       'custom_provider:openai',
     ]);
     expect(snapshot.providers[0]).toMatchObject({
-      providerId: 'minimax_oauth',
-      name: 'MiniMax OAuth',
-      kind: 'minimax-oauth',
-      active: false,
-      enabled: true,
-      readOnly: true,
-      hasApiKey: false,
-    });
-    expect(snapshot.providers[1]).toMatchObject({
       kind: 'minimax-api-key',
       active: true,
       hasApiKey: true,
     });
-    expect(JSON.stringify(snapshot)).toContain('MiniMax OAuth');
+    // This fork has no MiniMax account to offer, so the snapshot must not name
+    // one at all — an unrouteable row is what users mis-pick mid-chat.
+    expect(JSON.stringify(snapshot)).not.toContain('MiniMax OAuth');
     expect(JSON.stringify(snapshot)).not.toContain('must-never-cross-the-cli-boundary');
-    expect(snapshot.providers[2]).not.toHaveProperty('rawApiKey');
-    expect(snapshot.providers[2]?.models[0]).toMatchObject({
+    expect(snapshot.providers[1]).not.toHaveProperty('rawApiKey');
+    expect(snapshot.providers[1]?.models[0]).toMatchObject({
       contextLimit: 32768,
       maxOutputTokens: 4096,
     });
     expect(port.getCodexOAuthStatus).not.toHaveBeenCalled();
   });
 
-  it('marks OAuth active when the MiniMax source is Token Plan', async () => {
+  it('offers no MiniMax account row even when the stored source is Token Plan', async () => {
     const port = createPort();
     port.getMiniMaxModelSource.mockResolvedValueOnce('token_plan');
     const application = new McodeProviderApplication(port);
 
     const snapshot = await application.snapshot();
 
+    // The stored value is still reported as what it is; it just no longer
+    // materializes a provider this fork cannot route through.
     expect(snapshot.minimaxModelSource).toBe('token_plan');
-    expect(snapshot.providers[0]).toMatchObject({ kind: 'minimax-oauth', active: true });
-    expect(snapshot.providers[1]).toMatchObject({ kind: 'minimax-api-key', active: false });
+    expect(snapshot.providers.map((provider) => provider.kind)).not.toContain('minimax-oauth');
+    expect(snapshot.providers[0]).toMatchObject({ kind: 'minimax-api-key', active: false });
   });
 
   it('forwards MiniMax source changes through the CLI port', async () => {
@@ -251,7 +245,7 @@ describe('McodeProviderApplication', () => {
 
     // Runtime drops disabled providers from the roster, so rendering the row
     // as active would contradict the "Disabled" label on the same line.
-    expect(snapshot.providers[2]).toMatchObject({
+    expect(snapshot.providers[1]).toMatchObject({
       providerId: 'custom_provider:byok',
       enabled: false,
       active: false,
@@ -276,7 +270,7 @@ describe('McodeProviderApplication', () => {
 
     const snapshot = await application.snapshot();
 
-    expect(snapshot.providers[2]).toMatchObject({ enabled: true, active: true });
+    expect(snapshot.providers[1]).toMatchObject({ enabled: true, active: true });
   });
 });
 

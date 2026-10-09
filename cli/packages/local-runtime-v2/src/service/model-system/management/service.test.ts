@@ -2461,16 +2461,22 @@ describe('provider listings', () => {
 
     const effective = h.service.listEffectiveProviders();
     const ids = effective.map((p) => p.providerId);
-    expect(ids).toContain('minimax');
     expect(ids).toContain('custom_provider:on');
     expect(ids).not.toContain('custom_provider:off');
     // minimax_api is no longer listed as a separate provider — source routing
     // is handled by the resolver at inference time.
     expect(ids).not.toContain('minimax_api');
+    // A saved MiniMax key alone does not make the official models routeable:
+    // until the source says "my own MiniMax API key", the `minimax` provider
+    // would answer through a MiniMax account, which this fork cannot do — so it
+    // must not appear in the list a user (or the desktop client) picks from.
+    expect(ids).not.toContain('minimax');
 
-    const minimax = effective.find((p) => p.providerId === 'minimax');
+    await h.service.setMinimaxModelSource('minimax_api_key');
+    const withOwnKey = h.service.listEffectiveProviders();
+    const minimax = withOwnKey.find((p) => p.providerId === 'minimax');
     expect(minimax?.source).toBe('provider');
-    expect(minimax?.kind).toBe('minimax-managed');
+    expect(minimax?.kind).toBe('minimax-api-key');
 
     // user list still shows disabled providers with their config retained
     const user = h.service.listUserProviders();

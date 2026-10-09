@@ -72,9 +72,14 @@ export class LocalModelProviderService {
     const cache = this.context.deps.cache.load();
     // minimax_api models share the builtin MiniMax catalog. Source routing is
     // resolved at inference time, so only custom providers are appended here.
-    const providers: ModelProviderView[] = Object.entries(config.provider ?? {}).map(
-      ([providerId, provider]) => buildBuiltinProviderView(config, cache, providerId, provider),
-    );
+    // Providers that could only answer through a MiniMax account
+    // (`minimax-managed`) are dropped: an unrouteable row in the model list is
+    // how a user ends up with "managed OAuth bearer is not synced" mid-chat.
+    const providers: ModelProviderView[] = Object.entries(config.provider ?? {})
+      .map(([providerId, provider]) =>
+        buildBuiltinProviderView(config, cache, providerId, provider),
+      )
+      .filter((view) => view.kind !== 'minimax-managed');
     for (const [providerKey, provider] of enabledCustomProviders(config)) {
       providers.push(buildCustomProviderView(config, cache, providerKey, provider));
     }

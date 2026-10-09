@@ -126,23 +126,6 @@ export async function runMcodeProviderCommand(
       return `Model selected: ${request.modelKey}`;
     }
     if (request.action === 'test') {
-      if (request.providerId === 'minimax_oauth') {
-        const message = 'MiniMax OAuth sign-in and connectivity are managed by /login.';
-        if (request.json) {
-          return JSON.stringify(
-            {
-              success: false,
-              status: { state: 'unsupported', lastErrorMessage: message },
-            },
-            null,
-            2,
-          );
-        }
-        return formatTuiActionFailure(message, {
-          summary: 'MiniMax OAuth provider test skipped.',
-          nextStep: 'Run /login to manage Token Plan sign-in.',
-        });
-      }
       const result = await context.application.test(request.providerId, request.modelId);
       if (request.json) return JSON.stringify(result, null, 2);
       return result.success

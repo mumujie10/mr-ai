@@ -1063,7 +1063,7 @@ describe('LocalModelResolver credentials and thinking', () => {
           },
         },
       }),
-    ).rejects.toThrow('managed OAuth bearer is not synced');
+    ).rejects.toThrow(/MiniMax account sign-in[\s\S]*does not support/);
   });
 
   it.each([

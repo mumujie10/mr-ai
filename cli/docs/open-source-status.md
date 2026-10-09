@@ -17,7 +17,7 @@ The product, TUI, and root workspace use the same 0.4.12 version. The embedded t
 
 ## Source boundary
 
-- MiniMax OAuth and Token Plan, BYOK, accounts, quota views, the official plugin marketplace, managed connectors, search, and mcode-tools are included.
+- MiniMax OAuth, accounts and quota views, BYOK, the official plugin marketplace, managed connectors, search, and mcode-tools are included. The MiniMax account is **not** offered as a model route: no `minimax_oauth` provider row, and account-only providers are filtered out of every model listing.
 - This fork sends nothing to MiniMax for support, rewards, or crash triage: the daily check-in client, the feedback upload flow (`/feedback`, its draft, archive projection and ticket path), and the automatic error-report clients (TUI incident queue and `error-reporting/` batch uploader, with the `telemetry` consent block) are removed rather than disabled.
 - The in-process runtime, public workspace dependencies, tools, and sandbox are included. Internal generated IDL, the Desktop HTTP front door, and cloud-executor-only implementations are excluded.
 - mcode-tools is extracted from a pinned public npm package with archive and file-hash verification. Only the host holds refresh tokens.

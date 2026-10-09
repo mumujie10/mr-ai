@@ -817,7 +817,9 @@ function requireUsableCredentials(
     !credentials.headers?.Authorization
   ) {
     throw new Error(
-      `LocalModelResolver: managed OAuth bearer is not synced for provider "${provider}".`,
+      `LocalModelResolver: provider "${provider}" is set to MiniMax account sign-in ` +
+        '(managed-login), which this build does not support. Send through your own API ' +
+        'channel, or store your own MiniMax API key and select it as the model source.',
     );
   }
   return { apiKey, baseUrl };

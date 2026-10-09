@@ -263,9 +263,15 @@ test(
     ]);
     assert.equal(requests.length, 0, "Adding without --use must not test or activate");
     const snapshot = JSON.parse(await run(["provider", "list", "--json"]));
+    // The BYOK-only fork offers no MiniMax account row, so a fresh profile has
+    // exactly one routeable provider: the user's own channel.
     assert.equal(
       snapshot.providers.some((p) => p.kind === "minimax-oauth"),
-      true,
+      false,
+    );
+    assert.equal(
+      snapshot.providers.filter((p) => p.kind === "custom").length,
+      1,
     );
     const selected = snapshot.providers.find(
       (p) => p.kind === "custom" && p.name === "Fixture",
