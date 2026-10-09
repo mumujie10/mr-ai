@@ -51,7 +51,7 @@ The same archive passed npm installation and offline CLI/BYOK tests on Linux and
   // An existing release is never overwritten. Upload to a draft so failures
   // cannot expose a release with missing assets; maintainers can inspect/retry.
   const gh = (...args) => execFileSync('gh', args, { stdio: 'inherit' });
-  gh('release', 'create', tag, '--verify-tag', '--draft', '--title', `MiniMax Code ${version}`, '--notes-file', notes, ...(version.includes('-') ? ['--prerelease'] : []));
+  gh('release', 'create', tag, '--verify-tag', '--draft', '--title', `MireAI CLI ${version}`, '--notes-file', notes, ...(version.includes('-') ? ['--prerelease'] : []));
   gh('release', 'upload', tag, archive, `${archive}.sha256`);
   gh('release', 'edit', tag, '--draft=false');
 }

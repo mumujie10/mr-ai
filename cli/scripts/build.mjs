@@ -135,7 +135,7 @@ writeFileSync(
   JSON.stringify(result.metafile, null, 2) + "\n",
 );
 console.log(
-  `Built MR CLI ${version} from ${Object.keys(result.metafile.inputs).length} source files.`,
+  `Built MireAI CLI ${version} from ${Object.keys(result.metafile.inputs).length} source files.`,
 );
 
 writeFileSync(

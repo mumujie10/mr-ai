@@ -267,7 +267,7 @@ function createRuntime(
   };
 }
 
-describe('MiniMax Code ACP agent', () => {
+describe('MireAI CLI ACP agent', () => {
   it.each(['new', 'load', 'resume', 'fork'] as const)(
     'advertises session Skills on %s and forwards Skill instructions to the Runtime',
     async (method) => {
@@ -1172,7 +1172,7 @@ describe('MiniMax Code ACP agent', () => {
             close: {},
           },
         },
-        agentInfo: { name: 'mr-cli', title: 'MR CLI', version: '1.2.3' },
+        agentInfo: { name: 'mr-cli', title: 'MireAI CLI', version: '1.2.3' },
         _meta: {
           'minimax-code/extensions': {
             version: 1,
@@ -6108,7 +6108,7 @@ describe('MiniMax Code ACP agent', () => {
           additionalDirectories: ['/other'],
           mcpServers: [],
         }),
-      ).rejects.toThrow('Additional directories are not supported by MiniMax Code ACP');
+      ).rejects.toThrow('Additional directories are not supported by the MireAI CLI ACP transport');
     });
 
     expect(createSession).not.toHaveBeenCalled();

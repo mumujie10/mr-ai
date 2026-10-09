@@ -737,7 +737,7 @@ function questionnaireElicitation(
     }
     if (step.required && !otherFieldId) required.push(step.id);
   }
-  const title = request.title ?? 'MiniMax Code needs your input';
+  const title = request.title ?? 'MireAI CLI needs your input';
   return {
     mode: 'form',
     sessionId,
@@ -888,7 +888,7 @@ function permissionRequest(
     sessionId,
     toolCall: compact({
       toolCallId: requestId,
-      title: request.toolDescription ?? request.toolName ?? 'MiniMax Code tool',
+      title: request.toolDescription ?? request.toolName ?? 'MireAI CLI tool',
       name: request.toolName,
       kind: tuiAcpToolKind(request.toolName ?? ''),
       status: 'pending' as const,

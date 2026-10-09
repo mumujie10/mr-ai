@@ -72,7 +72,7 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
   const program = applyInteractiveCliContract(
     new Command()
       .name('mr')
-      .description('MR CLI — terminal coding agent')
+      .description('MireAI CLI — terminal coding agent')
       .version(options.version)
       .enablePositionalOptions(),
     { allowStartupEnvironmentSelection: options.allowStartupEnvironmentSelection },
@@ -119,7 +119,7 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
   const acp = applySystemPromptCliOptions(
     program
       .command('acp')
-      .description('Run MiniMax Code as an Agent Client Protocol server over stdio'),
+      .description('Run MireAI CLI as an Agent Client Protocol server over stdio'),
   )
     .allowExcessArguments(false)
     .action((commandOptions: RawSystemPromptOptions, command: Command) => {
@@ -277,7 +277,7 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
 
   const plugin = program
     .command('plugin')
-    .description('Manage MiniMax Code Plugins')
+    .description('Manage MireAI CLI Plugins')
     .allowExcessArguments(false)
     .action(() => options.launchTui(withLane({ initialPrompt: '/plugins' })));
 
@@ -324,7 +324,7 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
 
   const marketplace = plugin
     .command('marketplace')
-    .description('List or refresh MiniMax Code Plugin sources');
+    .description('List or refresh MireAI CLI Plugin sources');
 
   marketplace
     .command('list')

@@ -84,7 +84,7 @@ export async function runTuiCli(dependencies: RunTuiCliDependencies = {}): Promi
     dependencies.supportsNodeVersion ?? ((version: string) => supportsTuiNodeVersion(version));
   if (!supportsNodeVersion(processRef.versions.node)) {
     processRef.stderr.write(
-      `MR CLI supports Node.js ${MR_CLI_SUPPORTED_NODE_VERSIONS}; current version is ${processRef.versions.node}.\n`,
+      `MireAI CLI supports Node.js ${MR_CLI_SUPPORTED_NODE_VERSIONS}; current version is ${processRef.versions.node}.\n`,
     );
     processRef.exitCode = 1;
     return;
@@ -207,7 +207,7 @@ async function formatTuiCliError(error: unknown): Promise<string> {
   // The runtime ships inside the desktop app, so there is no npm install for a
   // user to re-run: a missing native module means a damaged bundle.
   return [
-    'MR CLI could not load its native SQLite dependency.',
+    'MireAI CLI could not load its native SQLite dependency.',
     'The bundled runtime is incomplete or was modified in place — reinstall the app to replace it.',
     `Original error: ${diagnostic}`,
   ].join('\n');

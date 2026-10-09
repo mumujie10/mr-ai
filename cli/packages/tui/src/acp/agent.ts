@@ -452,7 +452,7 @@ export function createTuiAcpAgent(options: CreateTuiAcpAgentOptions): acp.AgentA
       },
       agentInfo: {
         name: 'mr-cli',
-        title: 'MR CLI',
+        title: 'MireAI CLI',
         version: options.version,
       },
       _meta: {
@@ -932,7 +932,7 @@ export function createTuiAcpAgent(options: CreateTuiAcpAgentOptions): acp.AgentA
       if (typeof params.value !== 'string') {
         throw acp.RequestError.invalidParams(
           undefined,
-          'MiniMax Code ACP configuration options are select controls.',
+          'MireAI CLI ACP configuration options are select controls.',
         );
       }
 
@@ -1181,8 +1181,8 @@ export function createTuiAcpAgent(options: CreateTuiAcpAgentOptions): acp.AgentA
       throw acp.RequestError.internalError(
         undefined,
         result.error
-          ? `MiniMax Code Runtime failed: ${result.error}`
-          : 'MiniMax Code Runtime failed.',
+          ? `MireAI CLI runtime failed: ${result.error}`
+          : 'MireAI CLI runtime failed.',
       );
     } finally {
       context.signal.removeEventListener('abort', cancel);
@@ -1667,7 +1667,7 @@ function assertNoAdditionalDirectories(directories: readonly string[] | undefine
   if (!directories?.length) return;
   throw acp.RequestError.invalidParams(
     undefined,
-    'Additional directories are not supported by MiniMax Code ACP.',
+    'Additional directories are not supported by the MireAI CLI ACP transport.',
   );
 }
 
@@ -2026,8 +2026,8 @@ async function followQuestionnaireContinuations(options: {
         throw acp.RequestError.internalError(
           undefined,
           transition.message
-            ? `MiniMax Code Runtime continuation failed: ${transition.message}`
-            : 'MiniMax Code Runtime continuation failed.',
+            ? `MireAI CLI runtime continuation failed: ${transition.message}`
+            : 'MireAI CLI runtime continuation failed.',
         );
       }
 
@@ -2052,7 +2052,7 @@ async function followQuestionnaireContinuations(options: {
     if (error instanceof acp.RequestError) throw error;
     throw acp.RequestError.internalError(
       undefined,
-      `MiniMax Code Runtime continuation failed: ${error instanceof Error ? error.message : String(error)}`,
+      `MireAI CLI runtime continuation failed: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

@@ -497,7 +497,7 @@ export async function launchTui(
 
 function reportLauncherCleanupFailure(step: string, error: unknown): void {
   try {
-    process.stderr.write(`[minimax-code] ${step} cleanup failed: ${tuiErrorDiagnostic(error)}\n`);
+    process.stderr.write(`[mireai-cli] ${step} cleanup failed: ${tuiErrorDiagnostic(error)}\n`);
   } catch {
     // The terminal may already be disconnected.
   }

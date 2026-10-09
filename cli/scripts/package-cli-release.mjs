@@ -63,7 +63,7 @@ export function releaseManifest(importers, version) {
   }
   return {
     name: 'mr-cli', version, private: true, type: 'module', license: 'MIT',
-    description: 'MR CLI agent runtime built from this repository (BYOK models, plugins, ACP).',
+    description: 'MireAI CLI agent runtime built from this repository (BYOK models, plugins, ACP).',
     // `mr` is the product command; `mcode` stays as a transitional alias so
     // existing user scripts and the desktop launcher keep working.
     bin: { mr: 'cli.js', mcode: 'cli.js' },

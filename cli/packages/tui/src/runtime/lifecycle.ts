@@ -821,7 +821,7 @@ export async function shutdownTuiRuntime(
     dependencies.reportFailure ??
     ((step: string, error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      process.stderr.write(`[minimax-code] ${step} cleanup failed: ${message}\n`);
+      process.stderr.write(`[mireai-cli] ${step} cleanup failed: ${message}\n`);
     });
   const shutdownTimeoutMs = normalizeShutdownTimeout(dependencies.shutdownTimeoutMs);
   const shutdownDeadline = shutdownStartedAt + shutdownTimeoutMs;
