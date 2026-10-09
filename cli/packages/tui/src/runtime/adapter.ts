@@ -75,7 +75,6 @@ import type { TuiPermissionMode } from "../application/permission-mode.js";
 import { resolveTuiEffortChoice } from "../application/model-effort.js";
 import type { TuiObservability } from "../observability/index.js";
 import type { TuiTokenPlanAccountStatus } from "../account/matrix-account-client.js";
-import type { TuiDailyCheckinOutcome } from "../checkin/application.js";
 import {
   LIGHTWEIGHT_SESSION_PURPOSE,
   type McodeContextMode,
@@ -106,9 +105,6 @@ export interface TuiRuntimeAdapterOptions {
     ): Promise<TuiFeedbackReceipt>;
     cancel(draftId: string): boolean | Promise<boolean>;
   };
-  dailyCheckin?: {
-    run(): Promise<TuiDailyCheckinOutcome>;
-  };
 }
 
 export class TuiRuntimeAdapter implements TuiRuntime {
@@ -131,7 +127,6 @@ export class TuiRuntimeAdapter implements TuiRuntime {
   private readonly synchronizeAuth: TuiRuntimeAdapterOptions["synchronizeAuth"];
   private readonly accountIdentityGetter: TuiRuntimeAdapterOptions["accountIdentityGetter"];
   private readonly feedback: TuiRuntimeAdapterOptions["feedback"];
-  private readonly dailyCheckin: TuiRuntimeAdapterOptions["dailyCheckin"];
   private readonly contextMode: McodeContextMode;
 
   constructor(cliService: CliService, options: TuiRuntimeAdapterOptions = {}) {
@@ -142,7 +137,6 @@ export class TuiRuntimeAdapter implements TuiRuntime {
     this.synchronizeAuth = options.synchronizeAuth;
     this.accountIdentityGetter = options.accountIdentityGetter;
     this.feedback = options.feedback;
-    this.dailyCheckin = options.dailyCheckin;
     this.contextMode = options.contextMode ?? "standard";
     this.conversationAccess = new TuiConversationAccess(cliService);
     this.pluginAccess = new TuiPluginAccess(cliService);
@@ -432,12 +426,6 @@ export class TuiRuntimeAdapter implements TuiRuntime {
   cancelFeedback(draftId: string): Promise<boolean> {
     if (!this.feedback) return Promise.resolve(false);
     return Promise.resolve(this.feedback.cancel(draftId));
-  }
-  runDailyCheckin(): Promise<TuiDailyCheckinOutcome> {
-    if (!this.dailyCheckin) {
-      return Promise.reject(new Error("Daily check-in is unavailable."));
-    }
-    return this.dailyCheckin.run();
   }
   getPermissionMode(): Promise<TuiPermissionMode | undefined> {
     return this.productAccess.getPermissionMode();

@@ -1,7 +1,6 @@
 import { formatContextWindow } from '../../features/model/context-window.js';
 import type {
   TuiConfigurationPort,
-  TuiDailyCheckin,
   TuiInspectionPort,
   TuiInteractionPort,
   TuiModel,
@@ -78,7 +77,6 @@ import { TuiSessionForkFlow } from '../session-fork-flow.js';
 import { hyperlink } from '../../engine/public.js';
 import { sanitizeTerminalText } from '../../rendering/terminal-text.js';
 import { MR_CLI_VERSION } from '../../../build-info.js';
-import { formatTuiDailyCheckinOutcome } from '../../../checkin/presentation.js';
 
 const OFFICIAL_MODEL_LOGIN_HINT = 'Sign in with /login to use official MiniMax models.';
 const SESSION_MANAGER_PAGE_SIZE = 50;
@@ -87,7 +85,6 @@ const SESSION_EXPORT_PAGE_SIZE = 200;
 
 type FeatureRuntime = TuiSessionPort &
   TuiConfigurationPort &
-  TuiDailyCheckin &
   TuiInspectionPort &
   TuiInteractionPort &
   TuiWorkspaceGitPort &
@@ -1168,18 +1165,6 @@ export class TuiFeatureFlow {
     const sessionId = this.options.controller.snapshot().session?.sessionId;
     const account = await this.options.runtime.getAccountStatus(sessionId, { forceRefresh: true });
     return account.managedTokenPresent === true;
-  }
-
-  async runDailyCheckin(): Promise<void> {
-    try {
-      const outcome = await this.options.runtime.runDailyCheckin();
-      this.options.append(formatTuiDailyCheckinOutcome(outcome));
-    } catch {
-      this.options.append(
-        "Couldn't complete daily check-in. Check the connection, then retry /checkin.",
-        'warning',
-      );
-    }
   }
 
   async showSessionUsage(): Promise<void> {

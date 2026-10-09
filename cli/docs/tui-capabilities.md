@@ -65,7 +65,7 @@ The evidence column summarizes the historical TUI 0.3.11 restoration record from
 
 | Capability | Implementation | Evidence |
 | --- | --- | --- |
-| MiniMax login, logout, Token Plan, quota, check-in | OAuth Core, account clients, and TUI / CLI entry points restored | Login-state, auth-command, check-in, provider, and ACP tests; production Token Plan session and resume passed |
+| MiniMax login, logout, Token Plan, quota | OAuth Core, account clients, and TUI / CLI entry points restored | Login-state, auth-command, provider, and ACP tests; production Token Plan session and resume passed |
 | BYOK / custom models | Retained; headless model overrides no longer inherit the default Token Plan login requirement | Local protocol server drives runtime, resume, and file tools; live BYOK session passed; managed models still reject unauthenticated requests |
 | mcode-tools | Public package's unchanged 0.0.4 artifact, launcher, and short-lived token leases restored | Archive SHA-512, CLI SHA-256, real CLI startup, lease and host integration tests; production shared-broker authentication passed |
 | Search and Matrix image / audio / video tools | Matrix MCP and tool assembly restored; search is independent of mcode-tools | MCP configuration and auth-isolation tests; actual search passed; generation requests not run |
