@@ -10,7 +10,7 @@
 
 </div>
 
-**MireAI** is an open-source **multi-engine AI coding desktop client**. In plain words: it brings command-line AI coding runtimes — **Claude Code**, **Codex CLI**, **Kimi CLI**, **Grok CLI**, **Pi CLI**, **OMP CLI**, **DeepSeek Harness (DSH)**, **Antigravity**, **OpenCode**, **Qoder**, and **MiniMax Code** — into one graphical interface.
+**MireAI** is an open-source **multi-engine AI coding desktop client**. In plain words: it brings command-line AI coding runtimes — **Claude Code**, **Codex CLI**, **Kimi CLI**, **Grok CLI**, **Pi CLI**, **OMP CLI**, **DeepSeek Harness (DSH)**, **Antigravity**, **OpenCode**, **Qoder**, and **MiniMax Code** — plus **MireAI's own runtime, shipped inside the app** — into one graphical interface.
 
 No more staring at a black terminal. Open MireAI, pick a project, and chat with AI to write code, fix bugs, and commit to Git. Streaming output, thinking traces, and tool calls are visible as they happen; token usage appears when the engine reports it.
 
@@ -72,12 +72,14 @@ Kimi question cards use the local CLI's ACP form channel (verified with Kimi 2.0
 
 MiniMax Code (command `mcode`) runs through its native ACP transport (`mcode acp`): per-token streaming, permission question cards (ACP `session/request_permission`), and session resume are wired natively and verified against mcode 0.5.1. The model picker is probed live from the session handshake, so providers you add to mcode itself (e.g. a GLM channel) appear automatically. mcode's ACP does not accept inline image blocks, so pictures travel as absolute file paths the agent reads with its own tools. Reasoning effort folds into mcode's model variants rather than a separate knob. WSL workspaces fall back to the headless `mcode exec --output-format stream-json` child (auto/bypass only there — no question cards or plan mode). Provider channels and the app's MCP/Skills sync do not cover this engine yet; sign in with `mcode login`.
 
+The **MireAI runtime** (engine `mireai`, command `mr`) is this app's own agent runtime: the fork under `cli/`, staged inside the installed bundle — a fresh download needs no separate CLI install and no vendor account. It runs over the same native ACP transport: per-token streaming, permission question cards, session resume, a model list probed live from the handshake, and the slash commands and skills the runtime advertises for the session. It is **bring-your-own-key only** — add a channel (base URL, API key, model, wire protocol) in Settings and the app writes it into the runtime's own provider store, with the key passed only through the child process environment, never on the command line. MiniMax sign-in, daily check-in, feedback upload, crash-diagnostics upload and the cloud permission classifier were deleted from this build rather than left as buttons that do nothing. Its state lives in `~/.mireai`, kept separate from an official MiniMax Code install in `~/.minimax`. Reasoning effort is per channel: the runtime advertises effort levels only for models whose channel declares them, so declare the levels your provider actually accepts.
+
 ---
 ## What can MireAI do?
 
-### One client, eleven AI engines
+### One client, thirteen engine adapters
 
-- Registers runtime adapters for **Claude Code**, **Codex CLI**, **Kimi CLI**, **Grok CLI**, **Pi CLI**, **OMP CLI**, **DeepSeek Harness**, **Antigravity**, **OpenCode**, **Qoder** (global and CN distributions), and **MiniMax Code** — pick the engine per session from the composer.
+- Registers runtime adapters for **Claude Code**, **Codex CLI**, **Kimi CLI**, **Grok CLI**, **Pi CLI**, **OMP CLI**, **DeepSeek Harness**, **Antigravity**, **OpenCode**, **Qoder** (global and CN distributions), **MiniMax Code**, and the **bundled MireAI runtime** — pick the engine per session from the composer.
 - **Provider channels** are written to each CLI's own native config files (no parallel credential store), with curated presets for GLM, Kimi, DeepSeek, MiniMax, MiMo, Bailian, LongCat, OpenCode Go, OpenRouter, Requesty, [API Route](https://www.api-route.com), and more. Claude / Codex / Grok channels can be imported from [CC Switch](https://github.com/farion1231/cc-switch).
 
   To use API Route, create an API key in its dashboard and select the **API Route** preset in Settings for Claude or Codex. Claude uses the Anthropic-compatible root endpoint; Codex uses `/v1` with the Responses protocol. Adjust the preset's model names to models available to your key; see the [API Route setup guide](https://www.api-route.com/docs/quickstart).

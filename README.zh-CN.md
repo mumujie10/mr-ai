@@ -10,7 +10,7 @@
 
 </div>
 
-**MireAI** 是一个开源的 **multi-engine AI 编程桌面客户端**。简单说：它把 **Claude Code**、**Codex CLI**、**Kimi CLI**、**Grok CLI**、**Pi CLI**、**OMP CLI**、**DeepSeek Harness（DSH）**、**Antigravity**、**OpenCode**、**Qoder**、**MiniMax Code** 等命令行 AI 编程 runtime，放进一个统一的图形界面里。
+**MireAI** 是一个开源的 **multi-engine AI 编程桌面客户端**。简单说：它把 **Claude Code**、**Codex CLI**、**Kimi CLI**、**Grok CLI**、**Pi CLI**、**OMP CLI**、**DeepSeek Harness（DSH）**、**Antigravity**、**OpenCode**、**Qoder**、**MiniMax Code** 等命令行 AI 编程 runtime，再加一个 **随应用一起打包的 MireAI 自带 runtime**，放进一个统一的图形界面里。
 
 你不用再盯着黑乎乎的终端敲命令——打开 MireAI，选好项目，像聊天一样让 AI 帮你写代码、改 Bug、提交 Git。流式输出、思考过程和工具调用都会实时展示；token 用量在引擎上报时同步呈现。
 
@@ -70,12 +70,14 @@
 
 MiniMax Code（命令 `mcode`）走它的原生 ACP 传输（`mcode acp`）：逐 token 流式、权限提问卡片（ACP `session/request_permission`）、会话恢复均为原生接入，并已对 mcode 0.5.1 实测。模型列表来自对会话握手的实时探针，你在 mcode 里自己添加的渠道（如 GLM）会自动出现。mcode 的 ACP 不接受内联图片块，图片以绝对路径注入、由 agent 用自己的文件工具读取。推理强度折叠进 mcode 的模型变体，没有独立旋钮。WSL 工作区回退到 headless `mcode exec --output-format stream-json` 子进程（仅支持自动/绕过，无提问卡与计划模式）。渠道管理与应用的 MCP/Skills 同步暂未覆盖该引擎；认证用 `mcode login`。
 
+**MireAI 自带 runtime**（引擎 `mireai`，命令 `mr`）是本应用自己的 agent runtime——就是仓库 `cli/` 下这份分叉，构建时打进安装包，所以下载即用，不需要再单独装 CLI，也不依赖任何厂商账号。它同样走原生 ACP：逐 token 流式、权限提问卡片、会话恢复、模型列表来自会话握手的实时探针，输入框 `/` 里的命令与技能由 runtime 按会话自己广播。它**只支持自带密钥（BYOK）**：在设置里填渠道（API 地址、密钥、模型、接口协议），应用把它写进 runtime 自己的 provider 存储，密钥只经子进程环境变量传递、绝不进命令行；MiniMax 登录、每日签到、反馈上传、错误诊断上传、云端权限分类这几条账号链路在本构建里是整块删除，而不是留一个按下去没反应的开关。它的运行数据在 `~/.mireai`，与用户自装的官方 MiniMax Code（`~/.minimax`）互不共用。推理强度按渠道给出：只有渠道声明过档位的模型，runtime 才会广播可选档位，所以请填写你的服务商真正接受的那些档位。
+
 ---
 ## MireAI 能干什么
 
-### 一个客户端，装下十一个 AI 引擎
+### 一个客户端，装下十三个引擎适配
 
-- 注册了 **Claude Code**、**Codex CLI**、**Kimi CLI**、**Grok CLI**、**Pi CLI**、**OMP CLI**、**DeepSeek Harness**、**Antigravity**、**OpenCode**、**Qoder**（全球版与国内版）、**MiniMax Code** 的 runtime adapter——在输入框里按会话切换引擎。
+- 注册了 **Claude Code**、**Codex CLI**、**Kimi CLI**、**Grok CLI**、**Pi CLI**、**OMP CLI**、**DeepSeek Harness**、**Antigravity**、**OpenCode**、**Qoder**（全球版与国内版）、**MiniMax Code**，以及**随应用打包的 MireAI 自带 runtime** 的 runtime adapter——在输入框里按会话切换引擎。
 - **供应商渠道**直接写入各 CLI 自己的原生配置文件（不搞平行的凭证存储），内置 GLM、Kimi、DeepSeek、MiniMax、MiMo、百炼、LongCat、OpenCode Go、OpenRouter、Requesty、[API Route](https://www.api-route.com) 等精选预设；Claude / Codex / Grok 的渠道还能从 [CC Switch](https://github.com/farion1231/cc-switch) 一键导入。
 
   使用 API Route 时，在其控制台创建 API Key，然后在设置中的 Claude 或 Codex 渠道选择 **API Route** 预设。Claude 使用兼容 Anthropic 的根地址，Codex 使用 `/v1` 与 Responses 协议。模型名称可按密钥可用的模型调整，详见 [API Route 接入指南](https://www.api-route.com/zh/docs/quickstart)。
