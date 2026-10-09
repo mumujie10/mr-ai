@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import "@/lib/i18n";
-import { FlatModelSection } from "./ProviderFormSections";
+import { FlatModelSection, ProviderDraftTestSection } from "./ProviderFormSections";
 import { MR_DEFAULT_API_FORMAT, providerEntries } from "./providers";
 import type { ProviderForm } from "./useProviderForm";
 import type { ProviderFormValue } from "./ProviderDialog";
@@ -33,6 +33,10 @@ function fakeForm(value: Partial<ProviderFormValue> = {}): ProviderForm {
     fetchedModels: [],
     fetching: false,
     fetchError: "",
+    testing: false,
+    testResult: null,
+    canTest: true,
+    testConnection: vi.fn(),
   } as unknown as ProviderForm;
 }
 
@@ -86,5 +90,63 @@ describe("provider channel form", () => {
     // Absent is surfaced as absent, so the dialog can preselect rather than
     // pretending the CLI was told something.
     expect(legacy.apiFormat).toBe("");
+  });
+});
+
+describe("渠道草稿的连接测试", () => {
+  function renderDraftTest(
+    engine: Parameters<typeof ProviderDraftTestSection>[0]["engine"],
+    overrides: Partial<ProviderForm> = {},
+  ) {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const form = { ...fakeForm(), ...overrides };
+    const root: Root = createRoot(container);
+    act(() => {
+      root.render(<ProviderDraftTestSection engine={engine} form={form} />);
+    });
+    return { container, root, form };
+  }
+
+  it("只给内置运行时这一个引擎出现", () => {
+    const other = renderDraftTest("kimi");
+    expect(other.container.textContent).toBe("");
+    act(() => other.root.unmount());
+
+    const mr = renderDraftTest("minimax");
+    expect(mr.container.textContent).toContain("测试连接");
+    act(() => mr.root.unmount());
+  });
+
+  it("表单没填齐时按钮不可用并说明原因", () => {
+    const { container, root } = renderDraftTest("minimax", { canTest: false });
+    const button = container.querySelector("button") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(container.textContent).toContain("填好名称、API URL、密钥和模型后即可测试");
+    act(() => root.unmount());
+  });
+
+  it("失败判定按 CLI 的分类给出可读原因，并带 status 语义", () => {
+    const { container, root } = renderDraftTest("minimax", {
+      testResult: {
+        ok: false,
+        state: "failed",
+        errorCode: "unauthorized",
+        errorMessage: "Authentication failed (HTTP 401)",
+      },
+    });
+    const status = container.querySelector('[role="status"]');
+    expect(status?.textContent).toBe("密钥被拒绝（401/403）");
+    act(() => root.unmount());
+  });
+
+  it("成功判定不伪装成错误语气", () => {
+    const { container, root } = renderDraftTest("minimax", {
+      testResult: { ok: true, state: "available", errorCode: "", errorMessage: "" },
+    });
+    expect(container.querySelector('[role="status"]')?.textContent).toBe(
+      "连接正常，模型已应答",
+    );
+    act(() => root.unmount());
   });
 });

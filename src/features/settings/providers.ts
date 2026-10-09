@@ -1,6 +1,7 @@
 /** Shared provider model for the CLI config section. */
 
-import type { ProviderSection } from "@/lib/ipc";
+import type { TFunction } from "i18next";
+import type { ProviderDraftTestResult, ProviderSection } from "@/lib/ipc";
 
 export const ENGINE_IDS = [
   "claude",
@@ -213,6 +214,26 @@ export const MR_API_FORMATS = [
   "anthropic-messages",
 ] as const;
 export const MR_DEFAULT_API_FORMAT = "openai-completions";
+
+/**
+ * One localized line for the dialog's 测试连接 verdict. The CLI classifies a
+ * failed probe into `unauthorized` / `network` / `timeout` / `http_<status>` /
+ * `provider_error` / `invalid_response`; anything we can name gets a name, and
+ * an unexpected answer still shows the CLI's own text rather than a bare 失败.
+ */
+export function formatDraftTestVerdict(t: TFunction, result: ProviderDraftTestResult): string {
+  if (result.ok) return t("settings.cliTestOk");
+  const code = result.errorCode;
+  const httpStatus = /^http_(\d{3})$/.exec(code)?.[1];
+  if (code === "unauthorized") return t("settings.cliTestUnauthorized");
+  if (code === "network") return t("settings.cliTestNetwork");
+  if (code === "timeout") return t("settings.cliTestTimeout");
+  if (httpStatus) return t("settings.cliTestHttp", { status: httpStatus });
+  if (code === "provider_error" || code === "invalid_response") {
+    return t("settings.cliTestUpstream");
+  }
+  return result.errorMessage.trim() || t("settings.cliTestError");
+}
 
 /** One channel row of an engine's provider map, flattened for the UI. */
 export interface ProviderEntry {  /** Map key — the id `set_current_provider` expects. */

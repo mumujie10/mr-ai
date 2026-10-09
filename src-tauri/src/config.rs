@@ -290,6 +290,21 @@ pub fn upsert_provider(
     upsert_provider_inner(&store, engine, id, json)
 }
 
+/// Verify a draft channel without saving it anywhere: the bundled CLI adds it
+/// into a scratch profile, runs its own connection test there, and the profile
+/// is deleted again. A wrong key or an unreachable relay is therefore visible
+/// before the user commits the channel, and neither provider store is touched.
+#[tauri::command]
+pub fn test_provider_draft(engine: String, json: Value) -> Result<Value, String> {
+    if engine != crate::engine::mr_providers::MR_ENGINE_ID {
+        return Err(format!("引擎 {engine} 没有内置的渠道测试运行时"));
+    }
+    let settings = crate::settings::read_settings().unwrap_or_default();
+    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MR_ENGINE_ID);
+    let channel = crate::engine::mr_providers::channel_from_json(&json)?;
+    crate::engine::mr_providers::test_draft(&bin, &channel)
+}
+
 fn upsert_provider_inner(
     store: &ConfigStore,
     engine: String,

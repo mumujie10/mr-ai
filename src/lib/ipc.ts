@@ -404,6 +404,19 @@ export interface ProviderModelList {
   endpoint: string;
 }
 
+/**
+ * Outcome of the channel dialog's 测试连接: the bundled CLI probed the draft in
+ * a scratch profile, so nothing was saved either side. `errorCode` is the CLI's
+ * own classification (`unauthorized` / `network` / `timeout` / `http_<code>` /
+ * `provider_error` / `invalid_response`), empty when the probe succeeded.
+ */
+export interface ProviderDraftTestResult {
+  ok: boolean;
+  state: string;
+  errorCode: string;
+  errorMessage: string;
+}
+
 export interface WorkspaceGroup {
   id: string;
   name: string;
@@ -1287,6 +1300,11 @@ export const ipc = {
   getCliConfig: () => invoke<CliConfig>("get_cli_config"),
   upsertProvider: (engine: string, id: string, json: unknown) =>
     invoke<void>("upsert_provider", { engine, id, json }),
+  /** 测试连接: probe this draft channel inside a scratch CLI profile. Nothing is
+   *  saved to either provider store, and the answer's `errorCode` classifies the
+   *  failure (see providers.ts::formatDraftTestVerdict). */
+  testProviderDraft: (engine: string, json: unknown) =>
+    invoke<ProviderDraftTestResult>("test_provider_draft", { engine, json }),
   deleteProvider: (engine: string, id: string) =>
     invoke<void>("delete_provider", { engine, id }),
   setCurrentProvider: (engine: string, id: string) =>

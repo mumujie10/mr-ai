@@ -3,6 +3,7 @@ import {
   ENGINE_IDS,
   VISIBLE_ENGINE_IDS,
   familyAliasOfEnvKey,
+  formatDraftTestVerdict,
   isEngineVisible,
   providerFamilyModels,
   visibleEngines,
@@ -84,5 +85,31 @@ describe("engine visibility", () => {
       { id: "plugin:auto" },
     ];
     expect(visibleEngines(rows).map((row) => row.id)).toEqual(["minimax"]);
+  });
+});
+
+describe("formatDraftTestVerdict", () => {
+  // The keys are what the mapping chooses; the localized sentence itself is
+  // covered where the component renders it (ProviderFormSections.test.tsx).
+  const t = ((key: string, options?: Record<string, unknown>) =>
+    options ? `${key}:${String(options.status)}` : key) as never;
+  const verdict = (errorCode: string, errorMessage = "", ok = false) =>
+    formatDraftTestVerdict(t, { ok, state: ok ? "available" : "failed", errorCode, errorMessage });
+
+  it("names every classification the CLI can report", () => {
+    expect(verdict("", "", true)).toBe("settings.cliTestOk");
+    expect(verdict("unauthorized")).toBe("settings.cliTestUnauthorized");
+    expect(verdict("network")).toBe("settings.cliTestNetwork");
+    expect(verdict("timeout")).toBe("settings.cliTestTimeout");
+    expect(verdict("http_503")).toBe("settings.cliTestHttp:503");
+    expect(verdict("provider_error")).toBe("settings.cliTestUpstream");
+    expect(verdict("invalid_response")).toBe("settings.cliTestUpstream");
+  });
+
+  it("keeps the CLI's own words for a classification we do not know", () => {
+    // Collapsing an unexpected answer into "测试失败" throws away the only
+    // evidence about what the relay actually did.
+    expect(verdict("weird", "upstream said something new")).toBe("upstream said something new");
+    expect(verdict("weird")).toBe("settings.cliTestError");
   });
 });

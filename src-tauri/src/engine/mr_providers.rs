@@ -81,6 +81,19 @@ fn select_args(model_key: &str) -> Vec<String> {
     vec!["provider".into(), "select".into(), model_key.to_string()]
 }
 
+/// `mr provider test` argv for one saved provider and one of its models. The
+/// key comes from the CLI's own stored config, so no env is required here.
+fn test_args(provider_id: &str, model: &str) -> Vec<String> {
+    vec![
+        "provider".into(),
+        "test".into(),
+        provider_id.to_string(),
+        "--model".into(),
+        model.to_string(),
+        "--json".into(),
+    ]
+}
+
 fn remove_args(provider_id: &str) -> Vec<String> {
     vec![
         "provider".into(),
@@ -132,9 +145,10 @@ fn invoke(bin: &str, args: &[String], envs: &[(&str, &str)]) -> Result<Invocatio
 }
 
 /// Save the channel, then make it the default model — the CLI's own words for
-/// "this is the channel we answer with". No connectivity probe is involved: the
-/// tester behind `--use` currently times out without reaching the relay, and a
-/// user choosing 当前渠道 is already the explicit act.
+/// "this is the channel we answer with". Saving deliberately performs no
+/// connectivity probe: a save must not fail because a relay is briefly
+/// unreachable, and 验证 a draft is what [`test_draft`] is for. A user choosing
+/// 当前渠道 is already the explicit act.
 pub(crate) fn upsert_and_select(bin: &str, channel: &MrChannel<'_>) -> Result<(), String> {
     let added = invoke(
         bin,
@@ -198,6 +212,113 @@ pub(crate) fn select_current(bin: &str, channel: &MrChannel<'_>) -> Result<(), S
         return Err(failure("设为当前模型", &selected));
     }
     Ok(())
+}
+
+/// A scratch CLI data directory that deletes itself, so testing a draft reaches
+/// neither the user's own provider store nor a leftover profile in `/tmp`.
+struct TempProfile {
+    path: std::path::PathBuf,
+}
+
+impl TempProfile {
+    fn create() -> Result<Self, String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or_default();
+        let path = std::env::temp_dir()
+            .join(format!("mr-provider-test-{}-{nanos}", std::process::id()));
+        create_private_dir(&path)?;
+        Ok(Self { path })
+    }
+
+    fn path_str(&self) -> String {
+        self.path.display().to_string()
+    }
+}
+
+/// Creates the scratch directory owner-only. The CLI writes the channel's key
+/// into `<dir>/config.yaml` for the duration of the probe, so the parent must
+/// not be listable by any other account even briefly.
+fn create_private_dir(path: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(path)
+        .map_err(|error| format!("无法创建测试用的临时配置目录：{error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("无法限制临时配置目录权限：{error}"))?;
+    }
+    Ok(())
+}
+
+impl Drop for TempProfile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+/// Test a draft channel the same way a saved one is tested, but inside a scratch
+/// profile: add it there, read the provider id the CLI minted, run the CLI's own
+/// connection test, and report the parsed verdict. Neither store the user owns
+/// is written, and the key travels only as child environment.
+pub(crate) fn test_draft(bin: &str, channel: &MrChannel<'_>) -> Result<Value, String> {
+    let profile = TempProfile::create()?;
+    let data_dir = profile.path_str();
+    let envs = [
+        (API_KEY_ENV, channel.api_key),
+        ("MINIMAX_DATA_DIR", data_dir.as_str()),
+        ("MAVIS_DATA_DIR", data_dir.as_str()),
+    ];
+    let added = invoke(bin, &add_args(channel), &envs)?;
+    if added.status != 0 {
+        return Err(failure("准备测试渠道", &added));
+    }
+    let listed = invoke(bin, &list_args(), &envs)?;
+    if listed.status != 0 {
+        return Err(failure("读取测试渠道", &listed));
+    }
+    let provider_id = provider_id_for_name(&listed.stdout, channel.name)
+        .ok_or_else(|| format!("CLI 没有接受名为 {} 的测试渠道", channel.name))?;
+    let tested = invoke(bin, &test_args(&provider_id, channel.model), &envs)?;
+    if tested.status != 0 {
+        return Err(failure("测试连接", &tested));
+    }
+    connection_verdict(&tested.stdout)
+}
+
+/// `provider test --json` answers `{success, status:{state, lastErrorCode?,
+/// lastErrorMessage?}}` and exits 0 even when the probe failed, so the verdict is
+/// read from the document rather than the exit code.
+fn connection_verdict(stdout: &str) -> Result<Value, String> {
+    let document: Value = serde_json::from_str(stdout.trim())
+        .map_err(|error| format!("测试输出无法解析：{error}"))?;
+    let ok = document
+        .get("success")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let status = document.get("status").cloned().unwrap_or(Value::Null);
+    let text = |key: &str| {
+        status
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let recorded_state = text("state");
+    let state = if !recorded_state.is_empty() {
+        recorded_state
+    } else if ok {
+        "available".to_string()
+    } else {
+        "failed".to_string()
+    };
+    Ok(serde_json::json!({
+        "ok": ok,
+        "state": state,
+        "errorCode": text("lastErrorCode"),
+        "errorMessage": text("lastErrorMessage"),
+    }))
 }
 
 /// Command failures are surfaced to the dialog. The CLI's own messages are safe
@@ -355,6 +476,141 @@ exit 0
             recorded.contains("provider select custom_provider:my-relay/gpt-x"),
             "selection never used the id the CLI reported back:\n{recorded}"
         );
+    }
+
+    #[test]
+    fn test_argv_carries_no_secret() {
+        let joined = test_args("custom_provider:my-relay", "gpt-x").join(" ");
+        assert!(joined.contains("provider test custom_provider:my-relay"));
+        assert!(joined.contains("--model gpt-x"));
+        assert!(joined.contains("--json"));
+    }
+
+    #[test]
+    fn verdict_reads_the_document_not_the_exit_code() {
+        let available = connection_verdict(
+            r#"{"success":true,"status":{"state":"available","lastTestedAt":1}}"#,
+        )
+        .expect("available verdict");
+        assert_eq!(available["ok"], serde_json::json!(true));
+        assert_eq!(available["state"], serde_json::json!("available"));
+
+        let rejected = connection_verdict(
+            r#"{"success":false,"status":{"state":"failed","lastErrorCode":"unauthorized","lastErrorMessage":"Authentication failed (HTTP 401)"}}"#,
+        )
+        .expect("failed verdict");
+        assert_eq!(rejected["ok"], serde_json::json!(false));
+        assert_eq!(rejected["errorCode"], serde_json::json!("unauthorized"));
+        assert_eq!(
+            rejected["errorMessage"],
+            serde_json::json!("Authentication failed (HTTP 401)")
+        );
+
+        // A provider answer the CLI could not classify still has to reach the
+        // dialog as a failure instead of an empty success.
+        let shapeless = connection_verdict("{}").expect("missing fields still parse");
+        assert_eq!(shapeless["ok"], serde_json::json!(false));
+        assert!(connection_verdict("not json").is_err());
+    }
+
+    /// The draft test must be hermetic: a scratch data directory for every CLI
+    /// call, the key only in the child env, and the directory gone afterwards.
+    #[cfg(unix)]
+    #[test]
+    fn draft_test_runs_in_a_scratch_profile_and_cleans_up() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("mr-draft-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let log = dir.join("calls.log");
+        let log_path = log.display().to_string();
+        let stub = dir.join("mr");
+        let script = format!(
+            r#"#!/bin/sh
+printf '%s\n' "ARGV:$*" "KEY:${{MCODE_PROVIDER_API_KEY:-unset}}" "DIR:${{MINIMAX_DATA_DIR:-unset}}:${{MAVIS_DATA_DIR:-unset}}" >> '{log_path}'
+case "$*" in
+  *provider*list*)
+    printf '%s\n' '{{"providers":[{{"providerId":"custom_provider:my-relay","name":"My Relay"}}]}}' ;;
+  *provider*test*)
+    printf '%s\n' '{{"success":false,"status":{{"state":"failed","lastErrorCode":"unauthorized","lastErrorMessage":"Authentication failed (HTTP 401)"}}}}' ;;
+  *)
+    printf '%s\n' 'ok' ;;
+esac
+exit 0
+"#
+        );
+        std::fs::write(&stub, script).expect("write stub");
+        let mut permissions = std::fs::metadata(&stub).expect("metadata").permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&stub, permissions).expect("chmod");
+        std::fs::write(&log, "").expect("clear log");
+
+        let channel = MrChannel {
+            name: "My Relay",
+            base_url: "https://relay.example/v1",
+            api_key: "sk-secret-value",
+            model: "gpt-x",
+            api_format: "openai-completions",
+        };
+        let verdict = match test_draft(stub.to_str().expect("stub path"), &channel) {
+            Ok(verdict) => verdict,
+            Err(error) => {
+                let recorded = std::fs::read_to_string(&log).unwrap_or_default();
+                panic!("draft test failed: {error}\nstub saw:\n{recorded}");
+            }
+        };
+
+        let recorded = std::fs::read_to_string(&log).expect("read log");
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert_eq!(verdict["ok"], serde_json::json!(false));
+        assert_eq!(verdict["errorCode"], serde_json::json!("unauthorized"));
+        assert!(
+            !verdict.to_string().contains("sk-secret-value"),
+            "the key reached the answer shown in the dialog: {verdict}"
+        );
+
+        for line in recorded.lines().filter(|line| line.starts_with("KEY:")) {
+            assert_eq!(line, "KEY:sk-secret-value");
+        }
+        let scratch_dirs: Vec<&str> = recorded
+            .lines()
+            .filter_map(|line| line.strip_prefix("DIR:"))
+            .collect();
+        assert_eq!(scratch_dirs.len(), 3, "add, list and test all run in it");
+        for both in &scratch_dirs {
+            let (minimax, mavis) = both.split_once(':').expect("both vars recorded");
+            let name = std::path::Path::new(minimax)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default();
+            assert!(name.starts_with("mr-provider-test-"), "{minimax}");
+            assert_eq!(minimax, mavis, "the CLI honors either name; send both");
+            assert!(
+                !std::path::Path::new(minimax).exists(),
+                "the scratch profile survived the test: {minimax}"
+            );
+        }
+        for line in recorded.lines().filter(|line| line.starts_with("ARGV:")) {
+            assert!(!line.contains("sk-secret-value"), "key in argv: {line}");
+        }
+        assert!(
+            recorded.contains("provider test custom_provider:my-relay --model gpt-x --json"),
+            "the CLI's own tester never ran:\n{recorded}"
+        );
+    }
+
+    /// The scratch profile briefly holds the user's key in a config file, so the
+    /// directory is created owner-only rather than at the ambient umask default.
+    #[cfg(unix)]
+    #[test]
+    fn scratch_profile_directory_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("mr-private-dir-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        create_private_dir(&dir).expect("created");
+        let mode = std::fs::metadata(&dir).expect("metadata").permissions().mode() & 0o777;
+        std::fs::remove_dir_all(&dir).ok();
+        assert_eq!(mode, 0o700, "other accounts could read the stored key");
     }
 
 }

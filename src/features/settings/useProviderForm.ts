@@ -1,6 +1,6 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
-import { ipc } from "@/lib/ipc";
+import { ipc, type ProviderDraftTestResult } from "@/lib/ipc";
 import type { EngineId } from "./providers";
 import { MR_DEFAULT_API_FORMAT } from "./providers";
 import type { ProviderFormValue } from "./ProviderDialog";
@@ -132,9 +132,17 @@ export function useProviderForm({
   const [fetchedModels, setFetchedModels] = useState<string[]>([]);
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
+  /** 测试连接 verdict for the current draft; `null` = not tested, or the form
+   *  changed since the probe and the answer no longer describes these values. */
+  const [testResult, setTestResult] = useState<ProviderDraftTestResult | null>(null);
+  const [testing, setTesting] = useState(false);
 
   const presets = PRESETS[engine] ?? [];
-  const patch = (p: Partial<ProviderFormValue>) => setValue((v) => ({ ...v, ...p }));
+  /** Every edit invalidates the previous verdict: it was measured on other input. */
+  const patch = (p: Partial<ProviderFormValue>) => {
+    setTestResult(null);
+    setValue((v) => ({ ...v, ...p }));
+  };
 
   // ── claude JSON <-> field sync ────────────────────────────────────────────
 
@@ -306,6 +314,47 @@ export function useProviderForm({
     }
   };
 
+  // ── 测试连接（draft only, scratch CLI profile）────────────────────────────
+
+  /** The bundled CLI is the only runtime that can be probed here, and its
+   *  `provider test` needs a name, URL, key and model to store in the scratch
+   *  profile first — an incomplete form has nothing to measure. */
+  const canTest =
+    engine === "minimax" &&
+    value.name.trim() !== "" &&
+    value.baseUrl.trim() !== "" &&
+    value.apiKey.trim() !== "" &&
+    value.model.trim() !== "";
+
+  const testConnection = async () => {
+    if (!canTest || testing) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      setTestResult(
+        await ipc.testProviderDraft(engine, {
+          name: value.name.trim(),
+          baseUrl: value.baseUrl.trim(),
+          apiKey: value.apiKey,
+          model: value.model.trim(),
+          apiFormat: value.apiFormat.trim() || MR_DEFAULT_API_FORMAT,
+        }),
+      );
+    } catch (e) {
+      // A missing runtime, a CLI that refused the channel, or an unreadable
+      // answer all land here: report them as a failed probe, never as success.
+      const message = e instanceof Error ? e.message : String(e);
+      setTestResult({
+        ok: false,
+        state: "failed",
+        errorCode: "runtime",
+        errorMessage: message || t("settings.cliTestError"),
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
   // ── validity & submit ─────────────────────────────────────────────────────
 
   const official = isClaude
@@ -369,6 +418,10 @@ export function useProviderForm({
     fetchedModels,
     fetching,
     fetchError,
+    testing,
+    testResult,
+    canTest,
+    testConnection,
     presets,
     official,
     matchedPreset,
@@ -400,6 +453,13 @@ export interface ProviderForm {
   fetchedModels: string[];
   fetching: boolean;
   fetchError: string;
+  /** minimax only: a 测试连接 probe is running. */
+  testing: boolean;
+  /** minimax only: verdict for the current draft, cleared by every edit. */
+  testResult: ProviderDraftTestResult | null;
+  /** minimax only: the form carries everything the CLI needs to probe it. */
+  canTest: boolean;
+  testConnection: () => Promise<void>;
   presets: ProviderPreset[];
   official: boolean;
   matchedPreset: ProviderPreset | undefined;

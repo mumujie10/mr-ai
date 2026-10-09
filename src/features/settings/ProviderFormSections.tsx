@@ -11,7 +11,7 @@ import { Select, SelectItem } from "@/components/base/select/select";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { cx } from "@/utils/cx";
 import type { EngineId } from "./providers";
-import { MR_API_FORMATS, MR_DEFAULT_API_FORMAT } from "./providers";
+import { MR_API_FORMATS, MR_DEFAULT_API_FORMAT, formatDraftTestVerdict } from "./providers";
 import {
   CLAUDE_MODEL_SLOTS,
   isOfficialAnthropicEndpoint,
@@ -519,5 +519,56 @@ export function CodexFormSections({
         />
       </div>
     </>
+  );
+}
+
+/**
+ * minimax only: 测试连接 the draft channel. The backend adds the form's values to
+ * a scratch CLI profile, runs the CLI's own connection test there and deletes the
+ * profile again, so probing never writes the user's provider store — and an error
+ * here means the channel was genuinely unreachable, not half-saved.
+ *
+ * Any edit clears the verdict (it was measured on other values), which is why the
+ * hint line, not just the button, carries the "fill everything first" state.
+ */
+export function ProviderDraftTestSection({
+  engine,
+  form,
+}: {
+  engine: EngineId;
+  form: ProviderForm;
+}) {
+  const { t } = useTranslation();
+  if (engine !== "minimax") return null;
+  const verdict = form.testResult ? formatDraftTestVerdict(t, form.testResult) : "";
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void form.testConnection()}
+          disabled={form.testing || !form.canTest}
+          className="shrink-0 rounded-lg border border-border-button-default px-2 py-0.5 text-body-2-medium text-text-secondary transition-colors hover:bg-background-secondary-hover disabled:opacity-50"
+        >
+          {form.testing ? t("settings.cliTestRunning") : t("settings.cliTestConnection")}
+        </button>
+        {!form.canTest ? (
+          <span className="text-body-2-regular text-text-tertiary">
+            {t("settings.cliTestNeedFields")}
+          </span>
+        ) : null}
+      </div>
+      {verdict ? (
+        <p
+          role="status"
+          className={cx(
+            "text-body-2-regular",
+            form.testResult?.ok ? "text-state-success-text" : "text-text-error-primary",
+          )}
+        >
+          {verdict}
+        </p>
+      ) : null}
+    </div>
   );
 }

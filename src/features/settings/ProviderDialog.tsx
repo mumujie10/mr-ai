@@ -8,6 +8,7 @@ import {
   CodexFormSections,
   FlatModelSection,
   ProviderBasicFields,
+  ProviderDraftTestSection,
   ProviderPresetSections,
 } from "./ProviderFormSections";
 import { useProviderForm } from "./useProviderForm";
@@ -23,6 +24,9 @@ import { useProviderForm } from "./useProviderForm";
  *     display and model picker).
  *   - kimi/grok/pi/omp/dsh: preset cards → flat name/remark/URL/key/model,
  *     with a 拉取模型 datalist on the model field.
+ *   - minimax (the bundled runtime): the same flat fields plus the wire
+ *     protocol the CLI must use, and a 测试连接 probe that runs against a scratch
+ *     CLI profile instead of the saved channel.
  *
  * `raw` stays with the parent and is merged back on save so fields this form
  * doesn't know (source, customModels, …) survive.
@@ -88,6 +92,7 @@ export function ProviderDialog({ engine, title, initial, onSubmit, onCancel }: P
         <ClaudeFormSections engine={engine} form={form} />
         <FlatModelSection engine={engine} form={form} />
         <CodexFormSections engine={engine} form={form} />
+        <ProviderDraftTestSection engine={engine} form={form} />
 
         <div className="flex justify-end gap-2">
           <Button variant="secondary" size="small" onClick={onCancel}>

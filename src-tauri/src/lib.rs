@@ -360,6 +360,7 @@ pub fn run() {
             // config
             config::get_cli_config,
             config::upsert_provider,
+            config::test_provider_draft,
             config::delete_provider,
             config::set_current_provider,
             provider_files::provider_file_paths,
