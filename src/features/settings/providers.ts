@@ -204,15 +204,26 @@ export function codexAuthJson(raw: unknown): string {
   return "";
 }
 
+/** Wire protocols the bundled `mr` CLI can drive for a BYOK channel. These are
+ *  the CLI's own `provider add --api-format` values; a channel saved without one
+ *  would silently fall back to `anthropic-messages` and break OpenAI relays. */
+export const MR_API_FORMATS = [
+  "openai-completions",
+  "openai-responses",
+  "anthropic-messages",
+] as const;
+export const MR_DEFAULT_API_FORMAT = "openai-completions";
+
 /** One channel row of an engine's provider map, flattened for the UI. */
-export interface ProviderEntry {
-  /** Map key — the id `set_current_provider` expects. */
+export interface ProviderEntry {  /** Map key — the id `set_current_provider` expects. */
   id: string;
   name: string;
   remark: string;
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** minimax: the wire protocol the bundled CLI must use for this channel. */
+  apiFormat: string;
   /** Untouched stored record, merged back on save so unknown fields survive. */
   raw: unknown;
 }
@@ -233,6 +244,7 @@ export function providerEntries(
       baseUrl: asString(o.baseUrl),
       apiKey: asString(o.apiKey),
       model: providerModel(engine, raw),
+      apiFormat: asString(o.apiFormat),
       raw,
     };
   });

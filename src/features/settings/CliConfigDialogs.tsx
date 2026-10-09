@@ -29,6 +29,7 @@ export function CliProviderDialog({ cli }: { cli: CliConfigState }) {
               baseUrl: dialog.entry.baseUrl,
               apiKey: dialog.entry.apiKey,
               model: dialog.entry.model,
+              apiFormat: dialog.entry.apiFormat,
               settingsJson: engine === "claude" ? claudeSettingsJson(dialog.entry.raw) : "",
               configToml: engine === "codex" ? codexConfigToml(dialog.entry.raw) : "",
               authJson: engine === "codex" ? codexAuthJson(dialog.entry.raw) : "",

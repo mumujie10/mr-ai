@@ -2,6 +2,7 @@ import { useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { ipc } from "@/lib/ipc";
 import type { EngineId } from "./providers";
+import { MR_DEFAULT_API_FORMAT } from "./providers";
 import type { ProviderFormValue } from "./ProviderDialog";
 import {
   DEFAULT_CODEX_AUTH_JSON,
@@ -25,6 +26,7 @@ const EMPTY_FORM: ProviderFormValue = {
   baseUrl: "",
   apiKey: "",
   model: "",
+  apiFormat: "",
   settingsJson: "",
   configToml: "",
   authJson: "",
@@ -71,6 +73,11 @@ function initialForm(engine: EngineId, initial?: ProviderFormValue): ProviderFor
           : OFFICIAL_CODEX_CONFIG_TOML,
       authJson: base.authJson.trim() ? base.authJson : DEFAULT_CODEX_AUTH_JSON,
     };
+  }
+  if (engine === "minimax") {
+    // A new channel preselects the protocol the CLI would not guess for itself,
+    // and an edited one keeps whatever was stored even if it is empty.
+    return { ...base, apiFormat: base.apiFormat.trim() || MR_DEFAULT_API_FORMAT };
   }
   return base;
 }

@@ -33,6 +33,8 @@ export interface ProviderFormValue {
   baseUrl: string;
   apiKey: string;
   model: string;
+  /** minimax: wire protocol handed to the bundled CLI (`--api-format`). */
+  apiFormat: string;
   /** claude: full settings.json text → stored as settingsConfig. */
   settingsJson: string;
   /** codex: config.toml text → stored as settingsConfig.config. */

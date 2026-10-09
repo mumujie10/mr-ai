@@ -1098,6 +1098,14 @@ export const en: Messages = {
     cliBaseUrl: "API URL",
     cliApiKey: "API Key",
     cliModel: "Model",
+    cliApiFormat: "Wire protocol",
+    cliApiFormatHint:
+      "How the built-in agent talks to this endpoint. Choose the one your provider documents — the wrong protocol fails every request.",
+    cliApiFormatOptions: {
+      "openai-completions": "OpenAI Chat Completions",
+      "openai-responses": "OpenAI Responses",
+      "anthropic-messages": "Anthropic Messages",
+    },
     cliModelMapping: "Model Mapping",
     cliFableModel: "Fable default model",
     cliFableModelPlaceholder: "e.g. claude-fable-5",

@@ -1054,6 +1054,13 @@ export const zh = {
     cliBaseUrl: "API URL",
     cliApiKey: "API Key",
     cliModel: "模型",
+    cliApiFormat: "接口协议",
+    cliApiFormatHint: "内置 Agent 用哪种协议访问这个地址，按服务商文档选择，选错会每次请求都失败。",
+    cliApiFormatOptions: {
+      "openai-completions": "OpenAI Chat Completions",
+      "openai-responses": "OpenAI Responses",
+      "anthropic-messages": "Anthropic Messages",
+    },
     cliModelMapping: "模型映射",
     cliFableModel: "Fable 默认模型",
     cliFableModelPlaceholder: "例如：claude-fable-5",

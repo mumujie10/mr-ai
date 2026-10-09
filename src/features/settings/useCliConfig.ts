@@ -189,6 +189,9 @@ export function useCliConfig(engine: EngineId): CliConfigState {
       if (Object.keys(sc).length > 0) next.settingsConfig = sc;
     } else {
       put("model", value.model);
+      // The bundled CLI needs the wire protocol explicitly: its own default is
+      // anthropic-messages, which silently breaks an OpenAI-compatible relay.
+      if (engine === "minimax") put("apiFormat", value.apiFormat);
     }
     const id = dialog?.entry?.id ?? newId();
     setDialog(null);

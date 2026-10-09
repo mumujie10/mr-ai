@@ -7,9 +7,11 @@ import EyeOff from "lucide-react/dist/esm/icons/eye-off";
 import Globe from "lucide-react/dist/esm/icons/globe";
 import { Input } from "@/components/base/input/input";
 import { TextArea } from "@/components/base/input/textarea";
+import { Select, SelectItem } from "@/components/base/select/select";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { cx } from "@/utils/cx";
 import type { EngineId } from "./providers";
+import { MR_API_FORMATS, MR_DEFAULT_API_FORMAT } from "./providers";
 import {
   CLAUDE_MODEL_SLOTS,
   isOfficialAnthropicEndpoint,
@@ -421,6 +423,27 @@ export function FlatModelSection({
   if (engine === "claude" || engine === "codex") return null;
   return (
     <div className="flex flex-col gap-2">
+      {engine === "minimax" && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-(--app-text-secondary)">
+            {t("settings.cliApiFormat")}
+          </span>
+          <Select
+            aria-label={t("settings.cliApiFormat")}
+            selectedKey={form.value.apiFormat || MR_DEFAULT_API_FORMAT}
+            onSelectionChange={(apiFormat) => form.patch({ apiFormat: String(apiFormat) })}
+          >
+            {MR_API_FORMATS.map((format) => (
+              <SelectItem key={format} id={format}>
+                {t(`settings.cliApiFormatOptions.${format}`)}
+              </SelectItem>
+            ))}
+          </Select>
+          <span className="text-xs text-(--app-text-tertiary)">
+            {t("settings.cliApiFormatHint")}
+          </span>
+        </div>
+      )}
       <FetchModelsControl
         fetching={form.fetching}
         error={form.fetchError}
