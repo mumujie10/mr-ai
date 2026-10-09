@@ -15,8 +15,9 @@
 use serde_json::Value;
 use std::process::{Command, Stdio};
 
-/// Engine id of the bundled runtime (its binary is `mr`).
-pub(crate) const MR_ENGINE_ID: &str = "minimax";
+/// Engine id of the bundled runtime (its binary is `mr`). MiniMax Code is a
+/// separate engine: its channels are the user's own CLI configuration.
+pub(crate) const MIREAI_ENGINE_ID: &str = "mireai";
 
 const API_KEY_ENV: &str = "MCODE_PROVIDER_API_KEY";
 

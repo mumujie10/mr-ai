@@ -32,6 +32,8 @@ export type EngineIconId =
   | "qwen"
   | "doubao"
   | "minimax"
+  /** This app's own agent runtime: badged with the app icon, not a vendor. */
+  | "mireai"
   | "yi"
   | "baichuan"
   | "hunyuan"
@@ -207,16 +209,14 @@ export function EngineIcon({ engine, size = 14, className, style }: EngineIconPr
   if (engine === "qoder" || engine === "qoder-cn") {
     return <QoderGlyph size={size} className={className} style={style} />;
   }
-  // The MiniMax Code CLI wears the app's own blue badge (converted from the
-  // shipped .icns); the flat `minimax` mark below stays for model-vendor
-  // inference on other engines.
-  if (engine === "minimax") {
-    // The built-in runtime is this product's own agent, so it wears the app
-    // icon instead of a vendor logo. Swap in the MR mark once it exists.
+  // MireAI CLI is this product's own agent, so it wears the app icon instead
+  // of a vendor logo. MiniMax Code keeps the flat `minimax` mark: it is the
+  // vendor's own CLI, and the same mark names the MiniMax models on any engine.
+  if (engine === "mireai") {
     return (
       <img
         src="/app-icon.png"
-        alt="MR CLI"
+        alt="MireAI CLI"
         className={className}
         style={iconStyle}
         aria-hidden

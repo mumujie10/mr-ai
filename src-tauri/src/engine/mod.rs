@@ -29,8 +29,8 @@ pub mod images;
 pub(crate) mod job;
 pub mod kimi;
 mod kimi_acp;
-pub mod minimax;
-mod minimax_acp;
+pub mod mcode;
+mod mcode_acp;
 pub mod models;
 pub(crate) mod mr_providers;
 pub mod opencode;
@@ -289,7 +289,8 @@ pub fn engine_by_id(id: &str) -> Option<Box<dyn Engine>> {
     match id {
         "claude" => Some(Box::new(claude::ClaudeEngine::new())),
         "kimi" => Some(Box::new(kimi::KimiEngine)),
-        "minimax" => Some(Box::new(minimax::MiniMaxEngine)),
+        "mireai" => Some(Box::new(mcode::McodeEngine::MIREAI)),
+        "minimax" => Some(Box::new(mcode::McodeEngine::MINIMAX)),
         "grok" => Some(Box::new(grok::GrokEngine)),
         "codex" => Some(Box::new(codex::CodexEngine)),
         "pi" => Some(Box::new(pi_family::pi())),
@@ -411,9 +412,10 @@ pub(crate) fn cli_binary_name(engine_id: &str) -> &str {
     match engine_id {
         "qoder" => qoder::QoderDistribution::Global.cli_name(),
         "qoder-cn" => qoder::QoderDistribution::Cn.cli_name(),
-        // The bundled runtime is staged as `mr` (scripts/stage-runtime.mjs);
-        // the engine id stays `minimax` until the cross-layer id rename.
-        "minimax" => "mr",
+        // Both mcode-protocol engines name their own binary: the bundled
+        // runtime is staged as `mr` (scripts/stage-runtime.mjs), MiniMax Code
+        // installs itself as `mcode`.
+        "mireai" | "minimax" => mcode::McodeRuntime::from_engine_id(engine_id).default_binary(),
         _ => engine_id,
     }
 }
@@ -1289,7 +1291,7 @@ async fn send_host_stream(
             killed,
             pid,
         )),
-        "minimax" => tokio::spawn(minimax_acp::run_acp_turn(
+        "mireai" | "minimax" => tokio::spawn(mcode_acp::run_acp_turn(
             core,
             launch.req,
             launch.built,
@@ -1393,8 +1395,8 @@ pub async fn answer_question(
     // MiniMax's ACP driver parks `session/request_permission`: the answer is
     // the JSON-RPC response line on the CLI's stdin, selecting one of the
     // ask's advertised options.
-    if let Some(acp) = input.get("minimaxAcp") {
-        let frame = minimax_acp::answer_frame(acp, answers.as_ref())?;
+    if let Some(acp) = input.get("mcodeAcp") {
+        let frame = mcode_acp::answer_frame(acp, answers.as_ref())?;
         state
             .processes
             .write_line(&session_id, frame.to_string())
@@ -3116,5 +3118,38 @@ mod plan_respond_tests {
         assert!(message.contains("expired"), "{message}");
         let expired = plan_review::get_review(&db, "plan-d", 1).unwrap().unwrap();
         assert_eq!(expired.status, plan_review::PlanStatus::Expired);
+    }
+}
+
+#[cfg(test)]
+mod mcode_engine_registry_tests {
+    use super::*;
+
+    /// The bundled runtime and the official MiniMax Code CLI are two engines:
+    /// one protocol adapter, but each with its own id, its own binary and its
+    /// own config section. Re-pointing either one has to fail this test.
+    #[test]
+    fn both_mcode_runtimes_are_registered_separately() {
+        for (id, binary) in [("mireai", "mr"), ("minimax", "mcode")] {
+            let engine = engine_by_id(id).unwrap_or_else(|| panic!("{id} is a known engine"));
+            assert_eq!(engine.id(), id);
+            assert_eq!(cli_binary_name(id), binary);
+            assert!(
+                crate::config::ENGINES.contains(&id),
+                "{id} is listed for the settings and engine pages"
+            );
+            assert!(
+                crate::config::CliConfig::default().section(id).is_some(),
+                "{id} has its own channel section"
+            );
+        }
+    }
+
+    #[test]
+    fn channel_writes_target_the_bundled_runtime() {
+        assert_eq!(
+            mr_providers::MIREAI_ENGINE_ID,
+            mcode::McodeRuntime::MireAi.engine_id()
+        );
     }
 }

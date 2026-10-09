@@ -716,20 +716,22 @@ fn extract_line_messages(engine: &str, value: &Value, images: ImageMode) -> Line
         "codex" => extract_codex_line(value, images),
         "pi" | "omp" => extract_pi_family_line(value, images),
         "qoder" | "qoder-cn" => extract_qoder_line(value, images),
-        "minimax" => extract_minimax_line(value),
+        // The CLI writes this transcript shape; both mcode engine ids read it.
+        "mireai" | "minimax" => extract_mcode_line(value),
         _ => Vec::new(),
     }
 }
 
 // ==================== MiniMax Code ====================
 
-/// MiniMax Code transcript lines: `{message_id, turn_id, message:{role,
+/// mcode transcript lines (the bundled `mr` and MiniMax Code write the same
+/// shape): `{message_id, turn_id, message:{role,
 /// content:[parts], timestamp(ms), usage?, model?, toolCallId?, toolName?}}`
 /// (shape verified against a live install's
 /// `~/.minimax/v2/sessions/<…>/messages.jsonl`). Content parts spell
 /// `text` / `thinking` / `toolCall`; a `toolResult` message resolves the
 /// matching call by its `toolCallId`.
-fn extract_minimax_line(value: &Value) -> LineRows {
+fn extract_mcode_line(value: &Value) -> LineRows {
     let Some(message) = value.get("message") else {
         return Vec::new();
     };

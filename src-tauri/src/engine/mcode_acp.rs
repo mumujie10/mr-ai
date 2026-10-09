@@ -1,9 +1,11 @@
-//! MiniMax Code ACP turn driver (`mcode acp`). Same settle contract as the
-//! shared grok/kimi driver (`grok_acp.rs`): events until a terminal
-//! done/error, pending question cards settled first, then this run's
-//! registry entries drained. Framing and read loop come from the qoder
-//! driver's primitives (`qoder_session.rs`); only the handshake, the
-//! config surface and the permission channel are MiniMax's own.
+//! ACP turn driver for the mcode protocol — the bundled `mr` (engine
+//! `mireai`) and the official MiniMax Code `mcode` (engine `minimax`). Same
+//! settle contract as the shared grok/kimi driver (`grok_acp.rs`): events
+//! until a terminal done/error, pending question cards settled first, then
+//! this run's registry entries drained. Framing and read loop come from the
+//! qoder driver's primitives (`qoder_session.rs`); only the handshake, the
+//! config surface and the permission channel are the CLI's own. User-visible
+//! text names whichever runtime the turn is running for, never both.
 //!
 //! Wire notes (live-verified against mcode 0.5.1):
 //! - `initialize` → `session/new {cwd, mcpServers}` (or `session/load` to
@@ -34,13 +36,14 @@ use std::time::Duration;
 
 use serde_json::{json, Map, Value};
 
+use super::mcode::{McodeEngine, McodeRuntime};
 use super::qoder_session::{
     answer_agent_request, initialize_params, jsonrpc_id_key, jsonrpc_result_response,
     session_update_from_notification, spawn_piped_acp, teardown, AcpLine, AcpProcess,
     JSONRPC_INVALID_PARAMS, JSONRPC_METHOD_NOT_FOUND, PROMPT_TIMEOUT, RPC_HANDSHAKE_TIMEOUT,
     SESSION_NEW_TIMEOUT, SESSION_RESUME_TIMEOUT,
 };
-use super::{BuiltCommand, Engine, EngineEvent, SendRequest, TurnCore, TurnState, VirtualRunGuard};
+use super::{BuiltCommand, EngineEvent, SendRequest, TurnCore, TurnState, VirtualRunGuard};
 
 /// Model catalog probe budget: a temp-dir session/new skips any workspace
 /// scan, so the handshake lands in seconds; the cap is pure slow-machine
@@ -67,7 +70,7 @@ struct TurnView {
     tool_names: HashMap<String, String>,
 }
 
-/// Drive one send as a MiniMax ACP turn.
+/// Drive one send as an mcode-protocol ACP turn.
 pub(super) async fn run_acp_turn(
     core: TurnCore,
     req: SendRequest,
@@ -88,7 +91,17 @@ pub(super) async fn run_acp_turn(
     // keys pinning a concurrency slot until app exit.
     let _registry_guard =
         VirtualRunGuard::new(Arc::clone(&core.registry), core.run_id.clone(), virtual_pid);
-    let result = turn_inner(&core, &mut state, &mut view, &req, &mut command, &killed).await;
+    let runtime = McodeRuntime::from_engine_id(&core.engine_id);
+    let result = turn_inner(
+        &core,
+        &mut state,
+        &mut view,
+        &req,
+        &mut command,
+        &killed,
+        runtime,
+    )
+    .await;
     // Pending questions die with the turn: settle their cards BEFORE any
     // terminal dispatch, or the monotonic saw_done/saw_error guard in
     // dispatch_event would drop these and leave answerable cards pointing at
@@ -139,6 +152,7 @@ async fn turn_inner(
     req: &SendRequest,
     command: &mut tokio::process::Command,
     killed: &Arc<AtomicBool>,
+    runtime: McodeRuntime,
 ) -> Result<(), String> {
     let mut spawned = spawn_piped_acp(command, &core.engine_id, &req.workspace)?;
     // The registry entry exists before this task runs, so a parked question's
@@ -146,7 +160,8 @@ async fn turn_inner(
     // it later, making `answer_question` work by either key).
     core.registry
         .set_stdin(&core.run_id, Arc::clone(&spawned.acp.stdin));
-    let result = handshake_and_prompt(&mut spawned.acp, core, state, view, req, killed).await;
+    let result =
+        handshake_and_prompt(&mut spawned.acp, core, state, view, req, killed, runtime).await;
     // ACP is a session protocol: the CLI stays resident after the prompt
     // response, so every exit path tears the tree down.
     teardown(&mut spawned.child).await;
@@ -163,6 +178,7 @@ async fn handshake_and_prompt(
     view: &mut TurnView,
     req: &SendRequest,
     killed: &AtomicBool,
+    runtime: McodeRuntime,
 ) -> Result<(), String> {
     acp.routed(
         "initialize",
@@ -173,10 +189,20 @@ async fn handshake_and_prompt(
         &mut |_| None,
     )
     .await?;
-    let (session_id, session_result) = attach_session(acp, req, killed).await?;
+    let (session_id, session_result) = attach_session(acp, req, killed, runtime).await?;
     core.dispatch_event(state, EngineEvent::SessionId(session_id.clone()));
 
-    apply_session_config(acp, &session_id, &session_result, req, core, state, killed).await?;
+    apply_session_config(
+        acp,
+        &session_id,
+        &session_result,
+        req,
+        core,
+        state,
+        killed,
+        runtime,
+    )
+    .await?;
 
     let blocks = prompt_blocks(&req.prompt, &req.images, &req.workspace);
     let workspace = req.workspace.clone();
@@ -195,10 +221,8 @@ async fn handshake_and_prompt(
         // The permission ask is the user's line to answer: return None so the
         // frame is written by `answer_question` (via the registry-held
         // stdin), not by the read loop.
-        AcpLine::AgentRequest { id, method, params }
-            if method == "session/request_permission" =>
-        {
-            park_permission(core, state, id, params)
+        AcpLine::AgentRequest { id, method, params } if method == "session/request_permission" => {
+            park_permission(core, state, runtime, id, params)
         }
         // Forms this client cannot render release the CLI instead of holding
         // it parked until the prompt times out.
@@ -234,6 +258,7 @@ async fn attach_session(
     acp: &mut AcpProcess,
     req: &SendRequest,
     killed: &AtomicBool,
+    runtime: McodeRuntime,
 ) -> Result<(String, Value), String> {
     let cwd = req.workspace.to_string_lossy().to_string();
     let mut loaded = None;
@@ -280,7 +305,12 @@ async fn attach_session(
     };
     let session_id = extract_session_id(&session_result)
         .or_else(|| req.session_id.clone())
-        .ok_or_else(|| "MiniMax session handshake returned no sessionId".to_string())?;
+        .ok_or_else(|| {
+            format!(
+                "{} session handshake returned no sessionId",
+                runtime.display_name()
+            )
+        })?;
     Ok((session_id, session_result))
 }
 
@@ -291,7 +321,7 @@ async fn existing_dirs(dirs: &[String]) -> Vec<String> {
     for dir in dirs {
         match tokio::fs::metadata(dir).await {
             Ok(metadata) if metadata.is_dir() => out.push(dir.clone()),
-            _ => eprintln!("[minimax] skipping a granted root that is not a directory"),
+            _ => eprintln!("[mcode] skipping a granted root that is not a directory"),
         }
     }
     out
@@ -326,17 +356,19 @@ async fn apply_session_config(
     core: &TurnCore,
     state: &mut TurnState,
     killed: &AtomicBool,
+    runtime: McodeRuntime,
 ) -> Result<(), String> {
-    let requested = super::minimax::MiniMaxEngine.resolve_permission(req.permission.as_deref());
+    let cli = runtime.display_name();
+    let requested = McodeEngine::resolve_permission_mode(req.permission.as_deref());
     if requested == "plan" {
         if let Some(mode) = mode_id(req.permission.as_deref(), session_result) {
-            set_mode(acp, session_id, &mode, killed).await?;
+            set_mode(acp, session_id, &mode, killed, runtime).await?;
         } else {
             core.dispatch_event(
                 state,
-                EngineEvent::Warn(
-                    "MiniMax CLI 未暴露 Plan 会话模式，本次使用 CLI 自身默认权限策略".to_string(),
-                ),
+                EngineEvent::Warn(format!(
+                    "{cli} 未暴露 Plan 会话模式，本次使用 CLI 自身默认权限策略"
+                )),
             );
         }
     } else {
@@ -352,13 +384,13 @@ async fn apply_session_config(
                 core.dispatch_event(
                     state,
                     EngineEvent::Warn(format!(
-                        "MiniMax CLI 未提供权限模式配置项，本次使用 CLI 自身默认权限策略（请求 {value}）"
+                        "{cli} 未提供权限模式配置项，本次使用 CLI 自身默认权限策略（请求 {value}）"
                     )),
                 );
             }
             Err(error) => {
                 return Err(format!(
-                    "MiniMax permission mode `{value}` setup failed: {}",
+                    "{cli} permission mode `{value}` setup failed: {}",
                     error.message
                 ));
             }
@@ -377,18 +409,18 @@ async fn apply_session_config(
                     set_config_option(acp, session_id, "model", &value, killed).await
                 {
                     return Err(format!(
-                        "MiniMax model `{model}` setup failed: {}",
+                        "{cli} model `{model}` setup failed: {}",
                         error.message
                     ));
                 }
             }
-            // Not in the CLI's own list (stale picker id or a custom model
-            // this account cannot run): keep the CLI default, say so.
+            // Not in the CLI's own list (stale picker id or a channel the
+            // user removed since): keep the CLI default, say so.
             None => {
                 core.dispatch_event(
                     state,
                     EngineEvent::Warn(format!(
-                        "MiniMax CLI 的模型列表中没有 {model}，本次使用 CLI 自身默认模型"
+                        "{cli} 的模型列表中没有 {model}，本次使用 CLI 自身默认模型"
                     )),
                 );
             }
@@ -440,8 +472,7 @@ fn resolve_model_value(
     let options = session_result["configOptions"]
         .as_array()?
         .iter()
-        .find(|option| option["id"] == "model")?
-        ["options"]
+        .find(|option| option["id"] == "model")?["options"]
         .as_array()?;
     let candidates: Vec<(String, String)> = options
         .iter()
@@ -472,6 +503,7 @@ async fn set_mode(
     session_id: &str,
     mode: &str,
     killed: &AtomicBool,
+    runtime: McodeRuntime,
 ) -> Result<(), String> {
     let outcome = acp
         .routed(
@@ -488,10 +520,13 @@ async fn set_mode(
         Err(error) if rpc_code(&error) == Some(JSONRPC_METHOD_NOT_FOUND) => {
             // The session advertised modes but this build rejects the
             // switch: keep the CLI default rather than failing the send.
-            eprintln!("[minimax] session/set_mode unsupported on this build: {error}");
+            eprintln!("[mcode] session/set_mode unsupported on this build: {error}");
             Ok(())
         }
-        Err(error) => Err(format!("MiniMax mode `{mode}` setup failed: {error}")),
+        Err(error) => Err(format!(
+            "{} mode `{mode}` setup failed: {error}",
+            runtime.display_name()
+        )),
     }
 }
 
@@ -559,7 +594,7 @@ fn mode_id(permission: Option<&str>, session_result: &Value) -> Option<String> {
     let modes = session_result["modes"]["availableModes"]
         .as_array()
         .or_else(|| session_result["availableModes"].as_array())?;
-    let requested = super::minimax::MiniMaxEngine.resolve_permission(permission);
+    let requested = McodeEngine::resolve_permission_mode(permission);
     let needle: &[&str] = match requested {
         "plan" => &["plan"],
         "bypass" => &["bypass", "full", "yolo", "danger"],
@@ -581,13 +616,16 @@ fn mode_id(permission: Option<&str>, session_result: &Value) -> Option<String> {
             .map(|_| id.to_string())
     });
     object_match.or_else(|| {
-        modes.iter().filter_map(|mode| mode.as_str()).find_map(|id| {
-            let lowered = id.to_lowercase();
-            needle
-                .iter()
-                .find(|word| lowered.contains(*word))
-                .map(|_| id.to_string())
-        })
+        modes
+            .iter()
+            .filter_map(|mode| mode.as_str())
+            .find_map(|id| {
+                let lowered = id.to_lowercase();
+                needle
+                    .iter()
+                    .find(|word| lowered.contains(*word))
+                    .map(|_| id.to_string())
+            })
     })
 }
 
@@ -680,20 +718,21 @@ fn prompt_usage(result: &Value) -> Option<Value> {
 /// Live model catalog via a throwaway `mcode acp` handshake in the temp
 /// dir (session/new there skips any workspace scan). The caller caches the
 /// last success; failures degrade to an error so it can fall back.
-pub(crate) async fn probe_models(bin: &str) -> Result<Vec<ProbeModel>, String> {
+pub(crate) async fn probe_models(engine_id: &str, bin: &str) -> Result<Vec<ProbeModel>, String> {
+    let runtime = McodeRuntime::from_engine_id(engine_id);
     let cwd = std::env::temp_dir();
     let killed = AtomicBool::new(false);
     let probe = async {
         let mut command = super::command_for_binary(bin);
         command.arg("acp");
-        let mut spawned = spawn_piped_acp(&mut command, "minimax", &cwd)?;
+        let mut spawned = spawn_piped_acp(&mut command, engine_id, &cwd)?;
         let inner = probe_handshake(&mut spawned.acp, &killed).await;
         teardown(&mut spawned.child).await;
         inner
     };
     tokio::time::timeout(MODEL_PROBE_TOTAL, probe)
         .await
-        .map_err(|_| "minimax model probe timed out".to_string())?
+        .map_err(|_| format!("{} model probe timed out", runtime.display_name()))?
 }
 
 async fn probe_handshake(
@@ -762,7 +801,11 @@ pub(crate) fn models_from_config_options(session_result: &Value) -> Vec<ProbeMod
             name,
         });
     }
-    if let Some(index) = rows.iter().position(|row| row.is_default).filter(|i| *i > 0) {
+    if let Some(index) = rows
+        .iter()
+        .position(|row| row.is_default)
+        .filter(|i| *i > 0)
+    {
         let row = rows.remove(index);
         rows.insert(0, row);
     }
@@ -772,18 +815,18 @@ pub(crate) fn models_from_config_options(session_result: &Value) -> Vec<ProbeMod
 /// Park one permission ask as a question card. `dispatch_event` stores the
 /// very `input` payload it emits, so the parked value carries both what the
 /// card renders (`questions`) and the context `answer_frame` needs to
-/// rebuild the response (`minimaxAcp.rpcId` + option map). Returns `Some`
+/// rebuild the response (`mcodeAcp.rpcId` + option map). Returns `Some`
 /// when there is nothing to ask: a card with no option can never be
 /// answered, and parking it would hold the CLI until the prompt times out.
 fn park_permission(
     core: &TurnCore,
     state: &mut TurnState,
+    runtime: McodeRuntime,
     rpc_id: &Value,
     params: &Value,
 ) -> Option<Value> {
-    let cancel = || {
-        jsonrpc_result_response(rpc_id, json!({ "outcome": { "outcome": "cancelled" } }))
-    };
+    let cancel =
+        || jsonrpc_result_response(rpc_id, json!({ "outcome": { "outcome": "cancelled" } }));
     // A malformed ask (no options array) must release the CLI inline — a
     // `None` here means "parked", and nothing would ever answer it.
     let Some(options) = params["options"].as_array() else {
@@ -814,10 +857,10 @@ fn park_permission(
         .map(str::trim)
         .filter(|title| !title.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| "MiniMax 请求执行一个操作".to_string());
+        .unwrap_or_else(|| format!("{} 请求执行一个操作", runtime.display_name()));
     let questions = vec![json!({
         "question": question,
-        "header": "MiniMax",
+        "header": runtime.display_name(),
         "multiSelect": false,
         "options": choices,
     })];
@@ -829,7 +872,7 @@ fn park_permission(
             tool_use_id: tool_call["toolCallId"].as_str().map(str::to_string),
             input: json!({
                 "questions": questions,
-                "minimaxAcp": { "rpcId": rpc_id, "options": option_ids },
+                "mcodeAcp": { "rpcId": rpc_id, "options": option_ids },
             }),
         },
     );
@@ -837,14 +880,14 @@ fn park_permission(
 }
 
 /// Build the JSON-RPC response frame that releases one parked permission
-/// ask. `parked` is the `minimaxAcp` context stored with the question,
+/// ask. `parked` is the `mcodeAcp` context stored with the question,
 /// `answers` the frontend's map (question text → option label). Dismissing
 /// the card answers `cancelled`, which the CLI turns into "don't run it".
 pub(super) fn answer_frame(parked: &Value, answers: Option<&Value>) -> Result<Value, String> {
     let id = parked
         .get("rpcId")
         .filter(|id| !id.is_null())
-        .ok_or_else(|| "MiniMax permission context is missing the request id".to_string())?;
+        .ok_or_else(|| "permission context is missing the request id".to_string())?;
     let Some(answers) = answers else {
         return Ok(jsonrpc_result_response(
             id,
@@ -853,19 +896,19 @@ pub(super) fn answer_frame(parked: &Value, answers: Option<&Value>) -> Result<Va
     };
     let map = answers
         .as_object()
-        .ok_or_else(|| "MiniMax answers must be an object keyed by the question text".to_string())?;
+        .ok_or_else(|| "answers must be an object keyed by the question text".to_string())?;
     let option_ids = parked
         .get("options")
         .and_then(Value::as_object)
-        .ok_or_else(|| "MiniMax permission context is missing its option map".to_string())?;
+        .ok_or_else(|| "permission context is missing its option map".to_string())?;
     let label = map
         .values()
         .filter_map(Value::as_str)
         .next()
-        .ok_or_else(|| "MiniMax answer must carry the chosen option label".to_string())?;
+        .ok_or_else(|| "answer must carry the chosen option label".to_string())?;
     let Some(option_id) = option_ids.get(label).and_then(Value::as_str) else {
         return Err(format!(
-            "MiniMax only accepts the declared options for this ask (unknown `{label}`)"
+            "this ask only accepts its declared options (unknown `{label}`)"
         ));
     };
     Ok(jsonrpc_result_response(
@@ -976,8 +1019,12 @@ mod tests {
     fn model_resolution_matches_live_config_values() {
         // Thinking variant preferred for a normal effort request…
         assert_eq!(
-            resolve_model_value(&model_session_result(), "minimax/MiniMax-M3", Some("medium"))
-                .as_deref(),
+            resolve_model_value(
+                &model_session_result(),
+                "minimax/MiniMax-M3",
+                Some("medium")
+            )
+            .as_deref(),
             Some("m:minimax:MiniMax-M3:v:thinking")
         );
         // …plain variant when the effort is off, with a fall-back to the
@@ -1011,7 +1058,10 @@ mod tests {
             resolve_model_value(&model_session_result(), "minimax/Nope-M99", None),
             None
         );
-        assert_eq!(resolve_model_value(&json!({}), "minimax/MiniMax-M3", None), None);
+        assert_eq!(
+            resolve_model_value(&json!({}), "minimax/MiniMax-M3", None),
+            None
+        );
     }
 
     #[test]
@@ -1022,10 +1072,7 @@ mod tests {
         );
         assert_eq!(
             parse_model_option_value("m:minimax:MiniMax-M2.7:v:thinking"),
-            Some((
-                "minimax/MiniMax-M2.7".to_string(),
-                "thinking".to_string()
-            ))
+            Some(("minimax/MiniMax-M2.7".to_string(), "thinking".to_string()))
         );
         assert_eq!(parse_model_option_value("minimax/MiniMax-M3"), None);
         assert_eq!(parse_model_option_value("m:::v:"), None);
@@ -1082,7 +1129,9 @@ mod tests {
         }
     }
 
-    fn test_core() -> (
+    fn test_core(
+        engine_id: &str,
+    ) -> (
         TurnCore,
         Arc<crate::engine::ProcessRegistry>,
         Arc<CollectingEmitter>,
@@ -1107,7 +1156,7 @@ mod tests {
         let core = TurnCore {
             sink: EventSink::new(emitter.clone()),
             registry: Arc::clone(&registry),
-            engine_id: "minimax".to_string(),
+            engine_id: engine_id.to_string(),
             run_id: "test-run".to_string(),
             db: None,
         };
@@ -1116,9 +1165,12 @@ mod tests {
 
     #[tokio::test]
     async fn parked_permission_answers_through_the_registry_context() {
-        let (core, registry, emitter) = test_core();
+        let (core, registry, emitter) = test_core("mireai");
         let mut state = TurnState::new(None);
-        assert!(park_permission(&core, &mut state, &json!(7), &permission_params()).is_none());
+        let runtime = McodeRuntime::from_engine_id(&core.engine_id);
+        assert!(
+            park_permission(&core, &mut state, runtime, &json!(7), &permission_params()).is_none()
+        );
         let parked = registry
             .get("test-run")
             .unwrap()
@@ -1129,11 +1181,12 @@ mod tests {
             .cloned()
             .expect("the permission ask stays parked until the user answers");
         assert_eq!(parked["questions"][0]["question"], "Run rm -rf?");
+        assert_eq!(parked["questions"][0]["header"], "MireAI CLI");
         assert_eq!(parked["questions"][0]["options"][0]["label"], "Allow once");
         // The card payload the frontend renders, plus the context the answer
-        // command reads (`input.get("minimaxAcp")`).
-        let frame = answer_frame(&parked["minimaxAcp"], Some(&json!({"Run rm -rf?": "Reject"})))
-            .unwrap();
+        // command reads (`input.get("mcodeAcp")`).
+        let frame =
+            answer_frame(&parked["mcodeAcp"], Some(&json!({"Run rm -rf?": "Reject"}))).unwrap();
         assert_eq!(
             frame,
             json!({
@@ -1144,25 +1197,61 @@ mod tests {
         );
         // Dismissal cancels; an unknown label keeps the card answerable.
         assert_eq!(
-            answer_frame(&parked["minimaxAcp"], None).unwrap()["result"],
+            answer_frame(&parked["mcodeAcp"], None).unwrap()["result"],
             json!({ "outcome": { "outcome": "cancelled" } })
         );
-        assert!(answer_frame(&parked["minimaxAcp"], Some(&json!({"Run rm -rf?": "nuke"})))
-            .is_err());
+        assert!(answer_frame(&parked["mcodeAcp"], Some(&json!({"Run rm -rf?": "nuke"}))).is_err());
         core.sink.flush();
-        assert!(emitter.0.lock().unwrap().join(" ").contains("minimaxAcp"));
+        assert!(emitter.0.lock().unwrap().join(" ").contains("mcodeAcp"));
         // An ask with no answerable options releases the CLI inline.
-        assert!(
-            park_permission(&core, &mut state, &json!(8), &json!({ "options": [] })).is_some()
-        );
+        assert!(park_permission(
+            &core,
+            &mut state,
+            runtime,
+            &json!(8),
+            &json!({"options": []})
+        )
+        .is_some());
         // A malformed ask (no options at all) must release inline too — a
         // `None` would leave the CLI parked with nothing parked to answer it.
-        let release = park_permission(&core, &mut state, &json!(9), &json!({ "sessionId": "s" }));
+        let release = park_permission(
+            &core,
+            &mut state,
+            runtime,
+            &json!(9),
+            &json!({ "sessionId": "s" }),
+        );
         assert!(release.is_some());
         assert_eq!(
             release.unwrap()["result"],
             json!({ "outcome": { "outcome": "cancelled" } })
         );
+    }
+
+    /// The permission card is the user's only signal about which program is
+    /// asking to run something: the bundled CLI must never be labelled as the
+    /// official MiniMax Code one, or vice versa.
+    #[tokio::test]
+    async fn permission_cards_name_the_runtime_that_asked() {
+        for (engine_id, expected) in [("mireai", "MireAI CLI"), ("minimax", "MiniMax Code")] {
+            let (core, registry, _emitter) = test_core(engine_id);
+            let mut state = TurnState::new(None);
+            let runtime = McodeRuntime::from_engine_id(&core.engine_id);
+            assert!(
+                park_permission(&core, &mut state, runtime, &json!(11), &permission_params())
+                    .is_none()
+            );
+            let parked = registry
+                .get("test-run")
+                .unwrap()
+                .questions
+                .lock()
+                .unwrap()
+                .get("11")
+                .cloned()
+                .expect("the ask is parked");
+            assert_eq!(parked["questions"][0]["header"], expected, "{engine_id}");
+        }
     }
 
     #[test]
@@ -1177,15 +1266,19 @@ mod tests {
 
     #[test]
     fn usage_and_updates_project_onto_frontend_keys() {
-        let usage = prompt_usage(&json!({ "_meta": { "inputTokens": 10, "outputTokens": 5 } }))
-            .unwrap();
+        let usage =
+            prompt_usage(&json!({ "_meta": { "inputTokens": 10, "outputTokens": 5 } })).unwrap();
         assert_eq!(usage["totalTokens"], json!(15));
         assert_eq!(
-            usage_update(&json!({"update": {"sessionUpdate": "usage_update", "used": 100, "size": 200000}}))
-                .unwrap()["model_context_window"],
+            usage_update(
+                &json!({"update": {"sessionUpdate": "usage_update", "used": 100, "size": 200000}})
+            )
+            .unwrap()["model_context_window"],
             json!(200000)
         );
-        assert!(usage_update(&json!({"update": {"sessionUpdate": "agent_message_chunk"}})).is_none());
+        assert!(
+            usage_update(&json!({"update": {"sessionUpdate": "agent_message_chunk"}})).is_none()
+        );
         assert!(prompt_usage(&json!({})).is_none());
     }
 }

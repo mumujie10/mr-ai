@@ -15,17 +15,30 @@ export const ENGINE_IDS = [
   "opencode",
   "qoder",
   "qoder-cn",
+  "mireai",
   "minimax",
 ] as const;
 export type EngineId = (typeof ENGINE_IDS)[number];
 
 /**
- * MireAI ships exactly one agent runtime, built into the app under `cli/`.
- * The other engine adapters stay in the codebase (protocol modules, capability
- * metadata, history rendering, docs URLs over `ENGINE_IDS`) but are not offered
- * anywhere a user chooses an engine. Re-enabling one is a one-entry change here.
+ * MireAI ships one agent runtime of its own — the bundled CLI, engine
+ * `mireai` — and that is the engine every user starts on. MiniMax Code is
+ * listed beside it as the vendor's own CLI: it stays unavailable (and out of the
+ * composer's active list) until the user installs `mcode` himself, and nothing
+ * about it is implied by our bundle. Every other engine adapter stays in the
+ * codebase (protocol modules, capability metadata, history rendering, docs URLs
+ * over `ENGINE_IDS`) without being offered anywhere a user chooses an engine.
+ * Re-enabling one is a one-entry change here.
  */
-export const VISIBLE_ENGINE_IDS: readonly EngineId[] = ["minimax"];
+export const VISIBLE_ENGINE_IDS: readonly EngineId[] = ["mireai", "minimax"];
+
+/** The agent runtime this app ships in its own bundle (`cli/`, binary `mr`). */
+export const BUNDLED_ENGINE_ID: EngineId = "mireai";
+
+/** Whether an engine is the bundled runtime: the only one whose channels are
+ *  written through its own `provider` commands, the only one whose wire
+ *  protocol the dialog has to record, and the only one a 测试连接 can run. */
+export const isBundledEngine = (engine: string): boolean => engine === BUNDLED_ENGINE_ID;
 
 /** Whether an engine id may appear in an engine choice (composer, mission run,
  *  Settings CLI pages, settings search). Metadata lookups must NOT use this —
@@ -50,7 +63,8 @@ export const ENGINE_DOCS_URLS: Record<EngineId, string> = {
   opencode: "https://opencode.ai/docs/",
   qoder: "https://docs.qoder.com/en/cli/using-cli",
   "qoder-cn": "https://docs.qoder.com/zh/cli/using-cli",
-  minimax: "https://github.com/mumujie10/mr-ai/tree/main/cli/docs",
+  mireai: "https://github.com/mumujie10/mr-ai/tree/main/cli/docs",
+  minimax: "https://agent.minimax.cn/docs/cli",
 };
 
 export const PSEUDO_LOCAL = "__local_settings_json__";
@@ -243,7 +257,7 @@ export interface ProviderEntry {  /** Map key — the id `set_current_provider` 
   baseUrl: string;
   apiKey: string;
   model: string;
-  /** minimax: the wire protocol the bundled CLI must use for this channel. */
+  /** mireai: the wire protocol the bundled CLI must use for this channel. */
   apiFormat: string;
   /** Untouched stored record, merged back on save so unknown fields survive. */
   raw: unknown;

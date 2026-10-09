@@ -269,6 +269,30 @@ fn default_pet_scale() -> f64 {
     1.0
 }
 
+/// Move the `minimax`-keyed per-engine settings onto `mireai`, the id of the
+/// runtime this app ships. They were written when that engine was the bundled
+/// CLI, so the default model, effort, custom model list and binary override
+/// describe it — not the MiniMax Code CLI the user may install himself.
+///
+/// Only a map that has no `mireai` entry yet is touched, and the renamed key is
+/// removed rather than copied, so an entry the user later set for MiniMax Code
+/// survives untouched.
+fn rename_bundled_engine_keys(settings: &mut AppSettings) {
+    fn move_key<T>(map: &mut HashMap<String, T>, from: &str, to: &str) {
+        if map.contains_key(to) {
+            return;
+        }
+        if let Some(value) = map.remove(from) {
+            map.insert(to.to_string(), value);
+        }
+    }
+
+    move_key(&mut settings.default_models, "minimax", "mireai");
+    move_key(&mut settings.custom_models, "minimax", "mireai");
+    move_key(&mut settings.default_efforts, "minimax", "mireai");
+    move_key(&mut settings.bin_overrides, "minimaxBin", "mireaiBin");
+}
+
 /// Migrate settings written by the earlier built-in-pet implementation.
 /// Only packages under the user pet directory are valid now; a stale bundled
 /// id must not make startup create a transparent overlay that can never load.
@@ -318,7 +342,7 @@ impl Default for AppSettings {
         // 为所有引擎设置默认推理强度为 "medium"
         for engine in &[
             "claude", "pi", "omp", "agy", "codex", "grok", "opencode", "kimi", "dsh", "qoder",
-            "qoder-cn", "minimax",
+            "qoder-cn", "mireai", "minimax",
         ] {
             default_efforts.insert(engine.to_string(), "medium".to_string());
         }
@@ -501,6 +525,7 @@ pub fn read_settings() -> Result<AppSettings, String> {
     let mut settings: AppSettings =
         serde_json::from_str(&content).map_err(|e| format!("parse {}: {e}", path.display()))?;
     normalize_pet_settings(&mut settings);
+    rename_bundled_engine_keys(&mut settings);
     Ok(settings)
 }
 
@@ -929,6 +954,67 @@ fn announce_settings(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The per-engine picks a user made "for MR CLI" describe the bundled
+    /// runtime, which is now engine `mireai`; an entry already set for the new
+    /// id (or for MiniMax Code after the split) must not be overwritten.
+    #[test]
+    fn bundled_engine_settings_keys_follow_the_runtime_id() {
+        let mut settings = AppSettings::default();
+        settings.default_efforts.remove("mireai");
+        settings.default_models.remove("mireai");
+        settings
+            .default_models
+            .insert("minimax".into(), "MiniMax-M3".into());
+        settings
+            .default_efforts
+            .insert("minimax".into(), "ultra".into());
+        settings
+            .custom_models
+            .insert("minimax".into(), vec!["own/model".into()]);
+        settings.bin_overrides.insert(
+            "minimaxBin".into(),
+            Value::String("/usr/local/bin/mr".into()),
+        );
+
+        rename_bundled_engine_keys(&mut settings);
+
+        assert_eq!(
+            settings.default_models.get("mireai").map(String::as_str),
+            Some("MiniMax-M3")
+        );
+        assert_eq!(
+            settings.default_efforts.get("mireai").map(String::as_str),
+            Some("ultra")
+        );
+        assert_eq!(settings.custom_models.get("mireai").map(Vec::len), Some(1));
+        assert_eq!(settings.bin_override("mireai"), Some("/usr/local/bin/mr"));
+        assert!(!settings.default_models.contains_key("minimax"));
+        assert!(!settings.default_efforts.contains_key("minimax"));
+        assert_eq!(settings.bin_override("minimax"), None);
+    }
+
+    #[test]
+    fn bundled_engine_settings_migration_keeps_an_existing_choice() {
+        let mut settings = AppSettings::default();
+        settings
+            .default_models
+            .insert("minimax".into(), "for MiniMax Code".into());
+        settings
+            .default_models
+            .insert("mireai".into(), "for the bundled CLI".into());
+
+        rename_bundled_engine_keys(&mut settings);
+
+        assert_eq!(
+            settings.default_models.get("minimax").map(String::as_str),
+            Some("for MiniMax Code")
+        );
+        assert_eq!(
+            settings.default_models.get("mireai").map(String::as_str),
+            Some("for the bundled CLI")
+        );
+    }
 
     #[test]
     fn bin_override_key_camel_cases_hyphenated_engine_ids() {

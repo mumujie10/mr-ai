@@ -8,7 +8,7 @@ pub const LOCAL_PROVIDER_ID: &str = "__local_settings_json__";
 /// config" semantics, different spelling.
 pub(crate) const LEGACY_LOCAL_CONFIG_TOML_ID: &str = "__local_config_toml__";
 pub const DISABLED_PROVIDER_ID: &str = "__disabled__";
-pub const ENGINES: [&str; 12] = [
+pub const ENGINES: [&str; 13] = [
     "claude",
     "kimi",
     "grok",
@@ -20,6 +20,9 @@ pub const ENGINES: [&str; 12] = [
     "opencode",
     "qoder",
     "qoder-cn",
+    // This app's own agent runtime, bundled under `cli/` and staged as `mr`.
+    "mireai",
+    // The official MiniMax Code CLI, installed by the user himself.
     "minimax",
 ];
 
@@ -79,6 +82,7 @@ engine_sections!(
     (opencode, "opencode"),
     (qoder, "qoder"),
     (qoder_cn, "qoder-cn"),
+    (mireai, "mireai"),
     (minimax, "minimax"),
 );
 
@@ -95,8 +99,40 @@ pub fn read_config() -> Result<CliConfig, String> {
     if content.trim().is_empty() {
         return Ok(CliConfig::default());
     }
-    serde_json::from_str(&content).map_err(|e| format!("parse {}: {e}", path.display()))
+    let raw: Value =
+        serde_json::from_str(&content).map_err(|e| format!("parse {}: {e}", path.display()))?;
+    let mut config: CliConfig = serde_json::from_value(raw.clone())
+        .map_err(|e| format!("parse {}: {e}", path.display()))?;
+    migrate_bundled_section(&mut config, &raw);
+    Ok(config)
 }
+
+/// One-time mapping of the pre-split `minimax` channel section onto `mireai`.
+///
+/// Channels entered in this app always drove the bundled runtime, which used to
+/// be engine `minimax`; after the split that id means the official MiniMax Code
+/// CLI, and its channels must not be presented as ours. The file says which
+/// build wrote it: every section is serialized, so a pre-split config is exactly
+/// one with no `mireai` key. Applied on read and persisted by the next write, so
+/// it runs once and never rewrites a section the user filled in for MiniMax
+/// Code afterwards.
+fn migrate_bundled_section(config: &mut CliConfig, raw: &Value) {
+    if raw.get("mireai").is_some() {
+        return;
+    }
+    let Some(legacy) = raw.get("minimax") else {
+        return;
+    };
+    let Ok(section) = serde_json::from_value::<ProviderSection>(legacy.clone()) else {
+        return;
+    };
+    if config.mireai.providers.is_empty() && config.mireai.current.is_none() {
+        config.mireai = section;
+    }
+    config.minimax = ProviderSection::default();
+}
+
+
 
 fn write_config(config: &CliConfig) -> Result<(), String> {
     let path = crate::paths::config_path();
@@ -296,11 +332,11 @@ pub fn upsert_provider(
 /// before the user commits the channel, and neither provider store is touched.
 #[tauri::command]
 pub fn test_provider_draft(engine: String, json: Value) -> Result<Value, String> {
-    if engine != crate::engine::mr_providers::MR_ENGINE_ID {
+    if engine != crate::engine::mr_providers::MIREAI_ENGINE_ID {
         return Err(format!("引擎 {engine} 没有内置的渠道测试运行时"));
     }
     let settings = crate::settings::read_settings().unwrap_or_default();
-    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MR_ENGINE_ID);
+    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MIREAI_ENGINE_ID);
     let channel = crate::engine::mr_providers::channel_from_json(&json)?;
     crate::engine::mr_providers::test_draft(&bin, &channel)
 }
@@ -312,7 +348,7 @@ fn upsert_provider_inner(
     json: Value,
 ) -> Result<(), String> {
     mutate_section(&store, &engine, |section| {
-        if engine == crate::engine::mr_providers::MR_ENGINE_ID {
+        if engine == crate::engine::mr_providers::MIREAI_ENGINE_ID {
             push_channel_to_mr(&json)?;
         }
         section.providers.insert(id.clone(), json);
@@ -327,7 +363,7 @@ fn upsert_provider_inner(
 /// cannot drift apart.
 fn push_channel_to_mr(json: &Value) -> Result<(), String> {
     let settings = crate::settings::read_settings().unwrap_or_default();
-    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MR_ENGINE_ID);
+    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MIREAI_ENGINE_ID);
     let channel = crate::engine::mr_providers::channel_from_json(json)?;
     crate::engine::mr_providers::upsert_and_select(&bin, &channel)
 }
@@ -341,13 +377,13 @@ fn mr_channel_name(json: &Value) -> Option<&str> {
 
 fn remove_channel_from_mr(name: &str) -> Result<(), String> {
     let settings = crate::settings::read_settings().unwrap_or_default();
-    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MR_ENGINE_ID);
+    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MIREAI_ENGINE_ID);
     crate::engine::mr_providers::remove(&bin, name)
 }
 
 fn select_channel_in_mr(json: &Value) -> Result<(), String> {
     let settings = crate::settings::read_settings().unwrap_or_default();
-    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MR_ENGINE_ID);
+    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MIREAI_ENGINE_ID);
     let channel = crate::engine::mr_providers::channel_from_json(json)?;
     crate::engine::mr_providers::select_current(&bin, &channel)
 }
@@ -363,7 +399,7 @@ pub fn delete_provider(
 
 fn delete_provider_inner(store: &ConfigStore, engine: String, id: String) -> Result<(), String> {
     mutate_section(&store, &engine, |section| {
-        if engine == crate::engine::mr_providers::MR_ENGINE_ID {
+        if engine == crate::engine::mr_providers::MIREAI_ENGINE_ID {
             if let Some(name) = section
                 .providers
                 .get(&id)
@@ -438,7 +474,7 @@ fn set_current_provider_inner(
             && id != LEGACY_LOCAL_CONFIG_TOML_ID
         {
             if let Some((matched_key, _)) = find_provider(section, &id)? {
-                if engine == crate::engine::mr_providers::MR_ENGINE_ID {
+                if engine == crate::engine::mr_providers::MIREAI_ENGINE_ID {
                     let json = section
                         .providers
                         .get(matched_key)
@@ -567,6 +603,51 @@ mod tests {
         write_config(&config).unwrap();
     }
 
+    /// Channels entered here always drove the bundled runtime, so a config
+    /// written before it got its own engine id has to present them under
+    /// `mireai`. The `mireai` key is the marker: once it exists (every section
+    /// is serialized), a `minimax` section means the official CLI and stays.
+    #[test]
+    fn pre_split_channels_belong_to_the_bundled_engine() {
+        let _scratch = Scratch::new();
+        crate::paths::ensure_dirs().unwrap();
+        let path = crate::paths::config_path();
+        std::fs::write(
+            &path,
+            serde_json::to_string(&json!({
+                "minimax": {
+                    "providers": {"chan-1": {"name": "Relay", "baseUrl": "https://r.example/v1"}},
+                    "current": "chan-1"
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let config = read_config().unwrap();
+        assert_eq!(config.mireai.current.as_deref(), Some("chan-1"));
+        assert!(config.mireai.providers.contains_key("chan-1"));
+        assert!(config.minimax.providers.is_empty());
+        // The channel resolves for the engine that actually runs it.
+        assert!(resolve_provider("mireai", Some("chan-1")).is_ok());
+
+        std::fs::write(
+            &path,
+            serde_json::to_string(&json!({
+                "mireai": { "providers": {}, "current": null },
+                "minimax": {
+                    "providers": {"chan-official": {"name": "MiniMax Code"}},
+                    "current": "chan-official"
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let config = read_config().unwrap();
+        assert_eq!(config.minimax.current.as_deref(), Some("chan-official"));
+        assert!(config.mireai.providers.is_empty());
+    }
+
     #[test]
     fn resolve_provider_env_official_is_empty_and_claude_injects() {
         let _scratch = Scratch::new();
@@ -672,7 +753,7 @@ mod tests {
         for engine in ENGINES
             .iter()
             .copied()
-            .filter(|engine| *engine != crate::engine::mr_providers::MR_ENGINE_ID)
+            .filter(|engine| *engine != crate::engine::mr_providers::MIREAI_ENGINE_ID)
         {
             seed_channel(
                 engine,
@@ -740,7 +821,7 @@ mod tests {
     fn incomplete_mr_channel_is_refused_without_touching_either_store() {
         let _scratch = Scratch::new();
         let store = ConfigStore::default();
-        let engine = crate::engine::mr_providers::MR_ENGINE_ID;
+        let engine = crate::engine::mr_providers::MIREAI_ENGINE_ID;
         let complete = json!({
             "name": "Relay", "baseUrl": "https://r.example/v1",
             "apiKey": "sk-x", "model": "m1"

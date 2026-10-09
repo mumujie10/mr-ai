@@ -1,71 +1,142 @@
-//! MiniMax Code CLI (`mcode`). Local workspaces drive the `mcode acp`
-//! transport (`minimax_acp`); this module holds the engine adapter and the
-//! WSL fallback child that speaks the headless exec protocol
+//! The `mcode` agent protocol adapter, shared by the two runtimes that speak
+//! it: this app's bundled CLI (`mr`, engine `mireai`) and the official MiniMax
+//! Code CLI (`mcode`, engine `minimax`). Local workspaces drive the `acp`
+//! transport (`mcode_acp`); this module holds the engine adapter and the WSL
+//! fallback child that speaks the headless exec protocol
 //! (https://agent.minimax.cn/docs/cli/automation).
+//!
+//! Same wire, two products: everything protocol-shaped lives here once, and
+//! only the identity (engine id, binary, name shown to the user) varies.
 
 use super::{
     command_for_binary, images, BuiltCommand, Engine, EngineEvent, SendRequest, Transport,
 };
 use serde_json::Value;
 
-pub struct MiniMaxEngine;
-
-/// WSL fallback: one `mcode exec --output-format stream-json` child per turn.
-/// Headless runs cannot answer interactive asks, so the ask-backed modes
-/// (manual, plan) refuse here exactly like kimi's plan mode does — the local
-/// ACP transport is the only host that can honor them.
-fn build_exec_command(req: &SendRequest, bin: &str) -> Result<BuiltCommand, String> {
-    let resolved = MiniMaxEngine.resolve_permission(req.permission.as_deref());
-    if resolved == "manual" || resolved == "plan" {
-        return Err(
-            "MiniMax manual/plan modes require the local ACP transport; remote workspaces only support auto/bypass"
-                .into(),
-        );
-    }
-    let mut cmd = command_for_binary(bin);
-    cmd.arg("exec").arg("--output-format").arg("stream-json");
-    cmd.arg("--permission").arg(match resolved {
-        "bypass" => "full",
-        _ => "smart",
-    });
-    if let Some(model) = req
-        .model
-        .as_deref()
-        .map(str::trim)
-        .filter(|m| !m.is_empty())
-    {
-        cmd.arg("--model").arg(model);
-    }
-    if let Some(effort) = req
-        .effort
-        .as_deref()
-        .map(str::trim)
-        .filter(|e| !e.is_empty())
-    {
-        cmd.arg("--effort").arg(effort);
-    }
-    if let Some(session_id) = req.session_id.as_deref() {
-        cmd.arg("--session").arg(session_id);
-    }
-    for raw in &req.images {
-        if let Some(path) = images::absolutize_image_path(raw, &req.workspace) {
-            cmd.arg("--file").arg(path);
-        }
-    }
-    cmd.arg(super::safe_prompt_arg(&req.prompt));
-    Ok(BuiltCommand {
-        command: cmd,
-        stdin_payload: None,
-        keep_stdin_open: false,
-        cleanup_files: Vec::new(),
-        mcp_restore: None,
-        preassigned_session_id: None,
-    })
+/// Which product the mcode protocol is being spoken for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McodeRuntime {
+    /// The CLI bundled with this app (`cli/`, staged as `mr`).
+    MireAi,
+    /// The official MiniMax Code CLI the user installed themselves.
+    MiniMaxCode,
 }
 
-impl Engine for MiniMaxEngine {
+impl McodeRuntime {
+    pub(crate) const fn engine_id(self) -> &'static str {
+        match self {
+            Self::MireAi => "mireai",
+            Self::MiniMaxCode => "minimax",
+        }
+    }
+
+    /// Name shown in user-visible errors and permission cards. Never use this
+    /// for the other runtime: the bundled CLI is not MiniMax Code.
+    pub(crate) const fn display_name(self) -> &'static str {
+        match self {
+            Self::MireAi => "MireAI CLI",
+            Self::MiniMaxCode => "MiniMax Code",
+        }
+    }
+
+    pub(crate) const fn default_binary(self) -> &'static str {
+        match self {
+            Self::MireAi => "mr",
+            Self::MiniMaxCode => "mcode",
+        }
+    }
+
+    /// The engine ids are the only reliable source at the ACP layer, which is
+    /// constructed from a turn's `engine_id` string rather than an engine
+    /// instance.
+    pub(crate) fn from_engine_id(engine_id: &str) -> Self {
+        if engine_id == Self::MiniMaxCode.engine_id() {
+            Self::MiniMaxCode
+        } else {
+            Self::MireAi
+        }
+    }
+}
+
+pub struct McodeEngine {
+    pub runtime: McodeRuntime,
+}
+
+impl McodeEngine {
+    pub const MIREAI: McodeEngine = McodeEngine {
+        runtime: McodeRuntime::MireAi,
+    };
+    pub const MINIMAX: McodeEngine = McodeEngine {
+        runtime: McodeRuntime::MiniMaxCode,
+    };
+
+    const PERMISSIONS: &'static [&'static str] = &["auto", "manual", "plan", "bypass"];
+
+    /// Effective mode for a one-shot headless launch. Also what the ACP driver
+    /// applies for a session, so the two entry points resolve identically.
+    pub(crate) fn resolve_permission_mode(requested: Option<&str>) -> &'static str {
+        requested
+            .and_then(|mode| Self::PERMISSIONS.iter().copied().find(|m| *m == mode))
+            .unwrap_or("auto")
+    }
+
+    /// WSL fallback: one `<bin> exec --output-format stream-json` child per
+    /// turn. Headless runs cannot answer interactive asks, so the ask-backed
+    /// modes (manual, plan) refuse here exactly like kimi's plan mode does —
+    /// the local ACP transport is the only host that can honor them.
+    fn build_exec_command(&self, req: &SendRequest, bin: &str) -> Result<BuiltCommand, String> {
+        let resolved = Self::resolve_permission_mode(req.permission.as_deref());
+        if resolved == "manual" || resolved == "plan" {
+            return Err(format!(
+                "{} manual/plan modes require the local ACP transport; remote workspaces only support auto/bypass",
+                self.runtime.display_name()
+            ));
+        }
+        let mut cmd = command_for_binary(bin);
+        cmd.arg("exec").arg("--output-format").arg("stream-json");
+        cmd.arg("--permission").arg(match resolved {
+            "bypass" => "full",
+            _ => "smart",
+        });
+        if let Some(model) = req
+            .model
+            .as_deref()
+            .map(str::trim)
+            .filter(|m| !m.is_empty())
+        {
+            cmd.arg("--model").arg(model);
+        }
+        if let Some(effort) = req
+            .effort
+            .as_deref()
+            .map(str::trim)
+            .filter(|e| !e.is_empty())
+        {
+            cmd.arg("--effort").arg(effort);
+        }
+        if let Some(session_id) = req.session_id.as_deref() {
+            cmd.arg("--session").arg(session_id);
+        }
+        for raw in &req.images {
+            if let Some(path) = images::absolutize_image_path(raw, &req.workspace) {
+                cmd.arg("--file").arg(path);
+            }
+        }
+        cmd.arg(super::safe_prompt_arg(&req.prompt));
+        Ok(BuiltCommand {
+            command: cmd,
+            stdin_payload: None,
+            keep_stdin_open: false,
+            cleanup_files: Vec::new(),
+            mcp_restore: None,
+            preassigned_session_id: None,
+        })
+    }
+}
+
+impl Engine for McodeEngine {
     fn id(&self) -> &'static str {
-        "minimax"
+        self.runtime.engine_id()
     }
 
     fn drives_own_transport(&self) -> bool {
@@ -94,7 +165,11 @@ impl Engine for MiniMaxEngine {
     }
 
     fn build_command(&self, req: &SendRequest, bin: &str) -> Result<BuiltCommand, String> {
-        build_exec_command(req, bin)
+        self.build_exec_command(req, bin)
+    }
+
+    fn resolve_permission(&self, requested: Option<&str>) -> &'static str {
+        Self::resolve_permission_mode(requested)
     }
 
     fn supports_images(&self) -> bool {
@@ -106,7 +181,7 @@ impl Engine for MiniMaxEngine {
         true
     }
     fn supported_permissions(&self) -> &'static [&'static str] {
-        &["auto", "manual", "plan", "bypass"]
+        Self::PERMISSIONS
     }
 
     /// Headless exec stream-json (live-verified on mcode 0.5.1, docs at
@@ -129,15 +204,11 @@ impl Engine for MiniMaxEngine {
                 super::push_session_id(&value, "sessionId", out);
             }
             Some("turn.failed") => {
+                let fallback = format!("{} turn failed", self.runtime.display_name());
                 let message = value
                     .get("error")
-                    .map(|error| {
-                        error
-                            .get("message")
-                            .and_then(Value::as_str)
-                            .unwrap_or("MiniMax turn failed")
-                    })
-                    .unwrap_or("MiniMax turn failed");
+                    .and_then(|error| error.get("message").and_then(Value::as_str))
+                    .unwrap_or(&fallback);
                 out.push(EngineEvent::Error(message.to_string()));
             }
             Some("turn.completed") | Some("exec.completed") => {
@@ -191,11 +262,8 @@ fn normalize_exec_usage(usage: Option<&Value>) -> Option<Value> {
     let object = usage.as_object()?;
     let mut normalized = serde_json::Map::new();
     let grab = |keys: &[&str]| {
-        keys.iter().find_map(|key| {
-            object
-                .get(*key)
-                .and_then(Value::as_u64)
-        })
+        keys.iter()
+            .find_map(|key| object.get(*key).and_then(Value::as_u64))
     };
     if let Some(total) = grab(&["totalTokens", "total"]) {
         normalized.insert("totalTokens".to_string(), Value::from(total));
@@ -248,18 +316,36 @@ mod tests {
 
     #[test]
     fn local_transport_is_acp_and_wsl_falls_back_to_exec() {
-        assert!(MiniMaxEngine.transport_for(false) == Transport::Own);
-        assert!(MiniMaxEngine.transport_for(true) == Transport::Child);
-        let built = MiniMaxEngine.host_command(&request(), "mcode").unwrap();
+        assert!(McodeEngine::MIREAI.transport_for(false) == Transport::Own);
+        assert!(McodeEngine::MIREAI.transport_for(true) == Transport::Child);
+        let built = McodeEngine::MIREAI.host_command(&request(), "mr").unwrap();
         assert_eq!(argv(&built), ["acp"]);
         assert!(built.keep_stdin_open);
+    }
+
+    #[test]
+    fn the_two_runtimes_keep_their_identity() {
+        // Same protocol, different product: the bundled CLI is never MiniMax
+        // Code, and the official CLI is never ours.
+        assert_eq!(McodeEngine::MIREAI.id(), "mireai");
+        assert_eq!(McodeEngine::MINIMAX.id(), "minimax");
+        assert_eq!(McodeRuntime::MireAi.default_binary(), "mr");
+        assert_eq!(McodeRuntime::MiniMaxCode.default_binary(), "mcode");
+        assert_eq!(
+            McodeRuntime::from_engine_id("mireai").display_name(),
+            "MireAI CLI"
+        );
+        assert_eq!(
+            McodeRuntime::from_engine_id("minimax").display_name(),
+            "MiniMax Code"
+        );
     }
 
     #[test]
     fn exec_command_maps_permission_model_effort_and_session() {
         let mut req = request();
         req.session_id = Some("mvs_session".into());
-        let built = MiniMaxEngine.build_command(&req, "mcode").unwrap();
+        let built = McodeEngine::MIREAI.build_command(&req, "mr").unwrap();
         let args = argv(&built);
         let flag = |flag: &str| {
             args.iter()
@@ -276,7 +362,7 @@ mod tests {
         assert_eq!(args.last().map(String::as_str), Some("run the tests"));
 
         req.permission = Some("bypass".into());
-        let built = MiniMaxEngine.build_command(&req, "mcode").unwrap();
+        let built = McodeEngine::MIREAI.build_command(&req, "mr").unwrap();
         assert_eq!(
             argv(&built)
                 .windows(2)
@@ -291,12 +377,12 @@ mod tests {
     fn ask_backed_modes_refuse_the_headless_child() {
         let mut req = request();
         req.permission = Some("manual".into());
-        assert!(MiniMaxEngine.build_command(&req, "mcode").is_err());
+        assert!(McodeEngine::MIREAI.build_command(&req, "mr").is_err());
         req.permission = Some("plan".into());
-        assert!(MiniMaxEngine.build_command(&req, "mcode").is_err());
+        assert!(McodeEngine::MIREAI.build_command(&req, "mr").is_err());
         // Supported on the ACP transport, so the capability stays advertised.
         assert_eq!(
-            MiniMaxEngine.resolve_permission(Some("manual")),
+            McodeEngine::MIREAI.resolve_permission(Some("manual")),
             "manual"
         );
     }
@@ -304,54 +390,56 @@ mod tests {
     #[test]
     fn stream_json_lines_project_to_engine_events() {
         let mut out = Vec::new();
-        MiniMaxEngine.parse_line(
+        McodeEngine::MIREAI.parse_line(
             r#"{"schemaVersion":1,"sequence":1,"type":"exec.started","runId":"r","sessionId":"mvs_a","turnId":"t"}"#,
             &mut out,
         );
         assert!(out.is_empty());
 
-        MiniMaxEngine.parse_line(
+        McodeEngine::MIREAI.parse_line(
             r#"{"schemaVersion":1,"sequence":2,"type":"session.started","sessionId":"mvs_a"}"#,
             &mut out,
         );
-        MiniMaxEngine.parse_line(
+        McodeEngine::MIREAI.parse_line(
             r#"{"schemaVersion":1,"sequence":3,"type":"session.resumed","sessionId":"mvs_b"}"#,
             &mut out,
         );
-        assert!(matches!(&out[..], [EngineEvent::SessionId(a), EngineEvent::SessionId(b)] if a == "mvs_a" && b == "mvs_b"));
+        assert!(
+            matches!(&out[..], [EngineEvent::SessionId(a), EngineEvent::SessionId(b)] if a == "mvs_a" && b == "mvs_b")
+        );
 
         out.clear();
         // Live shapes: contentDelta streams on started/updated (ignored —
         // the completed item repeats the full content), items spell
         // agent_message/reasoning/tool_call.
-        MiniMaxEngine.parse_line(
+        McodeEngine::MIREAI.parse_line(
             r#"{"schemaVersion":1,"sequence":4,"type":"item.started","item":{"id":"t:message","type":"agent_message","contentDelta":"好"}}"#,
             &mut out,
         );
-        MiniMaxEngine.parse_line(
+        McodeEngine::MIREAI.parse_line(
             r#"{"schemaVersion":1,"sequence":5,"type":"item.completed","item":{"id":"t:reasoning","type":"reasoning","content":"想一下"}}"#,
             &mut out,
         );
-        MiniMaxEngine.parse_line(
+        McodeEngine::MIREAI.parse_line(
             r#"{"schemaVersion":1,"sequence":6,"type":"item.completed","item":{"id":"t:message","type":"agent_message","content":"好的"}}"#,
             &mut out,
         );
-        MiniMaxEngine.parse_line(
+        McodeEngine::MIREAI.parse_line(
             r#"{"schemaVersion":1,"sequence":7,"type":"item.completed","item":{"id":"t:tool","type":"tool_call","toolCall":{"name":"read_file","arguments":{"path":"/tmp/a"}}}}"#,
             &mut out,
         );
-        MiniMaxEngine.parse_line("not json at all", &mut out);
+        McodeEngine::MIREAI.parse_line("not json at all", &mut out);
         assert_eq!(out.len(), 3);
         assert!(matches!(&out[0], EngineEvent::Thinking(text) if text == "想一下"));
         assert!(matches!(&out[1], EngineEvent::Message { text, .. } if text == "好的"));
         assert!(matches!(&out[2], EngineEvent::Message { .. }));
 
         out.clear();
-        MiniMaxEngine.parse_line(
+        McodeEngine::MIREAI.parse_line(
             r#"{"schemaVersion":1,"sequence":8,"type":"turn.completed","usage":{"inputTokens":10,"outputTokens":5,"totalTokens":15}}"#,
             &mut out,
         );
-        MiniMaxEngine.parse_line(
+        McodeEngine::MIREAI.parse_line(
             r#"{"schemaVersion":1,"sequence":9,"type":"turn.failed","error":{"message":"boom"}}"#,
             &mut out,
         );

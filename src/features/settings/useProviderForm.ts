@@ -2,7 +2,7 @@ import { useState, type Dispatch, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { ipc, type ProviderDraftTestResult } from "@/lib/ipc";
 import type { EngineId } from "./providers";
-import { MR_DEFAULT_API_FORMAT } from "./providers";
+import { MR_DEFAULT_API_FORMAT, isBundledEngine } from "./providers";
 import type { ProviderFormValue } from "./ProviderDialog";
 import {
   DEFAULT_CODEX_AUTH_JSON,
@@ -74,7 +74,7 @@ function initialForm(engine: EngineId, initial?: ProviderFormValue): ProviderFor
       authJson: base.authJson.trim() ? base.authJson : DEFAULT_CODEX_AUTH_JSON,
     };
   }
-  if (engine === "minimax") {
+  if (isBundledEngine(engine)) {
     // A new channel preselects the protocol the CLI would not guess for itself,
     // and an edited one keeps whatever was stored even if it is empty.
     return { ...base, apiFormat: base.apiFormat.trim() || MR_DEFAULT_API_FORMAT };
@@ -320,7 +320,7 @@ export function useProviderForm({
    *  `provider test` needs a name, URL, key and model to store in the scratch
    *  profile first — an incomplete form has nothing to measure. */
   const canTest =
-    engine === "minimax" &&
+    isBundledEngine(engine) &&
     value.name.trim() !== "" &&
     value.baseUrl.trim() !== "" &&
     value.apiKey.trim() !== "" &&
@@ -453,11 +453,11 @@ export interface ProviderForm {
   fetchedModels: string[];
   fetching: boolean;
   fetchError: string;
-  /** minimax only: a 测试连接 probe is running. */
+  /** bundled runtime only: a 测试连接 probe is running. */
   testing: boolean;
-  /** minimax only: verdict for the current draft, cleared by every edit. */
+  /** bundled runtime only: verdict for the draft, cleared by every edit. */
   testResult: ProviderDraftTestResult | null;
-  /** minimax only: the form carries everything the CLI needs to probe it. */
+  /** bundled runtime only: the form carries everything the CLI needs. */
   canTest: boolean;
   testConnection: () => Promise<void>;
   presets: ProviderPreset[];

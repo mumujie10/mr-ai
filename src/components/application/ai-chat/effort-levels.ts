@@ -33,6 +33,7 @@ export const EFFORT_SUPPORTED_ENGINES: Record<string, true> = {
   opencode: true,
   kimi: true,
   dsh: true,
+  mireai: true,
   minimax: true,
 };
 

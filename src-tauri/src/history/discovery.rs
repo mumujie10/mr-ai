@@ -600,9 +600,10 @@ pub(crate) fn dir_session_anchor_roots(engine: &str) -> Vec<PathBuf> {
             roots
         }
         "dsh" => vec![crate::engine::engine_home(Some("DSH_HOME"), ".dsh").join("sessions")],
-        // minimax: 会话目录落在 <data>/v2/sessions/<日期>/…-session_<id>/ 下,
-        // db 行的 history_relative_dir 记录相对路径;锚定根与发现同源。
-        "minimax" => {
+        // mcode 系(内置 `mr` = mireai、官方 `mcode` = minimax)共用这一份会话布局:
+        // <data>/v2/sessions/<日期>/…-session_<id>/。两者的数据目录尚未分离,锚定根
+        // 因此也同源;真正分开之后各自指向自己的 home。
+        "mireai" | "minimax" => {
             vec![crate::engine::engine_home(Some("MINIMAX_DATA_DIR"), ".minimax")
                 .join("v2")
                 .join("sessions")]
@@ -710,13 +711,17 @@ pub(super) fn discover_agy(workspace: &Path) -> Vec<SessionFile> {
         .collect()
 }
 
-/// MiniMax Code indexes its conversations in the runtime sqlite
+/// The mcode runtimes index their conversations in the runtime sqlite
 /// (`<data>/v2/sqlite/runtime-state.sqlite`, columns `workspace_dir` /
 /// `history_relative_dir`); transcripts live at
 /// `<data>/v2/sessions/<history_relative_dir>/messages.jsonl`. The dated
 /// directory names carry no workspace, so the db row is the only
 /// workspace→session link.
-pub(super) fn discover_minimax(workspace: &Path) -> Vec<SessionFile> {
+///
+/// One CLI data directory holds both runtimes' sessions and a row does not say
+/// which product wrote it, so the scan attributes every session to `engine` —
+/// the runtime this app actually drives.
+pub(super) fn discover_mcode(workspace: &Path, engine: &'static str) -> Vec<SessionFile> {
     let data_dir = crate::engine::engine_home(Some("MINIMAX_DATA_DIR"), ".minimax");
     let sessions_root = data_dir.join("v2").join("sessions");
     let db_path = data_dir.join("v2").join("sqlite").join("runtime-state.sqlite");
@@ -764,7 +769,7 @@ pub(super) fn discover_minimax(workspace: &Path) -> Vec<SessionFile> {
             continue;
         }
         out.push(SessionFile {
-            engine: "minimax",
+            engine,
             session_id: session_id.to_string(),
             workspace_path: workspace.to_string_lossy().to_string(),
             file_path: messages,
@@ -1575,7 +1580,7 @@ mod tests {
 
         let prev = std::env::var_os("MINIMAX_DATA_DIR");
         std::env::set_var("MINIMAX_DATA_DIR", &data);
-        let found = discover_minimax(&workspace);
+        let found = discover_mcode(&workspace, "mireai");
         match &prev {
             Some(value) => std::env::set_var("MINIMAX_DATA_DIR", value),
             None => std::env::remove_var("MINIMAX_DATA_DIR"),

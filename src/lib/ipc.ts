@@ -437,6 +437,7 @@ export interface CliConfig {
   opencode: ProviderSection;
   qoder: ProviderSection;
   "qoder-cn": ProviderSection;
+  mireai: ProviderSection;
   minimax: ProviderSection;
 }
 
@@ -464,6 +465,7 @@ export interface AppSettings {
   opencodeBin: string | null;
   qoderBin: string | null;
   qoderCnBin: string | null;
+  mireaiBin: string | null;
   minimaxBin: string | null;
   defaultModels: Record<string, string>;
   /** Per-engine user-added custom model ids (设置 → CLI → 自定义模型). */

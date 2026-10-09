@@ -41,7 +41,7 @@ mod claude;
 mod codex;
 mod grok;
 mod kimi;
-mod minimax;
+mod mcode;
 mod opencode;
 mod pi;
 mod qoder;
@@ -180,10 +180,10 @@ pub async fn list_engine_models(
         // MiniMax's catalog comes from a live `mcode acp` probe (the /model
         // menu only exists on the session handshake), cached last-success;
         // a failed probe falls back to the static stock list.
-        "minimax" => {
+        "mireai" | "minimax" => {
             let settings = crate::settings::read_settings().unwrap_or_default();
-            let bin = super::engine_bin(&settings, "minimax");
-            Ok(minimax::minimax_catalog(&bin).await)
+            let bin = super::engine_bin(&settings, &engine);
+            Ok(mcode::mcode_catalog(&engine, &bin).await)
         }
         // Unknown engine: no CLI-sourced catalog — the frontend fills the
         // picker from the configured provider channels.

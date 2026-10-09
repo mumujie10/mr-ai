@@ -14,6 +14,7 @@ import { pickFile } from "@/lib/platform";
 import {
   PSEUDO_DISABLED,
   PSEUDO_LOCAL,
+  isBundledEngine,
   notifyCliConfigChanged,
   providerEntries,
   stripConventionEnv,
@@ -191,7 +192,7 @@ export function useCliConfig(engine: EngineId): CliConfigState {
       put("model", value.model);
       // The bundled CLI needs the wire protocol explicitly: its own default is
       // anthropic-messages, which silently breaks an OpenAI-compatible relay.
-      if (engine === "minimax") put("apiFormat", value.apiFormat);
+      if (isBundledEngine(engine)) put("apiFormat", value.apiFormat);
     }
     const id = dialog?.entry?.id ?? newId();
     setDialog(null);

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  BUNDLED_ENGINE_ID,
   ENGINE_IDS,
   VISIBLE_ENGINE_IDS,
   familyAliasOfEnvKey,
   formatDraftTestVerdict,
+  isBundledEngine,
   isEngineVisible,
   providerFamilyModels,
   visibleEngines,
@@ -60,15 +62,27 @@ describe("providerFamilyModels", () => {
 });
 
 describe("engine visibility", () => {
-  it("ships exactly the built-in CLI and nothing else", () => {
-    // MireAI bundles one agent runtime (cli/), so the product surface offers
-    // exactly that engine. Adding a second one is a deliberate edit here.
-    expect([...VISIBLE_ENGINE_IDS]).toEqual(["minimax"]);
+  it("offers its own runtime first, then the vendor's CLI", () => {
+    // MireAI bundles exactly one agent runtime (cli/), and that is the engine
+    // the product surface leads with. MiniMax Code sits beside it as the
+    // vendor's own CLI; adding a third engine is a deliberate edit here.
+    expect([...VISIBLE_ENGINE_IDS]).toEqual(["mireai", "minimax"]);
+    expect(BUNDLED_ENGINE_ID).toBe("mireai");
   });
 
   it("keeps every other engine id valid metadata while hiding it", () => {
     for (const engine of ENGINE_IDS) {
-      expect(isEngineVisible(engine)).toBe(engine === "minimax");
+      expect(isEngineVisible(engine)).toBe(
+        engine === BUNDLED_ENGINE_ID || engine === "minimax",
+      );
+    }
+  });
+
+  it("marks only the shipped runtime as the bundled one", () => {
+    // The channel bridge, the wire-protocol field and 测试连接 all key off
+    // this, so pointing it at MiniMax Code would drive the wrong CLI.
+    for (const engine of ENGINE_IDS) {
+      expect(isBundledEngine(engine)).toBe(engine === "mireai");
     }
   });
 
@@ -80,11 +94,12 @@ describe("engine visibility", () => {
   it("drops every row that is not on the visibility list", () => {
     const rows = [
       { id: "claude" },
+      { id: "mireai" },
       { id: "minimax" },
       { id: "codex" },
       { id: "plugin:auto" },
     ];
-    expect(visibleEngines(rows).map((row) => row.id)).toEqual(["minimax"]);
+    expect(visibleEngines(rows).map((row) => row.id)).toEqual(["mireai", "minimax"]);
   });
 });
 

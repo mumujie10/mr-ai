@@ -1,6 +1,6 @@
 use super::discovery::{
     codex_candidates, discover_agy, discover_claude, discover_grok, discover_kimi,
-    discover_minimax, discover_opencode, discover_qoder, dsh_candidates, identify_head,
+    discover_mcode, discover_opencode, discover_qoder, dsh_candidates, identify_head,
     is_codex_subagent_file, is_dsh_subagent_file, opencode_db_visible_sessions, path_is_under,
     pi_family_candidates,
 };
@@ -89,7 +89,11 @@ fn gather_candidates(workspaces: &[String]) -> Vec<Candidate> {
             .chain(discover_kimi(&workspace))
             .chain(discover_grok(&workspace))
             .chain(discover_agy(&workspace))
-            .chain(discover_minimax(&workspace))
+            // 一份共用的 CLI 会话账本：归属到本 App 真正驱动的那个引擎。
+            .chain(discover_mcode(
+                &workspace,
+                crate::engine::mcode::McodeRuntime::MireAi.engine_id(),
+            ))
             .chain(discover_qoder(
                 &workspace,
                 crate::engine::qoder::QoderDistribution::Global,

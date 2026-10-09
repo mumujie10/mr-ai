@@ -111,6 +111,7 @@ describe("useEngineModels channel models", () => {
     opencode: EMPTY_SECTION,
     qoder: EMPTY_SECTION,
     "qoder-cn": EMPTY_SECTION,
+    mireai: EMPTY_SECTION,
     minimax: EMPTY_SECTION,
   });
 

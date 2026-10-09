@@ -56,7 +56,7 @@ afterEach(() => {
 
 describe("provider channel form", () => {
   it("asks the bundled runtime's protocol only for the mr engine", () => {
-    const mr = renderSection("minimax");
+    const mr = renderSection("mireai");
     expect(mr.container.textContent).toContain("接口协议");
     expect(mr.container.textContent).toContain("OpenAI Chat Completions");
     expect(mr.container.textContent).toContain("Anthropic Messages");
@@ -68,7 +68,7 @@ describe("provider channel form", () => {
   });
 
   it("keeps a stored protocol through the provider row mapping", () => {
-    const [entry] = providerEntries("minimax", {
+    const [entry] = providerEntries("mireai", {
       current: "chan-1",
       providers: {
         "chan-1": {
@@ -83,7 +83,7 @@ describe("provider channel form", () => {
     expect(entry.apiFormat).toBe("anthropic-messages");
     expect(entry.model).toBe("gpt-x");
 
-    const [legacy] = providerEntries("minimax", {
+    const [legacy] = providerEntries("mireai", {
       current: null,
       providers: { "chan-2": { name: "Old", baseUrl: "https://old.example" } },
     });
@@ -109,17 +109,21 @@ describe("渠道草稿的连接测试", () => {
   }
 
   it("只给内置运行时这一个引擎出现", () => {
-    const other = renderDraftTest("kimi");
-    expect(other.container.textContent).toBe("");
-    act(() => other.root.unmount());
+    // MiniMax Code is a CLI the user installed himself: its channels are his
+    // to test with his own tool, so no probe is offered here.
+    for (const engine of ["kimi", "minimax"] as const) {
+      const other = renderDraftTest(engine);
+      expect(other.container.textContent).toBe("");
+      act(() => other.root.unmount());
+    }
 
-    const mr = renderDraftTest("minimax");
+    const mr = renderDraftTest("mireai");
     expect(mr.container.textContent).toContain("测试连接");
     act(() => mr.root.unmount());
   });
 
   it("表单没填齐时按钮不可用并说明原因", () => {
-    const { container, root } = renderDraftTest("minimax", { canTest: false });
+    const { container, root } = renderDraftTest("mireai", { canTest: false });
     const button = container.querySelector("button") as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(container.textContent).toContain("填好名称、API URL、密钥和模型后即可测试");
@@ -127,7 +131,7 @@ describe("渠道草稿的连接测试", () => {
   });
 
   it("失败判定按 CLI 的分类给出可读原因，并带 status 语义", () => {
-    const { container, root } = renderDraftTest("minimax", {
+    const { container, root } = renderDraftTest("mireai", {
       testResult: {
         ok: false,
         state: "failed",
@@ -141,7 +145,7 @@ describe("渠道草稿的连接测试", () => {
   });
 
   it("成功判定不伪装成错误语气", () => {
-    const { container, root } = renderDraftTest("minimax", {
+    const { container, root } = renderDraftTest("mireai", {
       testResult: { ok: true, state: "available", errorCode: "", errorMessage: "" },
     });
     expect(container.querySelector('[role="status"]')?.textContent).toBe(

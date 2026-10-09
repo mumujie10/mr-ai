@@ -745,6 +745,64 @@ fn import_legacy_workspaces_from(db: &Db, path: &std::path::Path) -> Result<(), 
     Ok(())
 }
 
+/// One-time rename: the bundled runtime became its own engine (`mireai`) and
+/// `minimax` now means the official MiniMax Code CLI. Rows the app wrote
+/// before the split describe the bundled runtime, so they follow it.
+///
+/// Marked in `meta` on purpose: once MiniMax Code is installed, its own
+/// sessions legitimately carry engine='minimax' and a later run must not
+/// rewrite them. A row that already exists under `mireai` (the scanner re-added
+/// it after the rename) wins, and its `minimax` twin is dropped.
+fn rename_bundled_engine_rows(conn: &Connection) -> rusqlite::Result<()> {
+    const MARKER: &str = "mireai_engine_split_v1";
+    let already_done: Option<String> = conn
+        .query_row("SELECT value FROM meta WHERE key = ?1", [MARKER], |row| {
+            row.get(0)
+        })
+        .ok();
+    if already_done.is_some() {
+        return Ok(());
+    }
+    let tables: Vec<String> = conn
+        .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+        )?
+        .query_map([], |row| row.get::<_, String>(0))?
+        .filter_map(Result::ok)
+        .collect();
+    for table in tables {
+        let quoted = table.replace('"', "\"\"");
+        let has_engine_column = conn
+            .prepare(&format!("PRAGMA table_info(\"{quoted}\")"))?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .filter_map(Result::ok)
+            .any(|column| column == "engine");
+        if !has_engine_column {
+            continue;
+        }
+        let renamed = conn.execute(
+            &format!(
+                "UPDATE OR IGNORE \"{quoted}\" SET engine = 'mireai' WHERE engine = 'minimax'"
+            ),
+            [],
+        )?;
+        // Rows the rename could not move (a `mireai` twin already holds that
+        // session id) are dropped here, so one transcript keeps one row.
+        conn.execute(
+            &format!("DELETE FROM \"{quoted}\" WHERE engine = 'minimax'"),
+            [],
+        )?;
+        if renamed > 0 {
+            eprintln!("[db] moved {renamed} {table} rows to the mireai engine");
+        }
+    }
+    conn.execute(
+        "INSERT OR REPLACE INTO meta(key, value) VALUES(?1, datetime())",
+        [MARKER],
+    )?;
+    Ok(())
+}
+
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
         "
@@ -974,6 +1032,7 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     )?;
     // NB: no `cache_version` meta row — it was written but never read; cache
     // freshness is carried by the scanner's stat signature (see CACHE_VERSION).
+    rename_bundled_engine_rows(conn)?;
     // Additive migration: usage rows gained a per-turn request count.
     let has_reports = conn
         .prepare("PRAGMA table_info(usage_ledger)")?
@@ -1104,6 +1163,108 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.0);
         }
+    }
+
+    fn engine_of(conn: &Connection, table: &str, session_id: &str) -> String {
+        conn.query_row(
+            &format!("SELECT engine FROM {table} WHERE session_id = ?1"),
+            [session_id],
+            |row| row.get(0),
+        )
+        .unwrap()
+    }
+
+    fn insert_row(conn: &Connection, session_id: &str, engine: &str) {
+        conn.execute(
+            "INSERT INTO sessions(engine, session_id, workspace_path, file_path, file_size, file_mtime_ms)
+             VALUES(?1, ?2, '/ws', ?3, 1, 1)",
+            rusqlite::params![engine, session_id, format!("{session_id}.jsonl")],
+        )
+        .unwrap();
+    }
+
+    /// History the app wrote for the bundled runtime follows it into
+    /// `mireai`, in every table that carries an engine — and the rename is a
+    /// one-time step, because MiniMax Code legitimately writes `minimax` rows
+    /// once the user installs it.
+    #[test]
+    fn bundled_engine_rows_are_renamed_once() {
+        let scratch = Scratch::new();
+        let path = scratch.path("app.db");
+        let db = Db::open_at(&path).unwrap();
+        {
+            let conn = db.0.lock();
+            // Stand in for a database written before the engine split.
+            conn.execute("DELETE FROM meta WHERE key = 'mireai_engine_split_v1'", [])
+                .unwrap();
+            insert_row(&conn, "before", "minimax");
+            conn.execute(
+                "INSERT INTO usage_ledger(ts, engine, model, session_id) VALUES(1, 'minimax', 'MiniMax-M3', 'before')",
+                [],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO session_models(engine, session_id, model, updated_at) VALUES('minimax', 'before', 'MiniMax-M3', 1)",
+                [],
+            )
+            .unwrap();
+        }
+        drop(db);
+
+        let db = Db::open_at(&path).unwrap();
+        {
+            let conn = db.0.lock();
+            assert_eq!(engine_of(&conn, "sessions", "before"), "mireai");
+            assert_eq!(engine_of(&conn, "session_models", "before"), "mireai");
+            let usage: String = conn
+                .query_row(
+                    "SELECT engine FROM usage_ledger WHERE session_id = 'before'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(usage, "mireai");
+            // MiniMax Code writes its own session after the split.
+            insert_row(&conn, "official", "minimax");
+        }
+        drop(db);
+
+        let db = Db::open_at(&path).unwrap();
+        let conn = db.0.lock();
+        assert_eq!(
+            engine_of(&conn, "sessions", "official"),
+            "minimax",
+            "the marked rename never runs again"
+        );
+    }
+
+    /// A session the scanner re-added under the new id wins over the stale
+    /// twin, which would otherwise list the same transcript twice.
+    #[test]
+    fn renamed_rows_collide_with_the_new_id_only_once() {
+        let scratch = Scratch::new();
+        let path = scratch.path("app.db");
+        let db = Db::open_at(&path).unwrap();
+        {
+            let conn = db.0.lock();
+            conn.execute("DELETE FROM meta WHERE key = 'mireai_engine_split_v1'", [])
+                .unwrap();
+            insert_row(&conn, "dup", "minimax");
+            insert_row(&conn, "dup", "mireai");
+        }
+        drop(db);
+
+        let db = Db::open_at(&path).unwrap();
+        let conn = db.0.lock();
+        let rows: i64 = conn
+            .query_row(
+                "SELECT count(*) FROM sessions WHERE session_id = 'dup'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(rows, 1, "one transcript keeps one row");
+        assert_eq!(engine_of(&conn, "sessions", "dup"), "mireai");
     }
 
     #[test]

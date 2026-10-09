@@ -11,7 +11,12 @@ import { Select, SelectItem } from "@/components/base/select/select";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { cx } from "@/utils/cx";
 import type { EngineId } from "./providers";
-import { MR_API_FORMATS, MR_DEFAULT_API_FORMAT, formatDraftTestVerdict } from "./providers";
+import {
+  MR_API_FORMATS,
+  MR_DEFAULT_API_FORMAT,
+  formatDraftTestVerdict,
+  isBundledEngine,
+} from "./providers";
 import {
   CLAUDE_MODEL_SLOTS,
   isOfficialAnthropicEndpoint,
@@ -423,7 +428,7 @@ export function FlatModelSection({
   if (engine === "claude" || engine === "codex") return null;
   return (
     <div className="flex flex-col gap-2">
-      {engine === "minimax" && (
+      {isBundledEngine(engine) && (
         <div className="flex flex-col gap-1.5">
           <span className="text-xs text-(--app-text-secondary)">
             {t("settings.cliApiFormat")}
@@ -523,7 +528,7 @@ export function CodexFormSections({
 }
 
 /**
- * minimax only: 测试连接 the draft channel. The backend adds the form's values to
+ * Bundled runtime only: 测试连接 the draft channel. The backend adds the form's
  * a scratch CLI profile, runs the CLI's own connection test there and deletes the
  * profile again, so probing never writes the user's provider store — and an error
  * here means the channel was genuinely unreachable, not half-saved.
@@ -539,7 +544,7 @@ export function ProviderDraftTestSection({
   form: ProviderForm;
 }) {
   const { t } = useTranslation();
-  if (engine !== "minimax") return null;
+  if (!isBundledEngine(engine)) return null;
   const verdict = form.testResult ? formatDraftTestVerdict(t, form.testResult) : "";
   return (
     <div className="flex flex-col gap-1.5">
