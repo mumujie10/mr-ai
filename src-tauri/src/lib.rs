@@ -1,7 +1,6 @@
 pub mod agent_catalog;
 pub mod app_info;
 pub mod bots;
-pub mod baidu_tongji;
 pub mod browser;
 pub mod cc_switch;
 pub mod cli_lifecycle;
@@ -213,7 +212,6 @@ pub fn run() {
                 eprintln!("[cu-overlay] init failed (overlay disabled): {error}");
             }
             app.manage(metrics::MetricsState::load().map_err(std::io::Error::other)?);
-            app.manage(baidu_tongji::BaiduTongjiState::load());
             // Keep the pairing key from lingering: while the switch is on, a
             // fresh code is minted every ten minutes and broadcast.
             {
@@ -612,9 +610,6 @@ pub fn run() {
             cli_lifecycle::cli_version_status,
             cli_lifecycle::cli_update_plan,
             cli_lifecycle::cli_update,
-            // baidu tongji (Linux-native transport; rejected elsewhere)
-            baidu_tongji::load_baidu_tongji_script,
-            baidu_tongji::send_baidu_tongji_beacon,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

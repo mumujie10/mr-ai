@@ -80,7 +80,7 @@ describe("provider channel form", () => {
     expect(entry.model).toBe("gpt-x");
 
     const [legacy] = providerEntries("minimax", {
-      current: undefined,
+      current: null,
       providers: { "chan-2": { name: "Old", baseUrl: "https://old.example" } },
     });
     // Absent is surfaced as absent, so the dialog can preselect rather than
