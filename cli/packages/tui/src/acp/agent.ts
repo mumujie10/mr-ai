@@ -4,7 +4,6 @@ import { isAbsolute, resolve } from 'node:path';
 import * as acp from '@agentclientprotocol/sdk';
 
 import { executeTuiInteractiveTurn } from '../application/interactive-turn-delivery.js';
-import { TuiLoginRequiredError, requireTuiAgentAccess } from '../application/login-gate.js';
 import type { TuiPermissionMode } from '../application/permission-mode.js';
 import { TuiRunCoordinator } from '../application/run-coordinator.js';
 import type { TuiRunResult } from '../application/run-coordinator.js';
@@ -42,7 +41,6 @@ import { modelSupportsVariant } from './model-selection.js';
 import { TuiAcpPromptContinuation } from './prompt-continuation.js';
 import { TuiAcpUpdateProjector } from './updates.js';
 
-const AUTH_METHOD_ID = 'minimax-code-login';
 const AVAILABLE_COMMANDS_RETRY_DELAY_MS = 100;
 const ACP_HISTORY_PAGE_SIZE = 100;
 const MAX_DETACHED_LIFECYCLES_PER_SESSION = 2;
@@ -266,7 +264,6 @@ export function createTuiAcpAgent(options: CreateTuiAcpAgentOptions): acp.AgentA
   ): Promise<AcpSession> => {
     assertLifecycleActive(signal);
     assertNoAdditionalDirectories(params.additionalDirectories);
-    await assertAuthenticated(options.runtime);
     assertLifecycleActive(signal);
     for (
       let provisionalNewSession = provisionalNewSessions.get(params.sessionId);
@@ -433,9 +430,6 @@ export function createTuiAcpAgent(options: CreateTuiAcpAgentOptions): acp.AgentA
   app.onRequest(acp.methods.agent.initialize, ({ params }) => {
     clientCapabilities = params.clientCapabilities ?? {};
     const extensionCapabilities = tuiAcpExtensionCapabilities(options.runtime);
-    const supportsTerminalAuth =
-      clientCapabilities.auth?.terminal === true ||
-      clientCapabilities._meta?.['terminal-auth'] === true;
     return {
       protocolVersion: acp.PROTOCOL_VERSION,
       agentCapabilities: {
@@ -456,18 +450,6 @@ export function createTuiAcpAgent(options: CreateTuiAcpAgentOptions): acp.AgentA
           close: {},
         },
       },
-      ...(supportsTerminalAuth
-        ? {
-            authMethods: [
-              {
-                type: 'terminal' as const,
-                id: AUTH_METHOD_ID,
-                name: 'Sign in to MiniMax Code',
-                args: ['login'],
-              },
-            ],
-          }
-        : {}),
       agentInfo: {
         name: 'mr-cli',
         title: 'MR CLI',
@@ -481,14 +463,6 @@ export function createTuiAcpAgent(options: CreateTuiAcpAgentOptions): acp.AgentA
         },
       },
     };
-  });
-
-  app.onRequest(acp.methods.agent.authenticate, async ({ params }) => {
-    if (params.methodId !== AUTH_METHOD_ID) {
-      throw acp.RequestError.invalidParams(undefined, 'Unknown authentication method.');
-    }
-    await assertAuthenticated(options.runtime);
-    return {};
   });
 
   app.onRequest(acp.methods.agent.session.new, async (context) => {
@@ -554,7 +528,6 @@ export function createTuiAcpAgent(options: CreateTuiAcpAgentOptions): acp.AgentA
       try {
         assertLifecycleActive(context.signal);
         assertNoAdditionalDirectories(params.additionalDirectories);
-        await assertAuthenticated(options.runtime);
         assertLifecycleActive(context.signal);
         const mcpServers = mapClientMcpServers(params.mcpServers);
         session = await options.runtime.createSession({
@@ -623,7 +596,6 @@ export function createTuiAcpAgent(options: CreateTuiAcpAgentOptions): acp.AgentA
   });
 
   app.onRequest(acp.methods.agent.session.list, async ({ params }) => {
-    await assertAuthenticated(options.runtime);
     if (params.cwd && !isAbsolute(params.cwd)) {
       throw acp.RequestError.invalidParams(undefined, 'Session list cwd must be absolute.');
     }
@@ -649,7 +621,6 @@ export function createTuiAcpAgent(options: CreateTuiAcpAgentOptions): acp.AgentA
     const operation = (async () => {
       const { params } = context;
       assertNoAdditionalDirectories(params.additionalDirectories);
-      await assertAuthenticated(options.runtime);
       assertLifecycleActive(context.signal);
       const source = await getPersistedSession(options.runtime, params.sessionId);
       assertLifecycleActive(context.signal);
@@ -2105,17 +2076,6 @@ function isSessionTurnTerminal(event: TuiStreamEvent): boolean {
       event.status === 'aborted' ||
       event.status === 'interrupted')
   );
-}
-
-async function assertAuthenticated(runtime: TuiAcpRuntime): Promise<void> {
-  try {
-    await requireTuiAgentAccess(runtime);
-  } catch (error) {
-    if (error instanceof TuiLoginRequiredError) {
-      throw acp.RequestError.authRequired(undefined, 'Run `mcode login` and try again.');
-    }
-    throw error;
-  }
 }
 
 function promptToText(blocks: readonly acp.ContentBlock[]): string {

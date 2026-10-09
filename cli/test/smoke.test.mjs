@@ -264,7 +264,9 @@ test(
     });
     assert.equal(response.error, undefined, JSON.stringify(response));
     assert.equal(response.result.protocolVersion, 1);
-    assert.equal(response.result.authMethods[0].id, "minimax-code-login");
+    // The fork has no account system: even a client that advertises terminal
+    // auth must get no authentication method offered back.
+    assert.equal(response.result.authMethods, undefined);
     assert.equal(response.result.agentInfo.version, version);
     child.stdin.end();
     await new Promise((resolve, reject) => {

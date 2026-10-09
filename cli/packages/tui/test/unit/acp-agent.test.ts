@@ -1172,14 +1172,6 @@ describe('MiniMax Code ACP agent', () => {
             close: {},
           },
         },
-        authMethods: [
-          {
-            type: 'terminal',
-            id: 'minimax-code-login',
-            name: 'Sign in to MiniMax Code',
-            args: ['login'],
-          },
-        ],
         agentInfo: { name: 'mr-cli', title: 'MR CLI', version: '1.2.3' },
         _meta: {
           'minimax-code/extensions': {
@@ -2215,56 +2207,6 @@ describe('MiniMax Code ACP agent', () => {
     expect(clearSessionMcpServers).not.toHaveBeenCalled();
   });
 
-  it.each([
-    {
-      name: 'standard terminal authentication capability',
-      clientCapabilities: { auth: { terminal: true } },
-      advertisesTerminalAuth: true,
-    },
-    {
-      name: 'legacy Registry terminal authentication metadata',
-      clientCapabilities: { _meta: { 'terminal-auth': true } },
-      advertisesTerminalAuth: true,
-    },
-    {
-      name: 'generic terminal capability without an authentication declaration',
-      clientCapabilities: { terminal: true },
-      advertisesTerminalAuth: false,
-    },
-    {
-      name: 'no authentication capability',
-      clientCapabilities: {},
-      advertisesTerminalAuth: false,
-    },
-  ] satisfies readonly {
-    readonly name: string;
-    readonly clientCapabilities: acp.ClientCapabilities;
-    readonly advertisesTerminalAuth: boolean;
-  }[])('advertises terminal authentication for $name', async (testCase) => {
-    const { runtime } = createRuntime();
-    const agent = createTuiAcpAgent({ runtime, version: '1.2.3' });
-    const client = acp.client({ name: 'test-client' });
-
-    await client.connectWith(agent, async (connection) => {
-      const initialized = await connection.request(acp.methods.agent.initialize, {
-        protocolVersion: acp.PROTOCOL_VERSION,
-        clientCapabilities: testCase.clientCapabilities,
-      });
-
-      if (testCase.advertisesTerminalAuth) {
-        expect(initialized.authMethods).toEqual([
-          {
-            type: 'terminal',
-            id: 'minimax-code-login',
-            name: 'Sign in to MiniMax Code',
-            args: ['login'],
-          },
-        ]);
-      } else {
-        expect(initialized.authMethods).toBeUndefined();
-      }
-    });
-  });
 
   it('bridges Runtime permission requests to the ACP client and returns its decision', async () => {
     const { runtime, emitRuntimeEvent, replyPermission } = createRuntime();
@@ -3302,35 +3244,6 @@ describe('MiniMax Code ACP agent', () => {
     });
   });
 
-  it('rejects managed login when the account is warning but the token is missing', async () => {
-    const { runtime, createSession } = createRuntime([], {
-      accountStatus: {
-        status: 'warning',
-        modelSource: 'token-plan',
-        authMode: 'managed-login',
-        managedTokenPresent: false,
-        warnings: ['Managed token is missing.'],
-      },
-    });
-    const agent = createTuiAcpAgent({ runtime, version: '1.2.3' });
-    const client = acp.client({ name: 'test-client' });
-
-    await client.connectWith(agent, async (connection) => {
-      await connection.request(acp.methods.agent.initialize, {
-        protocolVersion: acp.PROTOCOL_VERSION,
-        clientCapabilities: { auth: { terminal: true } },
-      });
-
-      await expect(
-        connection.request(acp.methods.agent.session.new, {
-          cwd: '/workspace',
-          mcpServers: [],
-        }),
-      ).rejects.toThrow('mcode login');
-    });
-
-    expect(createSession).not.toHaveBeenCalled();
-  });
 
   it('honors JSON-RPC request cancellation for session/prompt', async () => {
     const { runtime, sendMessage, abortSession } = createRuntime([], { holdRunUntilAbort: true });
