@@ -16,6 +16,7 @@ import {
   PSEUDO_LOCAL,
   isBundledEngine,
   notifyCliConfigChanged,
+  parseEffortLevels,
   providerEntries,
   stripConventionEnv,
   type EngineId,
@@ -192,7 +193,14 @@ export function useCliConfig(engine: EngineId): CliConfigState {
       put("model", value.model);
       // The bundled CLI needs the wire protocol explicitly: its own default is
       // anthropic-messages, which silently breaks an OpenAI-compatible relay.
-      if (isBundledEngine(engine)) put("apiFormat", value.apiFormat);
+      if (isBundledEngine(engine)) {
+        put("apiFormat", value.apiFormat);
+        const levels = parseEffortLevels(value.effortLevels);
+        // Declared levels are stored as a list; nothing declared stores no key,
+        // so the CLI is never handed an empty declaration to act on.
+        if (levels.length > 0) next.effortLevels = levels;
+        else delete next.effortLevels;
+      }
     }
     const id = dialog?.entry?.id ?? newId();
     setDialog(null);

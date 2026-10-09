@@ -27,6 +27,7 @@ const EMPTY_FORM: ProviderFormValue = {
   apiKey: "",
   model: "",
   apiFormat: "",
+  effortLevels: "",
   settingsJson: "",
   configToml: "",
   authJson: "",

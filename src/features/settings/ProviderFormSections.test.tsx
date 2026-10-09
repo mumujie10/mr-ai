@@ -4,7 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import "@/lib/i18n";
 import { FlatModelSection, ProviderDraftTestSection } from "./ProviderFormSections";
-import { MR_DEFAULT_API_FORMAT, providerEntries } from "./providers";
+import {
+  MR_DEFAULT_API_FORMAT,
+  parseEffortLevels,
+  providerEntries,
+} from "./providers";
 import type { ProviderForm } from "./useProviderForm";
 import type { ProviderFormValue } from "./ProviderDialog";
 
@@ -22,6 +26,7 @@ function fakeForm(value: Partial<ProviderFormValue> = {}): ProviderForm {
     apiKey: "sk-x",
     model: "gpt-x",
     apiFormat: MR_DEFAULT_API_FORMAT,
+    effortLevels: "",
     settingsJson: "",
     configToml: "",
     authJson: "",
@@ -65,6 +70,39 @@ describe("provider channel form", () => {
     const kimi = renderSection("kimi");
     expect(kimi.container.textContent).not.toContain("接口协议");
     act(() => kimi.root.unmount());
+  });
+
+  it("只给内置渠道声明推理档位，并把逗号文本读成列表", () => {
+    const mr = renderSection("mireai");
+    expect(mr.container.textContent).toContain("推理档位");
+    expect(mr.container.textContent).toContain("逗号分隔");
+    act(() => mr.root.unmount());
+
+    const kimi = renderSection("kimi");
+    expect(kimi.container.textContent).not.toContain("推理档位");
+    act(() => kimi.root.unmount());
+
+    expect(parseEffortLevels(" low, high,low , ")).toEqual(["low", "high"]);
+    const [entry] = providerEntries("mireai", {
+      current: "chan-1",
+      providers: {
+        "chan-1": {
+          name: "Relay",
+          baseUrl: "https://relay.example/v1",
+          model: "gpt-x",
+          effortLevels: ["low", " low ", "", 5, "max"],
+        },
+      },
+    });
+    expect(entry.effortLevels).toEqual(["low", "max"]);
+
+    const [legacy] = providerEntries("mireai", {
+      current: null,
+      providers: { "chan-2": { name: "Old", baseUrl: "https://old.example" } },
+    });
+    // An old record declares nothing: the row shows no levels instead of
+    // inventing the app's six stops for a channel that has none.
+    expect(legacy.effortLevels).toEqual([]);
   });
 
   it("keeps a stored protocol through the provider row mapping", () => {

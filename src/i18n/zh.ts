@@ -1059,6 +1059,9 @@ export const zh = {
     cliModel: "模型",
     cliApiFormat: "接口协议",
     cliApiFormatHint: "内置 Agent 用哪种协议访问这个地址，按服务商文档选择，选错会每次请求都失败。",
+    cliEffortLevels: "推理档位",
+    cliEffortLevelsHint:
+      "这个模型支持的推理强度，逗号分隔（例如 low, medium, high）。内置 CLI 只给声明过档位的渠道提供推理强度开关；留空表示这个模型没有可切换的档位，界面里的滑块对它无效。",
     cliApiFormatOptions: {
       "openai-completions": "OpenAI Chat Completions",
       "openai-responses": "OpenAI Responses",

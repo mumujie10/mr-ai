@@ -1104,6 +1104,9 @@ export const en: Messages = {
     cliApiFormat: "Wire protocol",
     cliApiFormatHint:
       "How the built-in agent talks to this endpoint. Choose the one your provider documents — the wrong protocol fails every request.",
+    cliEffortLevels: "Reasoning levels",
+    cliEffortLevelsHint:
+      "Effort levels this model supports, comma-separated (e.g. low, medium, high). The built-in CLI only offers the effort switch for channels that declare levels; leave it empty when the model has none, and the slider does nothing for this channel.",
     cliApiFormatOptions: {
       "openai-completions": "OpenAI Chat Completions",
       "openai-responses": "OpenAI Responses",

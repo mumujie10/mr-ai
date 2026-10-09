@@ -78,6 +78,23 @@ export const isPseudoProvider = (id: string): id is PseudoProviderId =>
 
 const asString = (v: unknown): string => (typeof v === "string" ? v : "");
 
+/** Stored string list, trimmed with blanks and repeats dropped; a value that is
+ *  not an array reads as no entries (an old channel record carries none). */
+/** The dialog's comma text → the stored list. Same trim/drop/repeat rules as a
+ *  stored value, so editing a channel cannot leave a half-declared level. */
+export const parseEffortLevels = (text: string): string[] =>
+  asStringList(text.split(","));
+
+export const asStringList = (v: unknown): string[] => {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const item of v) {
+    const text = asString(item).trim();
+    if (text && !out.includes(text)) out.push(text);
+  }
+  return out;
+};
+
 /** The channel's env record; settingsConfig.env wins over the flat env —
  *  the backend lets raw env override flat fields, so the more specific shape
  *  is the authoritative one. */
@@ -259,6 +276,9 @@ export interface ProviderEntry {  /** Map key — the id `set_current_provider` 
   model: string;
   /** mireai: the wire protocol the bundled CLI must use for this channel. */
   apiFormat: string;
+  /** mireai: reasoning levels declared for this channel; empty means the CLI
+   *  advertises no effort knob for it. */
+  effortLevels: string[];
   /** Untouched stored record, merged back on save so unknown fields survive. */
   raw: unknown;
 }
@@ -280,6 +300,7 @@ export function providerEntries(
       apiKey: asString(o.apiKey),
       model: providerModel(engine, raw),
       apiFormat: asString(o.apiFormat),
+      effortLevels: asStringList(o.effortLevels),
       raw,
     };
   });

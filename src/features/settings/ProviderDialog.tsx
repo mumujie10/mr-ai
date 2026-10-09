@@ -39,6 +39,9 @@ export interface ProviderFormValue {
   model: string;
   /** mireai: wire protocol handed to the bundled CLI (`--api-format`). */
   apiFormat: string;
+  /** mireai: comma-separated reasoning levels this channel declares, handed to
+   *  the CLI as `--effort-levels`. Empty means the model has no effort knob. */
+  effortLevels: string;
   /** claude: full settings.json text → stored as settingsConfig. */
   settingsJson: string;
   /** codex: config.toml text → stored as settingsConfig.config. */

@@ -449,6 +449,15 @@ export function FlatModelSection({
           </span>
         </div>
       )}
+      {isBundledEngine(engine) && (
+        <Input
+          label={t("settings.cliEffortLevels")}
+          size="small"
+          value={form.value.effortLevels}
+          onChange={(effortLevels) => form.patch({ effortLevels })}
+          hint={t("settings.cliEffortLevelsHint")}
+        />
+      )}
       <FetchModelsControl
         fetching={form.fetching}
         error={form.fetchError}

@@ -30,6 +30,12 @@ pub(crate) struct MrChannel<'a> {
     /// Wire protocol the CLI must use; its own default is `anthropic-messages`,
     /// so an OpenAI-compatible relay has to say so explicitly.
     pub(crate) api_format: &'a str,
+    /// Reasoning levels this channel declares for its model. The CLI only
+    /// advertises a `thinkingEffort` knob for models that carry them
+    /// (`control-state.ts` returns no option when `effortOptions` is empty), so
+    /// an empty list is not cosmetic: that channel has no effort switch at all
+    /// and `--effort` rejects every level for it.
+    pub(crate) effort_levels: Vec<String>,
 }
 
 /// Reads the flat `baseUrl`/`apiKey`/`model` shape the provider dialog writes.
@@ -52,7 +58,28 @@ pub(crate) fn channel_from_json(json: &Value) -> Result<MrChannel<'_>, String> {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("openai-completions"),
+        effort_levels: effort_levels_from_json(json),
     })
+}
+
+/// The channel dialog stores the levels as a list; blank, duplicate and
+/// non-string entries are dropped so the CLI never gets `--effort-levels ""`.
+fn effort_levels_from_json(json: &Value) -> Vec<String> {
+    let mut levels: Vec<String> = Vec::new();
+    for value in json
+        .get("effortLevels")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(level) = value.as_str().map(str::trim).filter(|level| !level.is_empty()) else {
+            continue;
+        };
+        if !levels.iter().any(|seen| seen == level) {
+            levels.push(level.to_string());
+        }
+    }
+    levels
 }
 
 /// `mr provider add` argv. The key is supplied through the child environment,
@@ -72,6 +99,18 @@ fn add_args(channel: &MrChannel<'_>) -> Vec<String> {
         "--api-key-env".into(),
         API_KEY_ENV.into(),
     ]
+    .into_iter()
+    .chain(declared_effort_args(channel))
+    .collect()
+}
+
+/// `--effort-levels` only when the channel declares levels: an empty list would
+/// be a request to declare zero levels.
+fn declared_effort_args(channel: &MrChannel<'_>) -> Vec<String> {
+    if channel.effort_levels.is_empty() {
+        return Vec::new();
+    }
+    vec!["--effort-levels".into(), channel.effort_levels.join(",")]
 }
 
 fn list_args() -> Vec<String> {
@@ -374,6 +413,62 @@ fn failure(action: &str, invocation: &Invocation) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    /// A channel that declares reasoning levels has to hand them to the CLI:
+    /// without `--effort-levels` the CLI stores no `effortOptions`, so it
+    /// advertises no `thinkingEffort` knob and rejects every `--effort` value.
+    #[test]
+    fn declared_effort_levels_reach_the_cli_and_undeclared_channels_stay_quiet() {
+        let declared = MrChannel {
+            name: "My Relay",
+            base_url: "https://relay.example/v1",
+            api_key: "sk-secret-value",
+            model: "gpt-x",
+            api_format: "openai-completions",
+            effort_levels: vec!["low".into(), "high".into()],
+        };
+        let argv = add_args(&declared).join(" ");
+        assert!(argv.contains("--effort-levels low,high"), "got: {argv}");
+        assert!(
+            !argv.contains("sk-secret-value"),
+            "levels must not become a second route for the key into argv"
+        );
+
+        let undeclared = MrChannel {
+            effort_levels: Vec::new(),
+            ..declared
+        };
+        let argv = add_args(&undeclared).join(" ");
+        assert!(!argv.contains("--effort-levels"), "got: {argv}");
+    }
+
+    /// The dialog stores a list; blanks, repeats and non-strings are dropped
+    /// rather than passed on as a declaration.
+    #[test]
+    fn channel_effort_levels_are_trimmed_and_deduplicated() {
+        let json = json!({
+            "name": "My Relay",
+            "baseUrl": "https://relay.example/v1",
+            "apiKey": "sk-secret-value",
+            "model": "gpt-x",
+            "effortLevels": [" low ", "high", "low", "", 7, null, "max"]
+        });
+        let channel = channel_from_json(&json).expect("channel");
+        assert_eq!(channel.effort_levels, vec!["low", "high", "max"]);
+
+        let absent = json!({
+            "name": "My Relay",
+            "baseUrl": "https://relay.example/v1",
+            "apiKey": "sk-secret-value",
+            "model": "gpt-x",
+            "effortLevels": "low,high"
+        });
+        assert!(channel_from_json(&absent)
+            .expect("channel")
+            .effort_levels
+            .is_empty());
+    }
 
     #[test]
     fn add_argv_carries_no_secret() {
@@ -383,6 +478,7 @@ mod tests {
             api_key: "sk-secret-value",
             model: "gpt-x",
             api_format: "openai-completions",
+            effort_levels: Vec::new(),
         };
         let joined = add_args(&channel).join(" ");
         assert!(
@@ -488,6 +584,7 @@ exit 0
             api_key: "sk-secret-value",
             model: "gpt-x",
             api_format: "openai-completions",
+            effort_levels: Vec::new(),
         };
         if let Err(error) = upsert_and_select(stub.to_str().expect("stub path"), &channel) {
             let recorded = std::fs::read_to_string(&log).unwrap_or_default();
@@ -551,6 +648,7 @@ exit 0
                 api_key: "sk-kept",
                 model: "m-kept",
                 api_format: "openai-completions",
+                effort_levels: Vec::new(),
             },
             MrChannel {
                 name: "Fresh",
@@ -558,6 +656,7 @@ exit 0
                 api_key: "sk-fresh",
                 model: "m-fresh",
                 api_format: "anthropic-messages",
+                effort_levels: Vec::new(),
             },
         ];
         let added = sync_missing_channels(stub.to_str().expect("stub path"), &channels)
@@ -660,6 +759,7 @@ exit 0
             api_key: "sk-secret-value",
             model: "gpt-x",
             api_format: "openai-completions",
+            effort_levels: Vec::new(),
         };
         let verdict = match test_draft(stub.to_str().expect("stub path"), &channel) {
             Ok(verdict) => verdict,
