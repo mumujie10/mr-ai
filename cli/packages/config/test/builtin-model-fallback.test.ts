@@ -31,7 +31,22 @@ afterEach(() => {
 });
 
 describe("built-in model fallback", () => {
-  it("seeds M3.1 Flash Preview before a remote snapshot exists and preserves it on reload", () => {
+  it("seeds no MiniMax provider and no MiniMax default model on a first run", () => {
+    const config = getConfig();
+    expect(config.provider.minimax).toBeUndefined();
+    expect(config.defaultModel).toBeUndefined();
+    const written = fs.readFileSync(join(dataDir, "config.yaml"), "utf8");
+    expect(written).not.toContain("minimax");
+  });
+
+  it("merges the built-in model table only for a hand-written managed gateway", () => {
+    const preset = DEFAULT_MODEL_PRESETS["en-prod"];
+    fs.writeFileSync(
+      join(dataDir, "config.yaml"),
+      yaml.dump({ provider: { minimax: { options: preset.provider.minimax.options } } }),
+      { mode: 0o600 },
+    );
+    resetConfig();
     const config = getConfig();
     const model = config.provider.minimax?.models?.[modelId];
     expect(model).toMatchObject({
@@ -58,9 +73,8 @@ describe("built-in model fallback", () => {
         max_attachments_count: 4,
       },
     });
-    expect(config.defaultModel).toBe("minimax/MiniMax-M3.1-Flash-Preview");
-    resetConfig();
-    expect(getConfig().provider.minimax?.models?.[modelId]).toEqual(model);
+    // The gateway is still an account route, so it is never chosen for the user.
+    expect(getConfig().defaultModel).toBeUndefined();
   });
 
   it("makes the fallback model available in every managed preset", () => {

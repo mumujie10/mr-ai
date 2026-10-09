@@ -1806,13 +1806,12 @@ function ensureConfigFile(): void {
     return;
   }
 
-  const preset = DEFAULT_MODEL_PRESETS[getRuntimePresetKey()];
-  const content = yaml.dump({
-    logLevel: DEFAULTS.logLevel,
-    provider: managedPresetBaseUrlSyncEnabled ? preset.provider : undefined,
-    defaultModel: preset.defaultModel,
-  });
-  writePrivateConfigFileSync(configPath, content, true);
+  // This fork has no MiniMax account route, so a first run must not pretend one
+  // exists: seeding `provider.minimax` and a `minimax/...` default model would
+  // make the very first turn target a model the user can never authorize.
+  // Onboarding owns model selection — it writes defaultModel when the user adds
+  // a provider key.
+  writePrivateConfigFileSync(configPath, yaml.dump({ logLevel: DEFAULTS.logLevel }), true);
 }
 
 function readConfigFile(configPath = getConfigPath()): Record<string, unknown> {

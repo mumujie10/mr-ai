@@ -194,6 +194,33 @@ function defaultModelReference(
   return undefined;
 }
 
+/**
+ * Reject a `--model` that has no route before any Session exists. Creating the
+ * Session first would leave an empty conversation behind that then wins
+ * `--continue`, so an unavailable model has to fail as an invocation error.
+ * A roster read failure is left to the Turn gate below: this is a pre-check, not
+ * a second source of truth about availability.
+ */
+export async function assertHeadlessModelAvailable(
+  runtime: HeadlessModelCatalogReader,
+  model: HeadlessModelReference,
+  sessionId?: string,
+): Promise<void> {
+  let catalog: readonly TuiModel[];
+  try {
+    catalog = await runtime.listModels(sessionId);
+  } catch {
+    return;
+  }
+  const known = catalog.some(
+    (candidate) => candidate.providerId === model.providerId && candidate.modelId === model.modelId,
+  );
+  if (known) return;
+  throw invocationError(
+    `Model "${model.providerId}/${model.modelId}" is not available. Add a provider that serves it, or select one of the configured models.`,
+  );
+}
+
 function invocationError(message: string): TuiExecError {
   return new TuiExecError('invocation', message);
 }

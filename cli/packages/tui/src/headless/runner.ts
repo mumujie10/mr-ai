@@ -36,7 +36,7 @@ import {
   type TuiOutputWrite,
 } from "./output.js";
 import type { TuiPermissionPolicy } from "./invocation.js";
-import { resolveHeadlessModelSelection, parseHeadlessModelOverride } from "./model-selection.js";
+import { resolveHeadlessModelSelection, parseHeadlessModelOverride, assertHeadlessModelAvailable } from "./model-selection.js";
 import { TuiFailure } from "../failure.js";
 import {
   formatTuiExecFailure,
@@ -185,6 +185,10 @@ export async function runTuiExec(
       loginModel ? { model: loginModel } : undefined,
     );
     assertNotCancelled();
+    if (loginModel) {
+      await assertHeadlessModelAvailable(dependencies.runtime, loginModel, input.sessionId);
+      assertNotCancelled();
+    }
     const session = await resolveSession(
       input,
       dependencies.runtime,

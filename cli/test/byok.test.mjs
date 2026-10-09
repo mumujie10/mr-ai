@@ -315,7 +315,10 @@ test(
     }
     const configPath = path.join(dataDir, "config.yaml");
     const savedConfig = () => parseYaml(readFileSync(configPath, "utf8"));
-    assert.equal(savedConfig().defaultModel, "minimax/MiniMax-M3.1-Flash-Preview");
+    // A first run seeds no MiniMax route, and `provider add` without --use
+    // persists no default model: activation is an explicit act (--use), which
+    // is how the desktop app turns a pasted key into the working model.
+    assert.equal(savedConfig().defaultModel, undefined);
     assert.equal(savedConfig().custom_provider.fixture.models["fixture-model"].limit, undefined);
     assert.equal(selected.active, false);
     assert.equal(selected.models[0].contextLimit, undefined);
@@ -490,10 +493,33 @@ test(
     assert.equal(requests.slice(beforeFirst).filter((r) => r.body.stream).length, 1,
       "Display-only Hooks must not start another model request");
     for (const marker of hookMarkers) assert.ok(!first.includes(marker));
+    // This fork ships no MiniMax account, so a managed model is not one login
+    // prompt away: the route simply does not exist.
+    const sessionsBeforeRejection = new Database(dbPath, { readonly: true });
+    let sessionCountBefore;
+    try {
+      sessionCountBefore = sessionsBeforeRejection
+        .prepare("SELECT count(*) AS n FROM local_runtime_sessions")
+        .get().n;
+    } finally {
+      sessionsBeforeRejection.close();
+    }
     await assert.rejects(run([
-      'exec', 'Managed model still requires its own login',
+      'exec', 'Managed model has no route in this build',
       '--model', 'minimax/MiniMax-M3', '--timeout', '20s', '--max-steps', '1',
-    ]), /Sign in to MiniMax/);
+    ]), /Model "minimax\/MiniMax-M3" is not available/);
+    // A rejected model must not leave a Session behind: an empty one would then
+    // win `--continue` and silently swallow the user's real conversation.
+    const sessionsAfterRejection = new Database(dbPath, { readonly: true });
+    try {
+      assert.equal(
+        sessionsAfterRejection.prepare("SELECT count(*) AS n FROM local_runtime_sessions").get().n,
+        sessionCountBefore,
+        "An unavailable --model must fail before creating a Session",
+      );
+    } finally {
+      sessionsAfterRejection.close();
+    }
     const beforeResume = requests.length;
     const second = await run([
       "exec",

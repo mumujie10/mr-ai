@@ -325,8 +325,11 @@ export function applyRequiredProviderOverrides(
   const presetProvider = preset.provider.minimax as ProviderConfig;
   const existing = provider.minimax;
   const managedRuntime = deps.isManagedRuntime();
-  const shouldBackfillManagedMinimax =
-    managedRuntime || isManagedOriginMinimaxProvider(existing, deps);
+  // This fork ships no MiniMax account, so a managed provider is never
+  // synthesized into the effective view. Only a `provider.minimax` entry the
+  // user wrote themselves — pointing at a managed gateway — keeps the built-in
+  // model table, so a hand-configured MiniMax gateway route still works.
+  const shouldBackfillManagedMinimax = isManagedOriginMinimaxProvider(existing, deps);
   if (!shouldBackfillManagedMinimax) return { provider, defaultModel };
 
   const existingOptions = existing?.options;
