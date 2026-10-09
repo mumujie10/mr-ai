@@ -15,6 +15,7 @@ export type McodeProviderCliRequest =
       readonly contextLimit?: number;
       readonly outputLimit?: number;
       readonly supportImage?: boolean;
+      readonly effortLevels?: readonly string[];
       readonly apiKeyEnv?: string;
       readonly saveAndUse?: boolean;
     }
@@ -71,6 +72,7 @@ export async function runMcodeProviderCommand(
                 },
               }
             : {}),
+          ...(request.effortLevels?.length ? { effortOptions: [...request.effortLevels] } : {}),
         })),
       };
       if (request.saveAndUse) {

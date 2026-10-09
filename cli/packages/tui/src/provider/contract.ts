@@ -79,6 +79,10 @@ export interface McodeProviderModelInput {
   readonly capabilities?: Readonly<NonNullable<ModelConfig['capabilities']>>;
   readonly modalities?: { readonly input?: readonly string[]; readonly output?: readonly string[] };
   readonly limit?: { readonly context?: number; readonly output?: number };
+  /** Reasoning effort levels this model offers. Without it the runtime has no
+   *  way to know the channel thinks at all, so ACP advertises no effort knob
+   *  and `--effort` rejects every level for this model. */
+  readonly effortOptions?: string[];
 }
 
 export interface McodeProviderTemplate {

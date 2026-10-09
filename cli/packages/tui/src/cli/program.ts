@@ -159,6 +159,11 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
     .option('--context-limit <tokens>', 'context limit for every listed model', parsePositiveSafeInteger)
     .option('--output-limit <tokens>', 'output limit for every listed model', parsePositiveSafeInteger)
     .option('--support-image', 'declare image input support for every listed model')
+    .option(
+      '--effort-levels <levels>',
+      'comma-separated reasoning effort levels every listed model supports, e.g. low,medium,high',
+      parseEffortLevels,
+    )
     .option('--use', 'test the first model, then save and select it as the default')
     .action(
       (commandOptions: {
@@ -169,6 +174,7 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
         contextLimit?: number;
         outputLimit?: number;
         supportImage?: boolean;
+        effortLevels?: string[];
         apiKeyEnv?: string;
         use?: boolean;
       }) => {
@@ -184,6 +190,7 @@ export function createTuiProgram(options: CreateTuiProgramOptions): Command {
           contextLimit: commandOptions.contextLimit,
           outputLimit: commandOptions.outputLimit,
           supportImage: commandOptions.supportImage,
+          effortLevels: commandOptions.effortLevels,
           apiKeyEnv: commandOptions.apiKeyEnv,
           saveAndUse: commandOptions.use,
         });
@@ -362,6 +369,14 @@ function requirePluginRunner(options: CreateTuiProgramOptions) {
 function requireAcpRunner(options: CreateTuiProgramOptions) {
   if (!options.runAcp) throw new Error('ACP server is unavailable.');
   return options.runAcp;
+}
+
+function parseEffortLevels(value: string): string[] {
+  const levels = [...new Set(value.split(',').map((level) => level.trim()).filter(Boolean))];
+  if (levels.length === 0) {
+    throw new InvalidArgumentError('expected a comma-separated list, e.g. low,medium,high');
+  }
+  return levels;
 }
 
 function parsePositiveSafeInteger(value: string): number {
