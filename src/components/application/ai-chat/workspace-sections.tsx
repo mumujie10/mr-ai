@@ -28,7 +28,7 @@ import { isWeb } from "@/lib/platform";
 import { Input } from "@/components/base/input/input";
 import { RepoItem } from "@/components/application/ai-chat/repo-tree";
 import type { AiChatRepo, AiChatRepoSection, AiChatThread, ThreadAction } from "@/components/application/ai-chat/sidebar-types";
-import { inConversationMode } from "@/components/application/ai-chat/thread-scope";
+import { inConversationMode } from "@/features/chat/thread-scope";
 import { cx } from "@/utils/cx";
 
 /** Drop-target container chrome: the drag layer marks the hovered section

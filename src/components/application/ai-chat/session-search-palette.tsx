@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import Search from "lucide-react/dist/esm/icons/search";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import type { AiChatRepo } from "@/components/application/ai-chat/sidebar-types";
-import { inConversationMode } from "@/components/application/ai-chat/thread-scope";
+import { inConversationMode } from "@/features/chat/thread-scope";
 import { cx } from "@/utils/cx";
 import { useBrowserOcclusion } from "@/features/browser/occlusion";
 import { useConversationMode } from "@/features/chat/conversation-mode";

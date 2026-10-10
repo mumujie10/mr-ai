@@ -4,6 +4,7 @@ import { commandRegistry } from "@ccgui/plugin-sdk";
 import { keywords } from "@/features/commands/builtins";
 import { registerShortcutHandler } from "@/features/shortcuts/runtime";
 import { ipc } from "@/lib/ipc";
+import { installModeSessionSync } from "./mode-session-sync";
 import { useChatStore } from "./store";
 
 /** Mount-time store init, the focus-driven session rescan, and git status
@@ -16,6 +17,10 @@ export function useChatPageLifecycle(
   useEffect(() => {
     void init();
   }, [init]);
+
+  // 形态切换收拢会话页签：对话/工作是全局形态，切过去时另一形态的对话
+  // 从中心区关掉（同分屏同步一样只装一次，幂等）。
+  useEffect(() => installModeSessionSync(), []);
 
   // Refocus rescan: 5min TTL, aligned with TokenTracker tier-1.
   useEffect(() => {
