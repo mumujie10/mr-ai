@@ -33,7 +33,8 @@
     "active": true,
     "resources": {
       "resources/agent-catalogs": "agent-catalogs",
-      "resources/skills": "skills"
+      "resources/skills": "skills",
+      "resources/runtime": "runtime"
     },
     "createUpdaterArtifacts": true,
     "targets": "all",
