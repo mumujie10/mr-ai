@@ -117,6 +117,7 @@ function useConversationMenus({
   modelsByEngine,
   displayModels,
   displayEfforts,
+  displayEffortLevels,
   channelsByEngine,
   displayProviders,
   ompServiceTier,
@@ -142,6 +143,8 @@ function useConversationMenus({
   modelsByEngine: Record<string, ModelOption[]>;
   displayModels: Record<string, string>;
   displayEfforts: Record<string, EffortLevel>;
+  /** Reasoning levels the active session's engine advertised, by engine id. */
+  displayEffortLevels?: Record<string, string[] | null>;
   channelsByEngine: Record<string, { id: string; label: string }[]>;
   displayProviders: Record<string, string>;
   ompServiceTier: OmpServiceTier;
@@ -218,6 +221,7 @@ function useConversationMenus({
           models={displayModels}
           onModelChange={handleModelChange}
           efforts={displayEfforts}
+          effortLevels={displayEffortLevels}
           onEffortChange={handleEffortChange}
           channelsByEngine={channelsByEngine}
           selectedChannels={displayProviders}
@@ -241,6 +245,7 @@ function useConversationMenus({
       displayModels,
       handleModelChange,
       displayEfforts,
+      displayEffortLevels,
       handleEffortChange,
       channelsByEngine,
       displayProviders,
@@ -377,7 +382,7 @@ export const ChatConversation = memo(function ChatConversation({
     dismissImageError,
   } = useComposerImages();
 
-  const { displayModels, displayEfforts, displayProviders } = useTabModelDisplay({
+  const { displayModels, displayEfforts, displayProviders, displayEffortLevels } = useTabModelDisplay({
     active,
     activeEngine,
     sessionKey: key,
@@ -480,6 +485,7 @@ export const ChatConversation = memo(function ChatConversation({
       onPickSkills: handlePickSkills,
       displayModels,
       displayEfforts,
+      displayEffortLevels,
       channelsByEngine,
       displayProviders,
       ompServiceTier,

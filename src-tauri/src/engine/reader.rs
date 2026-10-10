@@ -712,6 +712,18 @@ impl TurnCore {
                     Value::String(effort),
                 );
             }
+            EngineEvent::EffortLevels(levels) => {
+                // `[]` is an answer: this model has no effort knob. Sending it
+                // is what lets the control drop the fixed list instead of
+                // offering levels the CLI will refuse.
+                state.push(
+                    &self.sink,
+                    &self.run_id,
+                    &self.engine_id,
+                    "effort_levels",
+                    Value::Array(levels.into_iter().map(Value::String).collect()),
+                );
+            }
             EngineEvent::AvailableCommands(commands) => {
                 // The catalog is session state the composer reads when `/` is
                 // typed, so an empty list is worth sending: it says the engine

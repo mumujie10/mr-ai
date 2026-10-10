@@ -121,5 +121,19 @@ export function useTabModelDisplay({
         : providers,
     [tabProvider, providers, activeEngine],
   );
-  return { displayModels, displayEfforts, displayProviders };
+  // Reasoning levels the engine advertised for THIS session's model, keyed by
+  // engine so only the engine that reported gets trimmed. Undefined while
+  // nothing has been reported (the picker keeps the fixed list and the CLI keeps
+  // its own default); an empty array means the model has no effort knob.
+  const sessionEffortLevels = useChatStore((s) =>
+    sessionKey ? (s.bySession[sessionKey]?.effortLevels ?? null) : null,
+  );
+  const displayEffortLevels = useMemo(
+    () =>
+      sessionEffortLevels === null
+        ? undefined
+        : { [activeEngine]: sessionEffortLevels },
+    [sessionEffortLevels, activeEngine],
+  );
+  return { displayModels, displayEfforts, displayProviders, displayEffortLevels };
 }

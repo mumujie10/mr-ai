@@ -81,6 +81,11 @@ export interface SessionState {
    *  the disk scan. Null until the engine advertises one — a CLI that never
    *  broadcasts leaves the picker exactly as the scan had it. */
   engineCommands?: EngineCommandPayload[] | null;
+  /** The reasoning levels the engine advertises for this session's model, in
+   *  its own order: the effort slider renders exactly these. `null` until the
+   *  engine reports (keep the engine's own default list); `[]` means the model
+   *  declares no effort knob at all, so there is nothing to offer. */
+  effortLevels?: string[] | null;
 }
 
 export const EMPTY_SESSION: SessionState = {

@@ -18,7 +18,12 @@ import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { MOBILE_MEDIA, useMediaQuery } from "@/hooks/use-media-query";
 import { cx } from "@/utils/cx";
 import { usePopoverState } from "@/utils/use-dismiss-on-outside-press";
-import { EFFORT_LEVELS, EFFORT_LABEL_KEYS, supportsEffort, type EffortLevel } from "./effort-levels";
+import {
+  effortLabel,
+  pillEffortStops,
+  supportsEffort,
+  type EffortLevel,
+} from "./effort-levels";
 import { EngineFlyout, EngineModelPanel, type ChannelOption } from "./engine-model-panel";
 
 export type { EffortLevel } from "./effort-levels";
@@ -202,7 +207,7 @@ function CliMenuTrigger({
   return (
     <AriaButton
       ref={triggerRef}
-      aria-label={`${engineName}${model ? ` / ${model.label}` : ""}${hasEffort ? ` · ${t(EFFORT_LABEL_KEYS[effort])}` : ""}`}
+      aria-label={`${engineName}${model ? ` / ${model.label}` : ""}${hasEffort ? ` · ${effortLabel(effort, t)}` : ""}`}
       style={lockedMinWidth ? { minWidth: lockedMinWidth } : undefined}
       className="group flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring"
     >
@@ -224,9 +229,9 @@ function CliMenuTrigger({
             </span>
             {/* Reserve the widest localized level so the right-aligned popover stays put. */}
             <span className="inline-grid shrink-0 max-md:hidden">
-              {EFFORT_LEVELS.map(level => (
+              {pillEffortStops(effort).map(level => (
                 <span key={level} aria-hidden={level !== effort} className={cx("col-start-1 row-start-1", level !== effort && "invisible")}>
-                  {t(EFFORT_LABEL_KEYS[level])}
+                  {effortLabel(level, t)}
                 </span>
               ))}
             </span>
@@ -251,6 +256,7 @@ function EngineMenuBody({
   modelsByEngine,
   models,
   efforts,
+  effortLevels,
   query,
   onQueryChange,
   isMobile,
@@ -277,6 +283,10 @@ function EngineMenuBody({
   modelsByEngine: Record<string, ModelOption[]>;
   models: Record<string, string>;
   efforts: Record<string, EffortLevel>;
+  /** Reasoning levels each engine reported for its current model, keyed by
+   *  engine id; passed to the panel so the slider shows only stops that
+   *  actually exist. Missing = not reported yet. */
+  effortLevels?: Record<string, string[] | null>;
   query: string;
   onQueryChange: (value: string) => void;
   isMobile: boolean;
@@ -339,6 +349,7 @@ function EngineMenuBody({
             query={query}
             onQueryChange={onQueryChange}
             effort={efforts[flyoutOption.id] ?? "medium"}
+            effortLevels={effortLevels}
             onPickModel={onPickModel}
             onEffortChange={onEffortChange}
             channels={channelsByEngine?.[flyoutOption.id]}
@@ -364,6 +375,7 @@ function EngineModelDialog({
   modelsByEngine,
   models,
   efforts,
+  effortLevels,
   query,
   onQueryChange,
   onPickModel,
@@ -383,6 +395,10 @@ function EngineModelDialog({
   modelsByEngine: Record<string, ModelOption[]>;
   models: Record<string, string>;
   efforts: Record<string, EffortLevel>;
+  /** Reasoning levels each engine reported for its current model, keyed by
+   *  engine id; passed to the panel so the slider shows only stops that
+   *  actually exist. Missing = not reported yet. */
+  effortLevels?: Record<string, string[] | null>;
   query: string;
   onQueryChange: (value: string) => void;
   onPickModel: (engine: string, id: string) => void;
@@ -410,6 +426,7 @@ function EngineModelDialog({
         query={query}
         onQueryChange={onQueryChange}
         effort={efforts[option.id] ?? "medium"}
+        effortLevels={effortLevels}
         onPickModel={onPickModel}
         onEffortChange={onEffortChange}
         channels={option ? channelsByEngine?.[option.id] : undefined}
@@ -442,6 +459,7 @@ export function CliMenu({
   models,
   onModelChange,
   efforts,
+  effortLevels,
   onEffortChange,
   channelsByEngine,
   selectedChannels,
@@ -463,6 +481,10 @@ export function CliMenu({
   onModelChange: (engine: string, id: string) => void;
   /** Per-engine reasoning effort, rendered under each flyout's model list. */
   efforts: Record<string, EffortLevel>;
+  /** Reasoning levels each engine reported for its current model, keyed by
+   *  engine id; passed to the panel so the slider shows only stops that
+   *  actually exist. Missing = not reported yet. */
+  effortLevels?: Record<string, string[] | null>;
   onEffortChange: (engine: string, level: EffortLevel) => void;
   channelsByEngine?: Record<string, ChannelOption[]>;
   selectedChannels?: Record<string, string>;
@@ -629,6 +651,7 @@ export function CliMenu({
             modelsByEngine={modelsByEngine}
             models={models}
             efforts={efforts}
+            effortLevels={effortLevels}
             query={query}
             onQueryChange={setQuery}
             isMobile={isMobile}
@@ -657,6 +680,7 @@ export function CliMenu({
       modelsByEngine={modelsByEngine}
       models={models}
       efforts={efforts}
+      effortLevels={effortLevels}
       query={query}
       onQueryChange={setQuery}
       onPickModel={pickModel}

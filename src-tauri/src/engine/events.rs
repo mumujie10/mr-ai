@@ -131,6 +131,11 @@ pub enum EngineEvent {
     Model(String),
     /// Reasoning effort level requested at launch, then the level the engine actually reported.
     Effort(String),
+    /// The reasoning levels the engine advertises for the model this session
+    /// actually selected. Empty means it declares none: there is no
+    /// `thinkingEffort` knob to move, so the UI must offer nothing rather than
+    /// a fixed list the CLI would reject.
+    EffortLevels(Vec<String>),
     /// The engine's own invocable command catalog, re-sent whole whenever it
     /// changes (ACP `available_commands_update`): native commands plus the
     /// skills it discovered for this session's workspace. The composer's `/`

@@ -249,6 +249,9 @@ pub(crate) enum QoderSessionUpdate {
     /// ACP `available_commands_update`: the engine's whole invocable catalog,
     /// re-sent whenever it changes. Always the full list, so consumers replace.
     AvailableCommands(Vec<super::events::EngineCommand>),
+    /// The `thinkingEffort` levels the session's current model offers, read out
+    /// of the ACP config options. Empty means the model declares none.
+    EffortLevels(Vec<String>),
     Ignore,
 }
 
@@ -425,7 +428,12 @@ pub(crate) fn map_session_update(update: &Value) -> QoderSessionUpdate {
         "available_commands_update" => {
             QoderSessionUpdate::AvailableCommands(available_commands(update))
         }
-        // plan / config_option_update / user_message_chunk: UI noise here.
+        // Selecting a model re-sends the whole option list; only the effort
+        // levels inside it are UI state, so the rest stays noise. Dropping them
+        // would leave the control showing the previous model's levels until the
+        // next send re-read them.
+        "config_option_update" => QoderSessionUpdate::EffortLevels(effort_levels_of(update)),
+        // plan / user_message_chunk: UI noise here.
         _ => QoderSessionUpdate::Ignore,
     }
 }
@@ -469,6 +477,31 @@ fn available_commands(update: &Value) -> Vec<super::events::EngineCommand> {
                     .map(str::to_string),
             })
         })
+        .collect()
+}
+
+/// The `thinkingEffort` option's values, in the CLI's own order, from anything
+/// carrying a `configOptions` array (a `session/new` result or a
+/// `config_option_update`). A missing option and an empty list mean the same
+/// thing: this model has no effort knob — which is why callers must not fall
+/// back to a fixed set here.
+pub(crate) fn effort_levels_of(value: &Value) -> Vec<String> {
+    let Some(options) = value["configOptions"].as_array() else {
+        return Vec::new();
+    };
+    let Some(levels) = options
+        .iter()
+        .find(|option| option["id"] == "thinkingEffort")
+        .and_then(|option| option["options"].as_array())
+    else {
+        return Vec::new();
+    };
+    levels
+        .iter()
+        .filter_map(|level| level["value"].as_str())
+        .map(str::trim)
+        .filter(|level| !level.is_empty())
+        .map(str::to_string)
         .collect()
 }
 
@@ -1217,6 +1250,9 @@ fn handle_session_update(
         QoderSessionUpdate::AvailableCommands(commands) => {
             core.dispatch_event(state, EngineEvent::AvailableCommands(commands));
         }
+        QoderSessionUpdate::EffortLevels(levels) => {
+            core.dispatch_event(state, EngineEvent::EffortLevels(levels));
+        }
         QoderSessionUpdate::Ignore => {}
     }
 }
@@ -1607,6 +1643,39 @@ mod tests {
         assert_eq!(
             map_session_update(&json!({"sessionUpdate":"available_commands_update"})),
             QoderSessionUpdate::AvailableCommands(Vec::new())
+        );
+    }
+
+    /// The CLI re-sends the whole option list after a model change, so the
+    /// effort levels have to follow the model that is now selected — including
+    /// the case where the new model declares none at all. Keeping the previous
+    /// model's list would leave the control offering levels the CLI rejects.
+    #[test]
+    fn config_option_update_moves_the_effort_levels() {
+        let thinking = json!({
+            "sessionUpdate": "config_option_update",
+            "configOptions": [
+                {"id": "permissionMode", "currentValue": "auto", "options": [{"value": "auto"}]},
+                {"id": "thinkingEffort", "currentValue": "low", "options": [
+                    {"value": "low", "name": "Low"},
+                    {"value": "  "},
+                    {"value": "max", "name": "Max"}
+                ]}
+            ]
+        });
+        assert_eq!(
+            map_session_update(&thinking),
+            QoderSessionUpdate::EffortLevels(vec!["low".to_string(), "max".to_string()])
+        );
+
+        // Swapping to a model with no knob reports an empty list, not the old one.
+        let plain = json!({
+            "sessionUpdate": "config_option_update",
+            "configOptions": [{"id": "model", "options": [{"value": "m:p:m"}]}]
+        });
+        assert_eq!(
+            map_session_update(&plain),
+            QoderSessionUpdate::EffortLevels(Vec::new())
         );
     }
 

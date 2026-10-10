@@ -16,7 +16,7 @@ import { supportsOmpFastMode, type OmpServiceTier } from "@/lib/omp-service-tier
 import { cx } from "@/utils/cx";
 import { OmpSpeedSection } from "./omp-speed-section";
 import { filterModels, groupModelsByProvider, type ModelGroup } from "./model-list";
-import { EFFORT_LABEL_KEYS, supportsEffort, type EffortLevel } from "./effort-levels";
+import { effortChoices, effortLabel, supportsEffort, type EffortLevel } from "./effort-levels";
 import { EffortSlider } from "./effort-slider";
 import type { MenuOption, ModelOption } from "./cli-menu";
 
@@ -249,17 +249,30 @@ function ModelRow({
 }
 
 /** The flyout's effort section: label with a keyed blur-in value, the
- *  faster/smarter captions, and the five-stop slider. */
+ *  faster/smarter captions, and the slider. `levels === null` means the engine
+ *  reported that this model has no effort knob: say so in one line instead of
+ *  drawing a control that cannot do anything. */
 function FlyoutEffortSection({
   effort,
   onChange,
+  levels,
   header,
 }: {
   effort: EffortLevel;
   onChange: (level: EffortLevel) => void;
+  levels: string[] | null;
   header?: ReactNode;
 }) {
   const { t } = useTranslation();
+  if (levels === null) {
+    return (
+      <div className="flex w-full items-center px-2 py-1.5">
+        <span className="text-body-2-regular text-text-tertiary">
+          {t("chat.effortNoneForModel")}
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="flex w-full flex-col">
       {header ?? <span className="pl-2 text-body-medium text-text-secondary">
@@ -272,7 +285,7 @@ function FlyoutEffortSection({
           transition={{ duration: 0.35, ease: "easeOut" }}
           className="inline-block text-text-primary"
         >
-          {t(EFFORT_LABEL_KEYS[effort])}
+          {effortLabel(effort, t)}
         </m.span>
       </span>}
       <div className={cx("flex w-full items-center justify-between px-2 pb-[3px]", header ? "pt-0" : "pt-2")}>
@@ -284,7 +297,7 @@ function FlyoutEffortSection({
         </span>
       </div>
       <div className="w-full px-2 pb-2">
-        <EffortSlider value={effort} onChange={onChange} />
+        <EffortSlider value={effort} onChange={onChange} levels={levels} />
       </div>
     </div>
   );
@@ -474,6 +487,7 @@ function EffortFooter({
   engineId,
   selectedModelId,
   effort,
+  effortLevels,
   onEffortChange,
   ompServiceTier,
   onOmpServiceTierChange,
@@ -483,6 +497,9 @@ function EffortFooter({
   engineId: string;
   selectedModelId: string;
   effort: EffortLevel;
+  /** Levels this session's engine reported for the selected model; undefined
+   *  until it reports anything. */
+  effortLevels?: string[] | null;
   onEffortChange: (engine: string, level: EffortLevel) => void;
   ompServiceTier: OmpServiceTier;
   onOmpServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
@@ -490,6 +507,7 @@ function EffortFooter({
   onCodexServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const levels = effortChoices(effortLevels);
   const ompFast = engineId === "omp" && supportsOmpFastMode(selectedModelId);
   const codexFast = engineId === "codex";
   const showFast = ompFast || codexFast;
@@ -502,7 +520,7 @@ function EffortFooter({
       value={fastTier}
       onChange={onFastChange}
     >
-      <span className="text-body-medium text-text-primary">{t(EFFORT_LABEL_KEYS[effort])}</span>
+      <span className="text-body-medium text-text-primary">{effortLabel(effort, t)}</span>
     </OmpSpeedSection>
   ) : undefined;
   return (
@@ -511,6 +529,7 @@ function EffortFooter({
       <FlyoutEffortSection
         header={header}
         effort={effort}
+        levels={levels}
         onChange={(level) => onEffortChange(engineId, level)}
       />
     </>
@@ -533,6 +552,7 @@ export function EngineModelPanel({
   effort,
   onPickModel,
   onEffortChange,
+  effortLevels,
   channels,
   selectedChannelId,
   onPickChannel,
@@ -552,6 +572,10 @@ export function EngineModelPanel({
   effort: EffortLevel;
   onPickModel: (engine: string, id: string) => void;
   onEffortChange: (engine: string, level: EffortLevel) => void;
+  /** Reasoning levels each engine reported for its current model, keyed by
+   *  engine id. Missing key = not reported yet (keep the fixed list); an empty
+   *  array = the model has no effort knob. */
+  effortLevels?: Record<string, string[] | null>;
   channels?: ChannelOption[];
   selectedChannelId?: string;
   onPickChannel?: (engine: string, id: string) => void;
@@ -612,6 +636,7 @@ export function EngineModelPanel({
           engineId={option.id}
           selectedModelId={selectedModelId}
           effort={effort}
+          effortLevels={effortLevels?.[option.id]}
           onEffortChange={onEffortChange}
           ompServiceTier={ompServiceTier}
           onOmpServiceTierChange={onOmpServiceTierChange}

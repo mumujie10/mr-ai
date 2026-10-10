@@ -376,6 +376,9 @@ fn handle_session_update(
         QoderSessionUpdate::AvailableCommands(commands) => {
             core.dispatch_event(state, EngineEvent::AvailableCommands(commands));
         }
+        QoderSessionUpdate::EffortLevels(levels) => {
+            core.dispatch_event(state, EngineEvent::EffortLevels(levels));
+        }
         QoderSessionUpdate::Ignore => {}
     }
 }

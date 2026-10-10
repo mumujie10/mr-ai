@@ -321,6 +321,7 @@ export const zh = {
     effortUltra: "ultra",
     effortFaster: "更快",
     effortSmarter: "更深入",
+    effortNoneForModel: "这个模型没有可切换的推理档位，由 CLI 自己决定",
     proxyOn: "网络代理：已开启，点击关闭",
     proxyOff: "网络代理：已关闭，点击开启",
     proxyConfigure: "网络代理未配置，点击打开设置",

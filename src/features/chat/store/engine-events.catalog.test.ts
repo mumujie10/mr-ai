@@ -28,6 +28,7 @@ function harness(key: string) {
         usage: null,
         error: null,
         engineCommands: undefined as CatalogRow[] | undefined,
+        effortLevels: undefined as string[] | undefined,
       },
     },
     openTabs: [],
@@ -158,5 +159,71 @@ describe("engine-advertised slash commands", () => {
     );
 
     expect(commandsOf(state, key)?.map((command) => command.name)).toEqual(["pdf-tools"]);
+  });
+});
+
+describe("engine-advertised effort levels", () => {
+  function levelsOf(state: ReturnType<typeof harness>["state"], key: string) {
+    return state.bySession[key].effortLevels as string[] | undefined;
+  }
+
+  it("stores the advertised stops and accepts an empty answer", () => {
+    const key = "mireai/session-levels-1";
+    const { state, deps } = harness(key);
+
+    handleEngineEvents(
+      [event("run-levels-1", "session-levels-1", "effort_levels", ["low", "medium", "max"])],
+      deps as never,
+    );
+    expect(levelsOf(state, key)).toEqual(["low", "medium", "max"]);
+
+    // An engine that reports `[]` is answering "this model has no effort knob",
+    // which the slider must then stop pretending to have.
+    handleEngineEvents(
+      [event("run-levels-1", "session-levels-1", "effort_levels", [])],
+      deps as never,
+    );
+    expect(levelsOf(state, key)).toEqual([]);
+  });
+
+  it("trims, de-duplicates, and keeps a non-list frame from clearing the list", () => {
+    const key = "mireai/session-levels-2";
+    const { state, deps } = harness(key);
+
+    handleEngineEvents(
+      [
+        event("run-levels-2", "session-levels-2", "effort_levels", [
+          " low ",
+          "low",
+          "",
+          7,
+          null,
+          "max",
+        ]),
+      ],
+      deps as never,
+    );
+    expect(levelsOf(state, key)).toEqual(["low", "max"]);
+
+    handleEngineEvents(
+      [event("run-levels-2", "session-levels-2", "effort_levels", { level: "low" })],
+      deps as never,
+    );
+    expect(levelsOf(state, key)).toEqual(["low", "max"]);
+  });
+
+  it("accepts the report that follows a model switch after the turn settled", () => {
+    const key = "mireai/session-levels-3";
+    const runId = "run-levels-3";
+    const { state, deps } = harness(key);
+
+    handleEngineEvents([event(runId, "session-levels-3", "done", { usage: null })], deps as never);
+    // The CLI re-sends the whole option list when the model changes; that frame
+    // is session state and must not be dropped as a late turn event.
+    handleEngineEvents(
+      [event(runId, "session-levels-3", "effort_levels", ["minimal", "low"])],
+      deps as never,
+    );
+    expect(levelsOf(state, key)).toEqual(["minimal", "low"]);
   });
 });

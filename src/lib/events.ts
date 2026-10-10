@@ -23,6 +23,7 @@ export interface EngineEventPayload {
     | "done"
     | "model"
     | "effort"
+    | "effort_levels"
     | "available_commands"
     | "launch"
     | "served";

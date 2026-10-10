@@ -745,6 +745,24 @@ function onAvailableCommands(
   patchSession(deps.set, key, { engineCommands: commands });
 }
 
+/** The reasoning levels the engine advertises for the model this session
+ *  actually selected. `[]` is an answer — that model has no effort knob — so it
+ *  is stored rather than ignored: the control must then drop the fixed list
+ *  instead of offering levels the CLI would refuse. A malformed frame keeps what
+ *  is already shown rather than clearing a control that was working. */
+function onEffortLevels(event: ChatEngineEvent, key: string, deps: EngineEventDeps) {
+  if (!Array.isArray(event.data)) return;
+  const levels = [
+    ...new Set(
+      event.data
+        .filter((level): level is string => typeof level === "string")
+        .map((level) => level.trim())
+        .filter((level) => level !== ""),
+    ),
+  ];
+  patchSession(deps.set, key, { effortLevels: levels });
+}
+
 /** Sessions whose run is inside a provider-retry backoff. Kept out of the
  *  store read path on purpose: the delta handlers test this set (O(1)) rather
  *  than reading `bySession` for every streamed token. */
@@ -1960,7 +1978,9 @@ export function handleEngineEvents(
     // Applying it must not depend on that race — and it cannot revive the run,
     // because it only patches `engineCommands`.
     const isSessionScopedEvent =
-      isPlanEvent || event.kind === "available_commands";
+      isPlanEvent ||
+      event.kind === "available_commands" ||
+      event.kind === "effort_levels";
     // EOF stderr/failure can follow Done, and the turn's final usage report
     // can trail either terminal event. Keep those, but never adopt the run
     // again or drain its queue a second time.
@@ -1973,6 +1993,9 @@ export function handleEngineEvents(
         // once skill discovery finishes, and that frame can follow the turn
         // that was already running. Keep it, without reviving the run.
         event.kind === "available_commands" ||
+        // Same reasoning for the effort stops: they describe the session's
+        // model, not the turn that has just ended.
+        event.kind === "effort_levels" ||
         (settled === "done" &&
           (event.kind === "warn" ||
             event.kind === "error" ||
@@ -2138,6 +2161,9 @@ export function handleEngineEvents(
       }
       case "available_commands":
         onAvailableCommands(event, key, deps);
+        break;
+      case "effort_levels":
+        onEffortLevels(event, key, deps);
         break;
       case "launch":
         onLaunch(event, key, deps);

@@ -12,17 +12,18 @@ import { FlameOverlay } from "./effort-flame";
 import { EFFORT_LEVELS, type EffortLevel } from "./effort-levels";
 
 /** Fresh random impulse per tick each time the engine ignites: blown left by
- *  the exhaust with random lift, tumble and stagger, like debris. */
-export function useBlastImpulses(isMax: boolean) {
+ *  the exhaust with random lift, tumble and stagger, like debris. One per
+ *  rendered stop, because a channel that advertises two levels gets two ticks. */
+export function useBlastImpulses(isMax: boolean, stops: number) {
   return useMemo(
     () =>
-      EFFORT_LEVELS.map(() => ({
+      Array.from({ length: stops }, () => ({
         x: -(70 + Math.random() * 130),
         y: (Math.random() - 0.5) * 70,
         rotate: (Math.random() - 0.5) * 720,
         delay: Math.random() * 0.3,
       })),
-    [isMax],
+    [isMax, stops],
   );
 }
 
@@ -32,14 +33,16 @@ export function EffortTicks({
   index,
   isMax,
   blast,
+  levels,
 }: {
   index: number;
   isMax: boolean;
   blast: { x: number; y: number; rotate: number; delay: number }[];
+  levels: readonly string[];
 }) {
   return (
     <div className="absolute inset-x-[9px] top-[7px] flex h-[13px] items-center justify-between">
-      {EFFORT_LEVELS.map((level, i) => (
+      {levels.map((level, i) => (
         <m.span
           key={level}
           aria-hidden
@@ -78,27 +81,34 @@ export function EffortTicks({
 export function EffortSlider({
   value,
   onChange,
+  levels = EFFORT_LEVELS,
 }: {
   value: EffortLevel;
   onChange: (level: EffortLevel) => void;
+  /** The stops this model actually has, in the engine's own order. Defaults to
+   *  the app's fixed list for engines that never report a catalog. */
+  levels?: readonly string[];
 }) {
   const { t } = useTranslation();
-  const index = Math.max(0, EFFORT_LEVELS.indexOf(value));
-  const isMax = index === EFFORT_LEVELS.length - 1;
-  const blast = useBlastImpulses(isMax);
+  // A stored level the current model no longer offers keeps the thumb on the
+  // nearest real stop rather than inventing an out-of-range position.
+  const wanted = levels.indexOf(value);
+  const index = Math.max(0, wanted);
+  const isMax = index === levels.length - 1;
+  const blast = useBlastImpulses(isMax, levels.length);
   // Thumb center sits at `fraction` of the 21px-inset rail, so its right
   // edge is at fraction × (track − 21px) + 21px — in calc() so the fill
   // lands flush against the thumb at any rendered width.
-  const fraction = index / (EFFORT_LEVELS.length - 1);
+  const fraction = levels.length > 1 ? index / (levels.length - 1) : 1;
 
   return (
     <AriaSlider
       aria-label={t("chat.effort")}
       minValue={0}
-      maxValue={EFFORT_LEVELS.length - 1}
+      maxValue={Math.max(0, levels.length - 1)}
       step={1}
       value={index}
-      onChange={(v) => onChange(EFFORT_LEVELS[v as number] ?? "medium")}
+      onChange={(v) => onChange(levels[v as number] ?? levels[index] ?? "medium")}
       className="w-full"
     >
       <div className="relative h-[27px] w-full overflow-hidden rounded-lg bg-background-secondary-default">
@@ -107,7 +117,7 @@ export function EffortSlider({
           className="absolute inset-y-0 left-0 rounded-lg bg-background-tertiary-hover transition-[width] duration-150 ease-out"
           style={{ width: `calc(${fraction} * (100% - 21px) + 21px)` }}
         />
-        <EffortTicks index={index} isMax={isMax} blast={blast} />
+        <EffortTicks index={index} isMax={isMax} blast={blast} levels={levels} />
         {/* Above the ticks so the flame washes over the step dividers. */}
         <AnimatePresence>{isMax && <FlameOverlay />}</AnimatePresence>
         {/* Rail inset by half the thumb width so the 21px thumb lands flush

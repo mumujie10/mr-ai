@@ -336,6 +336,7 @@ export const en: Messages = {
     effortUltra: "ultra",
     effortFaster: "Faster",
     effortSmarter: "Smarter",
+    effortNoneForModel: "This model has no reasoning levels to switch — the CLI decides",
     proxyOn: "Proxy: on - click to turn off",
     proxyOff: "Proxy: off - click to turn on",
     proxyConfigure: "Network proxy is not configured; click to open Settings",
