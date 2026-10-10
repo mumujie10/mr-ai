@@ -98,6 +98,13 @@ export default function ChatPage() {
     if (narrowPanel) setNarrowPanelExpanded((prev) => !prev);
     else togglePanelCollapsed();
   }, [narrowPanel, togglePanelCollapsed]);
+  // 侧栏头部的任务入口：选中 tasks 页签并展开右侧栏。窄窗口下"展开"是本地状态
+  // (narrowPanelExpanded)，所以两种折叠态都得走 handleTogglePanel 那同一条判断，
+  // 只清 panelCollapsed 在窄窗口里点了没反应。
+  const openTasksPanel = useCallback(() => {
+    setPanelTab("tasks");
+    if (panelCollapsedEffective) handleTogglePanel();
+  }, [setPanelTab, panelCollapsedEffective, handleTogglePanel]);
   // Panel width is clamped against the row actually available. Measured off
   // the center row rather than window.innerWidth because the sidebar overlays
   // the content below md instead of taking layout space.
@@ -236,6 +243,7 @@ export default function ChatPage() {
         onNewSessionInWorkspace={handleNewSessionInWorkspace}
         onNewSession={handleNewSession}
         onNewBrowser={!isWeb && betaNewBrowser ? handleNewBrowser : undefined}
+        onOpenTasks={active ? openTasksPanel : undefined}
         onOpenPlugins={handleOpenPlugins}
         onOpenMission={betaMissionWorkbench ? handleOpenMission : undefined}
         onReorderWorkspaces={handleReorderWorkspaces}

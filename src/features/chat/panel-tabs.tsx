@@ -1,9 +1,11 @@
 import FolderSymlink from "lucide-react/dist/esm/icons/folder-symlink";
 import GitBranch from "lucide-react/dist/esm/icons/git-branch";
+import ListChecks from "lucide-react/dist/esm/icons/list-checks";
 import i18n from "@/lib/i18n";
 import { panelTabRegistry } from "@ccgui/plugin-sdk";
 import { FilesPanel } from "@/features/files/FilesPanel";
 import { ChangesPanel } from "@/features/git/ChangesPanel";
+import { TasksPanel } from "./TasksPanel";
 
 /**
  * Builtin right-panel tabs, registered through the same extension-point
@@ -18,6 +20,16 @@ export const ChangesTab = ({ workspacePath, visible = true }: { workspacePath: s
   <ChangesPanel key={workspacePath} workspacePath={workspacePath} visible={visible} className="w-full" />
 );
 
+panelTabRegistry.register({
+  id: "tasks",
+  label: () => i18n.t("chat.tasksTab"),
+  icon: ListChecks,
+  // First, before 文件: "what is the agent doing right now" is read before the
+  // tree. Negative order so the existing builtin orders (and any plugin tab
+  // that picked one) keep their relative slots.
+  order: -1,
+  component: TasksPanel,
+});
 panelTabRegistry.register({
   id: "files",
   label: () => i18n.t("files.tab"),

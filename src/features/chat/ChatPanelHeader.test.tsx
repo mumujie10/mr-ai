@@ -140,6 +140,20 @@ describe("ChatPanelHeader plugin pills", () => {
     expect(pillByText("变更")?.textContent).toBe("变更");
   });
 
+  it("puts 任务 ahead of 文件 and 变更", () => {
+    // Order is the contract the user asked for ("放在文件的前面"); the default
+    // open tab stays 文件, so this asserts the strip only.
+    act(() => {
+      root.render(header());
+    });
+    const labels = Array.from(
+      container.querySelectorAll<HTMLButtonElement>("button"),
+    )
+      .map((button) => button.textContent ?? "")
+      .filter((text) => ["任务", "文件", "变更"].includes(text));
+    expect(labels).toEqual(["任务", "文件", "变更"]);
+  });
+
   it("renders a plugin pill icon-only with the label as title/accessible name", () => {
     disposers.push(
       panelTabRegistry.register({

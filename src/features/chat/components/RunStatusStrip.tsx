@@ -411,7 +411,7 @@ function TodoDetail({
   );
 }
 
-function TodoRows({ items, live }: { items: TodoItem[]; live: boolean }) {
+export function TodoRows({ items, live }: { items: TodoItem[]; live: boolean }) {
   const { t } = useTranslation();
   const [openKey, setOpenKey] = useState<string | null>(null);
   const restoreKey = useRef<string | null>(null);
@@ -540,7 +540,7 @@ function SubagentDetail({ step, onBack }: { step: AgentTaskStep; onBack: () => v
   );
 }
 
-function SubagentRows({ steps }: { steps: AgentTaskStep[] }) {
+export function SubagentRows({ steps }: { steps: AgentTaskStep[] }) {
   const { t } = useTranslation();
   // Open detail lives here, not in the strip: closing the panel unmounts this
   // component, so reopening always starts on the list.

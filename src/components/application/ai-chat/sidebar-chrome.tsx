@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import Globe from "lucide-react/dist/esm/icons/globe";
 import LayoutGrid from "lucide-react/dist/esm/icons/layout-grid";
+import ListChecks from "lucide-react/dist/esm/icons/list-checks";
 import MessageSquarePlus from "lucide-react/dist/esm/icons/message-square-plus";
 import PanelLeft from "lucide-react/dist/esm/icons/panel-left";
 import ScanSearch from "lucide-react/dist/esm/icons/scan-search";
@@ -158,9 +159,14 @@ function SearchPaletteButton({ onOpen }: { onOpen?: () => void }) {
 export function SidebarDragStrip({
   onClose,
   onOpenSearch,
+  onOpenTasks,
 }: {
   onClose?: () => void;
   onOpenSearch?: () => void;
+  /** Open the right panel on 任务. Absent with no session: the panel
+   *  renders nothing without one, so an entry that could not show anything
+   *  would be a dead button. */
+  onOpenTasks?: () => void;
 }) {
   const { t } = useTranslation();
   const titlebarStyle = useTitlebarStyle();
@@ -174,6 +180,17 @@ export function SidebarDragStrip({
       </div>
       <div className="flex items-center gap-1">
         <SearchPaletteButton onOpen={onOpenSearch} />
+        {onOpenTasks && (
+          <button
+            type="button"
+            aria-label={t("chat.tasksTab")}
+            title={t("chat.tasksTab")}
+            onClick={onOpenTasks}
+            className={headerButtonClasses}
+          >
+            <ListChecks className="size-4" aria-hidden />
+          </button>
+        )}
         <button
           type="button"
           aria-label={t("chat.collapseSidebar")}

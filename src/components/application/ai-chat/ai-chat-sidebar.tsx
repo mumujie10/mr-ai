@@ -61,6 +61,7 @@ export function AiChatSidebar({
   onCreateGroup,
   onOpenSettings,
   onClose,
+  onOpenTasks,
   flat = false,
 }: {
   repos?: AiChatRepo[];
@@ -108,6 +109,7 @@ export function AiChatSidebar({
   onOpenMission?: () => void;
   onOpenSettings?: (page?: string) => void;
   onClose?: () => void;
+  onOpenTasks?: () => void;
   flat?: boolean;
 } = {}) {
   const { t } = useTranslation();
@@ -163,7 +165,13 @@ export function AiChatSidebar({
         className,
       )}
     >
-      {!flat && <SidebarDragStrip onClose={onClose} onOpenSearch={openSearch} />}
+      {!flat && (
+        <SidebarDragStrip
+          onClose={onClose}
+          onOpenSearch={openSearch}
+          onOpenTasks={onOpenTasks}
+        />
+      )}
       <div className="flex min-h-0 w-full flex-1 flex-col gap-3 p-3">
         {flat && <SidebarBrandRow onOpenSearch={openSearch} />}
 
