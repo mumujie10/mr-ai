@@ -49,11 +49,13 @@ impl Db {
         // through its own connection while the app holds one: a busy writer
         // must wait for the short write lock, not fail the tool call.
         conn.busy_timeout(std::time::Duration::from_secs(5))?;
-        // ON DELETE CASCADE keeps session_messages/messages_fts and
+        // Enforcement is on for every connection, so a statement that moves a
+        // parent key must also move the rows referencing it — see
+        // `rename_bundled_engine_rows`, which defers its checks for exactly this
+        // reason. ON DELETE CASCADE keeps session_messages/messages_fts and
         // fts_state in step with every sessions-row delete path (session
         // delete, stale pruning, workspace removal) without each site
-        // remembering the index tables. No pre-existing table declares an
-        // FK, so enabling enforcement changes nothing else.
+        // remembering the index tables.
         conn.pragma_update(None, "foreign_keys", "ON")?;
         migrate(&conn)?;
         Ok(Self(Mutex::new(conn)))
@@ -770,6 +772,7 @@ fn rename_bundled_engine_rows(conn: &Connection) -> rusqlite::Result<()> {
         .query_map([], |row| row.get::<_, String>(0))?
         .filter_map(Result::ok)
         .collect();
+    let mut engine_tables: Vec<(String, String)> = Vec::new();
     for table in tables {
         let quoted = table.replace('"', "\"\"");
         let has_engine_column = conn
@@ -780,15 +783,24 @@ fn rename_bundled_engine_rows(conn: &Connection) -> rusqlite::Result<()> {
         if !has_engine_column {
             continue;
         }
-        let renamed = conn.execute(
-            &format!(
-                "UPDATE OR IGNORE \"{quoted}\" SET engine = 'mireai' WHERE engine = 'minimax'"
-            ),
+        engine_tables.push((table, quoted));
+    }
+    // `session_messages` and `fts_state` key their foreign reference on
+    // `(engine, session_id)`, so renaming the parent's engine moves a parent key
+    // out from under rows that still name the old one: with `foreign_keys` on,
+    // that is an immediate violation and the whole migration — so the window, so
+    // the app — fails on any database that has bundled-runtime history. Deferring
+    // to COMMIT checks the constraints once parent and children agree again.
+    let tx = conn.unchecked_transaction()?;
+    tx.pragma_update(None, "defer_foreign_keys", "ON")?;
+    for (table, quoted) in &engine_tables {
+        let renamed = tx.execute(
+            &format!("UPDATE OR IGNORE \"{quoted}\" SET engine = 'mireai' WHERE engine = 'minimax'"),
             [],
         )?;
         // Rows the rename could not move (a `mireai` twin already holds that
         // session id) are dropped here, so one transcript keeps one row.
-        conn.execute(
+        tx.execute(
             &format!("DELETE FROM \"{quoted}\" WHERE engine = 'minimax'"),
             [],
         )?;
@@ -796,10 +808,11 @@ fn rename_bundled_engine_rows(conn: &Connection) -> rusqlite::Result<()> {
             eprintln!("[db] moved {renamed} {table} rows to the mireai engine");
         }
     }
-    conn.execute(
+    tx.execute(
         "INSERT OR REPLACE INTO meta(key, value) VALUES(?1, datetime())",
         [MARKER],
     )?;
+    tx.commit()?;
     Ok(())
 }
 
@@ -1181,6 +1194,53 @@ mod tests {
             rusqlite::params![engine, session_id, format!("{session_id}.jsonl")],
         )
         .unwrap();
+    }
+
+    /// `session_messages` references `sessions` by `(engine, session_id)`, so
+    /// renaming only the parent walks straight into a foreign-key violation once
+    /// enforcement is on — which is how the app stopped starting at all on a
+    /// database that held bundled-runtime history. Parent and children move in
+    /// one deferred transaction, and nothing is left pointing at a key that no
+    /// longer exists.
+    #[test]
+    fn renaming_a_session_takes_its_transcript_rows_with_it() {
+        let scratch = Scratch::new();
+        let path = scratch.path("app.db");
+        let db = Db::open_at(&path).unwrap();
+        {
+            let conn = db.0.lock();
+            conn.execute("DELETE FROM meta WHERE key = 'mireai_engine_split_v1'", [])
+                .unwrap();
+            insert_row(&conn, "transcript", "minimax");
+            conn.execute(
+                "INSERT INTO session_messages(engine, session_id, seq, role, text, ts_ms)
+                 VALUES('minimax', 'transcript', 1, 'user', '带外键的历史', 1)",
+                [],
+            )
+            .unwrap();
+        }
+        drop(db);
+
+        let db = Db::open_at(&path)
+            .expect("the startup migration must not fail an app database that has history");
+        let conn = db.0.lock();
+        assert_eq!(engine_of(&conn, "sessions", "transcript"), "mireai");
+        let moved: String = conn
+            .query_row(
+                "SELECT engine FROM session_messages WHERE session_id = 'transcript'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(moved, "mireai");
+        let violations: Vec<String> = conn
+            .prepare("SELECT \"table\" FROM pragma_foreign_key_check")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert!(violations.is_empty(), "foreign keys left broken: {violations:?}");
     }
 
     /// History the app wrote for the bundled runtime follows it into
