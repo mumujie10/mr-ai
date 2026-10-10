@@ -148,6 +148,7 @@ export function useChatSidebar({
                 streaming: streamingById.get(`${s.engine}/${s.sessionId}`) ?? false,
                 retrying: retryingById.get(`${s.engine}/${s.sessionId}`) ?? false,
                 unseen: unseen[`${s.engine}/${s.sessionId}`] ?? false,
+                scope: s.scope,
               },
             ];
           }),

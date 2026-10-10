@@ -1,8 +1,10 @@
 import { create } from "zustand";
 
-/** Which composer the sidebar pill selects. 对话 strips the engine/permission
- * controls off the composer; 工作 is the full workspace mode. Also the scope
- * a session is born with — sends file it beside the session id. */
+/** 全局形态开关（侧栏顶部胶囊）：整个界面跟着切——会话列表按模式筛
+ *  （见 WorkspaceSection 的 threadFilter），右侧栏撤下工作专属页签
+ *  （use-panel-tabs），对话模式再撤掉输入框的引擎/权限菜单。发送时它还是
+ *  会话的出生 scope：scope=chat 的会话进对话列表，其余（含拆分前没有
+ *  标识的老会话）算工作。 */
 export type ConversationMode = "chat" | "work";
 
 const STORAGE_KEY = "ccgui-next.conversationMode:v1";

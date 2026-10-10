@@ -618,6 +618,9 @@ export interface MessageSearchHit {
   customTitle: string | null;
   updatedAt: number | null;
   role: string;
+  /** Session birth scope (`session_scopes`); null = pre-split session,
+   *  which the UI counts as 工作. The palette filters both lanes by it. */
+  scope: string | null;
   snippet: SnippetPart[];
 }
 

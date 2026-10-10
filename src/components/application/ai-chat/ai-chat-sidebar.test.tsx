@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sessionMenuRegistry, workspaceMenuRegistry } from "@ccgui/plugin-sdk";
 import { AiChatSidebar } from "./ai-chat-sidebar";
 import type { AiChatRepo } from "./ai-chat-sidebar";
+import { useConversationMode } from "@/features/chat/conversation-mode";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -763,5 +764,102 @@ describe("工作区标题行的批量收起与视图", () => {
     await act(async () => listRow!.click());
     expect(node.textContent).toContain("开源项目");
     expect(localStorage.getItem(VIEW_KEY)).toBe("grouped");
+  });
+});
+
+describe("对话 / 工作 模式胶囊 = 全局切换", () => {
+  const MODE_KEY = "ccgui-next.conversationMode:v1";
+
+  // The zustand store outlives localStorage.clear() between tests.
+  beforeEach(() => {
+    useConversationMode.setState({ mode: "work" });
+  });
+
+  const pill = (label: string) =>
+    [...node.querySelectorAll<HTMLButtonElement>("button[aria-pressed]")].find(
+      (el) => el.textContent === label,
+    )!;
+
+  it("切模式即筛会话列表：对话只留对话会话，工作只留工作会话（老会话算工作）", async () => {
+    await act(async () => {
+      root.render(
+        <AiChatSidebar
+          repos={[
+            {
+              id: "a",
+              label: "a",
+              defaultOpen: true,
+              threads: [
+                { id: "omp/old", label: "老会话", time: "1分钟" },
+                { id: "omp/w", label: "工作会话", time: "1分钟", scope: "work" },
+                { id: "omp/c", label: "对话会话", time: "1分钟", scope: "chat" },
+              ],
+            },
+          ]}
+        />,
+      );
+    });
+    // 默认工作形态：工作会话与拆分前的老会话都在列，对话会话被筛掉。
+    expect(pill("chat.modeWork").getAttribute("aria-pressed")).toBe("true");
+    expect(node.textContent).toContain("工作会话");
+    expect(node.textContent).toContain("老会话");
+    expect(node.textContent).not.toContain("对话会话");
+
+    await act(async () => pill("chat.modeChat").click());
+
+    expect(localStorage.getItem(MODE_KEY)).toBe("chat");
+    expect(node.textContent).toContain("对话会话");
+    expect(node.textContent).not.toContain("工作会话");
+    expect(node.textContent).not.toContain("老会话");
+
+    // 切回去：工作会话与老会话回来，对话会话让位。
+    await act(async () => pill("chat.modeWork").click());
+    expect(node.textContent).toContain("工作会话");
+    expect(node.textContent).toContain("老会话");
+    expect(node.textContent).not.toContain("对话会话");
+  });
+
+  it("还没发首条的草稿跟随当前模式，新建后不会被自己的筛子筛掉", async () => {
+    await act(async () => {
+      useConversationMode.setState({ mode: "chat" });
+      root.render(
+        <AiChatSidebar
+          activeThreadId="new:omp:/ws/a"
+          repos={[
+            {
+              id: "a",
+              label: "a",
+              defaultOpen: true,
+              threads: [
+                { id: "new:omp:/ws/a", label: "新对话", time: "", isDraft: true },
+                { id: "omp/w", label: "工作会话", time: "1分钟", scope: "work" },
+              ],
+            },
+          ]}
+        />,
+      );
+    });
+    expect(node.textContent).toContain("新对话");
+    expect(node.textContent).not.toContain("工作会话");
+  });
+
+  it("筛选不隐藏空工作区行：筛空的行还留着新建会话的入口", async () => {
+    await act(async () => {
+      root.render(
+        <AiChatSidebar
+          repos={[
+            {
+              id: "empty",
+              label: "空工作区",
+              defaultOpen: true,
+              threads: [{ id: "omp/c", label: "对话会话", time: "1分钟", scope: "chat" }],
+            },
+          ]}
+        />,
+      );
+    });
+    // 工作形态下这一行没有可见会话，但仓库行本身还在（否则无从管理它）。
+    expect(node.textContent).not.toContain("对话会话");
+    expect(node.textContent).toContain("空工作区");
   });
 });

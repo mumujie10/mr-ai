@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SessionSearchPalette } from "./session-search-palette";
 import { formatSearchDuration } from "./session-search-format";
 import type { AiChatRepo } from "./sidebar-types";
+import { useConversationMode } from "@/features/chat/conversation-mode";
 import { ipc, type MessageSearchHit, type MessageSearchPage } from "@/lib/ipc";
 
 vi.mock("react-i18next", () => ({
@@ -28,6 +29,7 @@ function contentHit(overrides: Partial<MessageSearchHit>): MessageSearchHit {
     customTitle: null,
     updatedAt: null,
     role: "assistant",
+    scope: null,
     snippet: [
       { text: "…前缀 ", marked: false },
       { text: "命中词", marked: true },
@@ -79,6 +81,9 @@ let root: Root;
 
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  // The store outlives a test file's localStorage; pin the mode the legacy
+  // fixture threads (no scope → work) belong to.
+  useConversationMode.setState({ mode: "work" });
   vi.mocked(ipc.searchMessages).mockReset();
   vi.mocked(ipc.searchMessages).mockResolvedValue(page({}));
   node = document.createElement("div");
@@ -391,6 +396,62 @@ it("drops a stale content response that lands after a newer one", async () => {
     expect(options()).toHaveLength(1);
     expect(options()[0].textContent).toContain("新查询结果");
     expect(options()[0].textContent).not.toContain("旧查询结果");
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("follows the composer mode: both lanes list only the current mode's sessions", async () => {
+  vi.useFakeTimers();
+  try {
+    const mixed: AiChatRepo[] = [
+      {
+        id: "ws-a",
+        label: "desktop-cc-gui",
+        threads: [
+          { id: "claude/chat-1", label: "买机票 对话", time: "1h", scope: "chat" },
+          { id: "claude/work-1", label: "买机票 工作", time: "2h", scope: "work" },
+          { id: "claude/old-1", label: "买机票 老", time: "3h" },
+        ],
+      },
+    ];
+    vi.mocked(ipc.searchMessages).mockResolvedValue(
+      page({
+        hits: [
+          contentHit({ sessionId: "s-chat", title: "陈年内容", scope: "chat" }),
+          contentHit({ sessionId: "s-work", title: "工作内容", scope: "work" }),
+          contentHit({ sessionId: "s-old", title: "旧内容" }),
+        ],
+      }),
+    );
+
+    // 对话形态：空查询只列对话会话；工作与老会话（无 scope 按工作算）都藏着。
+    useConversationMode.setState({ mode: "chat" });
+    await render(true, vi.fn(), mixed);
+    expect(options().map((el) => el.textContent)).toEqual(["买机票 对话1hdesktop-cc-gui"]);
+
+    // 内容命中同样按形态筛：工作与老会话的命中不出现。
+    await type("买机票");
+    await act(async () => {
+      vi.advanceTimersByTime(350);
+    });
+    const chatRows = options().map((el) => el.textContent ?? "").join("|");
+    expect(chatRows).toContain("买机票 对话");
+    expect(chatRows).toContain("陈年内容");
+    expect(chatRows).not.toContain("买机票 工作");
+    expect(chatRows).not.toContain("买机票 老");
+    expect(chatRows).not.toContain("工作内容");
+    expect(chatRows).not.toContain("旧内容");
+
+    // 切到工作形态：同一个面板原地翻面，对话会话与其命中同时退场。
+    await act(async () => useConversationMode.setState({ mode: "work" }));
+    const workRows = options().map((el) => el.textContent ?? "").join("|");
+    expect(workRows).toContain("买机票 工作");
+    expect(workRows).toContain("买机票 老");
+    expect(workRows).toContain("工作内容");
+    expect(workRows).toContain("旧内容");
+    expect(workRows).not.toContain("买机票 对话");
+    expect(workRows).not.toContain("陈年内容");
   } finally {
     vi.useRealTimers();
   }

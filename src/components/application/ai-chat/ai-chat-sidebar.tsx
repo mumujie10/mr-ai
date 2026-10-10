@@ -24,24 +24,35 @@ import {
 import { SessionSearchPalette } from "@/components/application/ai-chat/session-search-palette";
 import type { AiChatRepo, AiChatRepoSection, ThreadAction } from "@/components/application/ai-chat/sidebar-types";
 import { cx } from "@/utils/cx";
-import { PillTab, PillTabList } from "@/components/base/tabs/pill-tab";
 import { useConversationMode } from "@/features/chat/conversation-mode";
 
-/** 对话 / 工作 pill switcher. The mode also names new sessions ("scope") and
- *  strips the engine/permission controls off the composer in 对话. */
+/** 对话 / 工作 全局形态切换：整块界面跟着变——会话列表按模式筛（见
+ *  WorkspaceSection 的 threadFilter），右侧栏收起工作专属页签，输入框在
+ *  对话下撤掉引擎/权限菜单；新会话按当前模式打标。样式对齐设置 → 远程访问
+ *  的 lan/wan 分段控件（rg 胶囊底 + 选中白底浮起）。 */
 function ModePillTabs() {
   const { t } = useTranslation();
   const mode = useConversationMode((s) => s.mode);
   const setMode = useConversationMode((s) => s.setMode);
   return (
-    <PillTabList className="self-start">
-      <PillTab isSelected={mode === "chat"} onSelect={() => setMode("chat")}>
-        {t("chat.modeChat")}
-      </PillTab>
-      <PillTab isSelected={mode === "work"} onSelect={() => setMode("work")}>
-        {t("chat.modeWork")}
-      </PillTab>
-    </PillTabList>
+    <div className="flex w-fit items-center gap-1 self-start rounded-full bg-background-tertiary-default p-1">
+      {(["chat", "work"] as const).map((id) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={mode === id}
+          onClick={() => setMode(id)}
+          className={cx(
+            "cursor-pointer rounded-full px-3 py-1 text-body-2-medium transition-colors",
+            mode === id
+              ? "bg-background-primary-default text-text-primary shadow-sm"
+              : "text-text-secondary hover:text-text-primary",
+          )}
+        >
+          {t(id === "chat" ? "chat.modeChat" : "chat.modeWork")}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -144,6 +155,8 @@ export function AiChatSidebar({
   const { isRepoExpanded, toggleRepoExpanded, collapseAllRepos, expandAllRepos } =
     useExpandedWorkspaces(allRepos, activeThreadId);
   const { viewMode, changeViewMode } = useWorkspaceViewMode();
+  // 模式即列表筛选：切「对话」只留对话会话，切「工作」只留工作会话。
+  const threadFilter = useConversationMode((s) => s.mode);
   // ⑥ 两颗标题按钮的状态：全部收起后按钮变成"全部展开"。列表视图里分组根本
   // 不渲染，批量收起只看行展开。空侧栏两颗都无害。
   const everyGroupCollapsed =
@@ -237,6 +250,7 @@ export function AiChatSidebar({
             onExpandAll={expandAllWorkspaces}
             viewMode={viewMode}
             onViewModeChange={changeViewMode}
+            threadFilter={threadFilter}
             isRepoExpanded={isRepoExpanded}
             onToggleRepo={toggleRepoExpanded}
             activeThreadId={activeThreadId}

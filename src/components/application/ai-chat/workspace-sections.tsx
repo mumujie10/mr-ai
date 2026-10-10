@@ -27,7 +27,8 @@ import {
 import { isWeb } from "@/lib/platform";
 import { Input } from "@/components/base/input/input";
 import { RepoItem } from "@/components/application/ai-chat/repo-tree";
-import type { AiChatRepo, AiChatRepoSection, ThreadAction } from "@/components/application/ai-chat/sidebar-types";
+import type { AiChatRepo, AiChatRepoSection, AiChatThread, ThreadAction } from "@/components/application/ai-chat/sidebar-types";
+import { inConversationMode } from "@/components/application/ai-chat/thread-scope";
 import { cx } from "@/utils/cx";
 
 /** Drop-target container chrome: the drag layer marks the hovered section
@@ -189,7 +190,8 @@ export function ArchivedSection({
 /** Workspaces section: header with the add button + the sortable repo tree.
  *  With workspace groups configured, repos render under collapsible group
  *  headers (工作区二级分类); otherwise the flat list renders unchanged. */
-/** ⑥ 视图切换：分组 / 列表。筛选（对话/工作）在会话标识落地后加进同一张卡。 */
+/** ⑥ 视图切换：分组 / 列表。会话行的对话/工作筛选不在此处——它跟随左侧
+ *  顶部的模式胶囊（切模式即切列表），popover 只留视图形态。 */
 function ViewModePopover({
   viewMode,
   onChange,
@@ -259,6 +261,7 @@ export function WorkspaceSection({
   onExpandAll,
   viewMode = "grouped",
   onViewModeChange,
+  threadFilter,
   creatingGroup = false,
   onCreateGroup,
   onCreateGroupCancel,
@@ -295,6 +298,9 @@ export function WorkspaceSection({
   /** ⑥ 视图：分组（默认，尊重分组与折叠）或列表（拍平全部仓库行）。 */
   viewMode?: WorkspaceViewMode;
   onViewModeChange?: (mode: WorkspaceViewMode) => void;
+  /** 会话行筛选 = 当前模式：列表只显示与侧栏顶部胶囊同模式的会话
+   *  （未打标的老会话算工作——拆分前只有工作形态，草稿跟随当前模式）。 */
+  threadFilter: "chat" | "work";
   /** Blank-area menu「新建分组」is pending: render the inline name composer
    *  at the end of the section. */
   creatingGroup?: boolean;
@@ -306,10 +312,23 @@ export function WorkspaceSection({
   const { t } = useTranslation();
   const hasGroups = Boolean(sections?.some((section) => section.id !== null));
 
-  const renderRepoList = (repos: AiChatRepo[], sectionId: string | null) =>
-    repos.length > 0 && (
+  // 模式即筛选：只留与当前模式同模式的会话行（未打标的老会话归「工作」，
+  // 未发送的草稿跟随当前模式）。仓库行与 worktree 行不因筛空而消失——空列表
+  // 的行是新建会话/管理该工作区的入口。
+  const visibleRepos = (list: AiChatRepo[]): AiChatRepo[] => {
+    const match = (th: AiChatThread) => th.isDraft || inConversationMode(th.scope, threadFilter);
+    return list.map((repo) => ({
+      ...repo,
+      worktrees: repo.worktrees?.map((wt) => ({ ...wt, threads: wt.threads.filter(match) })),
+      threads: repo.threads.filter(match),
+    }));
+  };
+
+  const renderRepoList = (repos: AiChatRepo[], sectionId: string | null) => {
+    const list = visibleRepos(repos);
+    return list.length > 0 && (
       <WorkspaceSortableList
-        items={repos}
+        items={list}
         sectionId={sectionId}
         onDropToSection={onDropWorkspaceToSection}
         onDragActiveChange={onWorkspaceDragActiveChange}
@@ -355,6 +374,7 @@ export function WorkspaceSection({
         )}
       />
     );
+  };
 
   return (
     <div className="flex w-full flex-col gap-2.5">

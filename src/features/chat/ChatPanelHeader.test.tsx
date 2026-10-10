@@ -35,6 +35,7 @@ import "@/lib/i18n";
 import { panelTabRegistry } from "@ccgui/plugin-sdk";
 import { usePluginsStore } from "@/features/plugins/manager/usePlugins";
 import { ChatPanelHeader } from "./ChatPanelHeader";
+import { useConversationMode } from "./conversation-mode";
 // Side-effect import: registers the builtin files/changes tabs.
 import "./panel-tabs";
 
@@ -97,6 +98,9 @@ describe("ChatPanelHeader plugin pills", () => {
   beforeEach(() => {
     pluginReadArtwork.mockClear();
     onPanelTabChange.mockClear();
+    // The mode store outlives per-file localStorage; the fixtures below are
+    // work-mode tabs unless a test flips it.
+    useConversationMode.setState({ mode: "work" });
     usePluginsStore.setState({ installed: [] });
     disposers = [];
     container = document.createElement("div");
@@ -152,6 +156,25 @@ describe("ChatPanelHeader plugin pills", () => {
       .map((button) => button.textContent ?? "")
       .filter((text) => ["任务", "文件", "变更"].includes(text));
     expect(labels).toEqual(["任务", "文件", "变更"]);
+  });
+
+  it("对话模式撤下任务页签，插件页签不受影响", () => {
+    // 任务面板是工作形态的监控面（子代理/任务清单），对话形态整条撤下；
+    // 插件页签是插件自己的入口，不跟着形态走。
+    disposers.push(
+      panelTabRegistry.register({
+        id: "plugin:kimi-lb",
+        label: () => "Kimi LB",
+        component: () => null,
+      }),
+    );
+    act(() => {
+      useConversationMode.setState({ mode: "chat" });
+      root.render(header());
+    });
+    expect(pillByText("任务")).toBeNull();
+    expect(pillByText("文件")).not.toBeNull();
+    expect(pill("Kimi LB")).not.toBeNull();
   });
 
   it("renders a plugin pill icon-only with the label as title/accessible name", () => {

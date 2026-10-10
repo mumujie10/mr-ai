@@ -66,6 +66,9 @@ pub struct MessageSearchHit {
     pub custom_title: Option<String>,
     pub updated_at: Option<i64>,
     pub role: String,
+    /// Session birth scope (session_scopes); None = pre-split session, which
+    /// the UI counts as "work". The palette filters both lanes by it.
+    pub scope: Option<String>,
     pub snippet: Vec<SnippetPart>,
 }
 
@@ -545,6 +548,7 @@ struct RawHit {
     title: String,
     custom_title: Option<String>,
     updated_at: Option<i64>,
+    scope: Option<String>,
 }
 
 fn fts_search(
@@ -568,11 +572,13 @@ fn fts_search(
          )
          SELECT b.engine, b.session_id, b.role,
                 snippet(messages_fts, 0, char(1), char(2), '…', 24),
-                s.workspace_path, w.name, s.title, s.custom_title, s.updated_at
+                s.workspace_path, w.name, s.title, s.custom_title, s.updated_at,
+                sc.scope
          FROM best b
          JOIN messages_fts ON messages_fts.rowid = b.id AND messages_fts MATCH ?1
          JOIN sessions s ON s.engine = b.engine AND s.session_id = b.session_id
          LEFT JOIN workspaces w ON w.path = s.workspace_path
+         LEFT JOIN session_scopes sc ON sc.engine = b.engine AND sc.session_id = b.session_id
          WHERE b.rn = 1
          ORDER BY b.rank ASC, s.updated_at DESC, b.engine, b.session_id
          LIMIT ?2 OFFSET ?3"
@@ -594,6 +600,7 @@ fn fts_search(
                     title: r.get(6)?,
                     custom_title: r.get(7)?,
                     updated_at: r.get(8)?,
+                    scope: r.get(9)?,
                 })
             },
         )
@@ -615,7 +622,8 @@ fn like_search(
         .join(" AND ");
     let sql = format!(
         "SELECT m.engine, m.session_id, m.role, m.text,
-                s.workspace_path, w.name, s.title, s.custom_title, s.updated_at
+                s.workspace_path, w.name, s.title, s.custom_title, s.updated_at,
+                sc.scope
          FROM (
              SELECT m2.*, ROW_NUMBER() OVER (
                  PARTITION BY m2.engine, m2.session_id ORDER BY m2.seq
@@ -625,6 +633,7 @@ fn like_search(
          ) m
          JOIN sessions s ON s.engine = m.engine AND s.session_id = m.session_id
          LEFT JOIN workspaces w ON w.path = s.workspace_path
+         LEFT JOIN session_scopes sc ON sc.engine = m.engine AND sc.session_id = m.session_id
          WHERE m.rn = 1
          ORDER BY s.updated_at DESC, m.engine, m.session_id
          LIMIT ?{} OFFSET ?{}",
@@ -650,6 +659,7 @@ fn like_search(
                 title: r.get(6)?,
                 custom_title: r.get(7)?,
                 updated_at: r.get(8)?,
+                scope: r.get(9)?,
             })
         })
         .map_err(|e| e.to_string())?
@@ -711,6 +721,7 @@ pub fn search(
                 custom_title: hit.custom_title,
                 updated_at: hit.updated_at,
                 role: hit.role,
+                scope: hit.scope,
                 snippet,
             }
         })
@@ -849,6 +860,43 @@ mod tests {
             ["new", "old"],
             "one row per session, newest first on a tie"
         );
+    }
+
+    #[test]
+    fn hits_carry_the_session_birth_scope() {
+        let scratch = Scratch::new();
+        let db = crate::db::Db::open_at(&scratch.0.join("app.db")).unwrap();
+        insert_session(&db, "chat-born", 200);
+        insert_message(&db, "chat-born", 1, "user", "打了标签的搜索内容");
+        insert_session(&db, "legacy", 100);
+        insert_message(&db, "legacy", 1, "user", "打了标签的旧内容");
+        db.remember_session_scope("claude", "chat-born", "chat", 1)
+            .unwrap();
+
+        // FTS path (3+ char tokens): each hit labeled with its session's
+        // birth scope; a pre-split session carries None. (Row order is bm25
+        // this lane, so assert per session, not by position.)
+        let page = search(&db, "打了标签", None, None).unwrap();
+        let scopes: Vec<(&str, Option<&str>)> = page
+            .hits
+            .iter()
+            .map(|h| (h.session_id.as_str(), h.scope.as_deref()))
+            .collect();
+        assert_eq!(scopes.len(), 2);
+        assert!(scopes.contains(&("chat-born", Some("chat"))));
+        assert!(scopes.contains(&("legacy", None)));
+
+        // LIKE path (short tokens) must label identically — the palette
+        // filters both lanes by this field.
+        let page = search(&db, "标签", None, None).unwrap();
+        let scopes: Vec<(&str, Option<&str>)> = page
+            .hits
+            .iter()
+            .map(|h| (h.session_id.as_str(), h.scope.as_deref()))
+            .collect();
+        assert_eq!(scopes.len(), 2);
+        assert!(scopes.contains(&("chat-born", Some("chat"))));
+        assert!(scopes.contains(&("legacy", None)));
     }
 
     #[test]

@@ -5,8 +5,10 @@ import { useTranslation } from "react-i18next";
 import Search from "lucide-react/dist/esm/icons/search";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import type { AiChatRepo } from "@/components/application/ai-chat/sidebar-types";
+import { inConversationMode } from "@/components/application/ai-chat/thread-scope";
 import { cx } from "@/utils/cx";
 import { useBrowserOcclusion } from "@/features/browser/occlusion";
+import { useConversationMode } from "@/features/chat/conversation-mode";
 import { ipc, type MessageSearchHit } from "@/lib/ipc";
 import { relativeTime } from "@/features/chat/time";
 import { formatSearchDuration } from "./session-search-format";
@@ -203,7 +205,10 @@ function PaletteHeader({
  * query's own wall time and the indexed-message corpus it ran against.
  * The 标题 / 内容 chips are inclusive lane filters — both pressed shows both
  * lanes, un-pressing one narrows to the other. Empty query lists the most
- * recent sessions in sidebar order. Enter/click jumps to the session; Esc
+ * recent sessions in sidebar order. Both lanes follow the composer mode
+ * (对话 / 工作): the palette is the sidebar's jumper, so it lists exactly the
+ * sessions the sidebar would — switching modes must not leave the other
+ * mode's sessions reachable here. Enter/click jumps to the session; Esc
  * or a backdrop press closes.
  *
  * Dialog mechanics (native <dialog>, backdrop press-to-close, window-level
@@ -223,6 +228,7 @@ export function SessionSearchPalette({
 }) {
   const { t } = useTranslation();
   useBrowserOcclusion(open);
+  const mode = useConversationMode((s) => s.mode);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   // Lane filters (标题 / 内容). Both on is the default: title matches first,
@@ -246,6 +252,9 @@ export function SessionSearchPalette({
         : false;
       for (const thread of repo.threads) {
         if (!thread.id) continue;
+        // 面板跟形态走：这样「空查询 = 侧栏顺序的最近会话」在两种形态下
+        // 都与侧栏列表一致（草稿跟随当前形态）。
+        if (!thread.isDraft && !inConversationMode(thread.scope, mode)) continue;
         if (
           normalized &&
           !repoHit &&
@@ -264,7 +273,7 @@ export function SessionSearchPalette({
       }
     }
     return out;
-  }, [repos, query]);
+  }, [repos, query, mode]);
   // The chips only exist once the content lane can be live (≥2 chars); under
   // that the stored filter is not applied, so a hidden chip can never blank
   // the list out from under the user.
@@ -276,11 +285,13 @@ export function SessionSearchPalette({
   // while the title rows are actually on screen.
   const content = useMemo(() => {
     if (!showContent) return EMPTY_HITS;
-    if (contentHits.length === 0) return contentHits;
-    if (!showTitleRows) return contentHits;
+    if (contentHits.length === 0) return EMPTY_HITS;
+    // 内容命中同样按会话出生形态筛：形态是整块界面的家，两个 tab 都在其中。
+    const scoped = contentHits.filter((hit) => inConversationMode(hit.scope, mode));
+    if (!showTitleRows) return scoped;
     const titled = new Set(titleRows.map((m) => m.id));
-    return contentHits.filter((h) => !titled.has(`${h.engine}/${h.sessionId}`));
-  }, [showContent, showTitleRows, titleRows, contentHits]);
+    return scoped.filter((h) => !titled.has(`${h.engine}/${h.sessionId}`));
+  }, [showContent, showTitleRows, titleRows, contentHits, mode]);
   const rowCount = titleRows.length + content.length;
 
   // Inclusive filter toggles: un-pressing the last pressed chip flips both

@@ -30,6 +30,7 @@ import { ChatCenterPane } from "./ChatCenterPane";
 import { SplitDragProvider } from "./split/drag";
 import { useComposerBridge } from "./split/composer-bridge";
 import { resolvePanelLayout } from "./panel-layout";
+import { useConversationMode } from "./conversation-mode";
 // Side-effect import: registers the builtin files/changes tabs into
 // panelTabRegistry (plan §4.2 #4).
 import "./panel-tabs";
@@ -100,8 +101,10 @@ export default function ChatPage() {
   }, [narrowPanel, togglePanelCollapsed]);
   // 侧栏头部的任务入口：选中 tasks 页签并展开右侧栏。窄窗口下"展开"是本地状态
   // (narrowPanelExpanded)，所以两种折叠态都得走 handleTogglePanel 那同一条判断，
-  // 只清 panelCollapsed 在窄窗口里点了没反应。
+  // 只清 panelCollapsed 在窄窗口里点了没反应。任务页签只在工作形态存在（对话模式下
+  // 整个撤下），所以入口顺带把模式切到工作，点了就有东西可看。
   const openTasksPanel = useCallback(() => {
+    useConversationMode.getState().setMode("work");
     setPanelTab("tasks");
     if (panelCollapsedEffective) handleTogglePanel();
   }, [setPanelTab, panelCollapsedEffective, handleTogglePanel]);

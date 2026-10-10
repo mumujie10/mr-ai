@@ -16,6 +16,10 @@ export interface AiChatThread {
   unseen?: boolean;
   /** Pending tab: first message not sent, so pin/rename/copy-id do not apply. */
   isDraft?: boolean;
+  /** Composer mode the session was born in ("chat" | "work"), from
+   *  session_scopes. Absent = created before the split (the app was
+   *  work-only then) → listed under 工作. */
+  scope?: string | null;
 }
 
 export interface AiChatRepo {
