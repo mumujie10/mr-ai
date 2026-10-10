@@ -664,3 +664,22 @@ it("工作区标题带一条悬停说明：它决定 Agent 在哪里动手", asy
     node.querySelector('button[aria-label="chat.workspacesHint"]'),
   ).not.toBeNull();
 });
+
+it("新建工作区选的图标与颜色渲染在行首，默认行保持文件夹字形", async () => {
+  await render([
+    { ...repo("a"), icon: "coffee", color: "red", threads: [] },
+    repo("b"),
+  ]);
+  // 行结构：[图标按钮][带 aria-expanded 的行体按钮]。图标按钮里的 svg 带选中色
+  // （内联 style），默认行的 svg 不带——外观是每行自己的数据，不是全局皮肤。
+  const iconColorOf = (label: string) => {
+    const body = [
+      ...node.querySelectorAll<HTMLButtonElement>("button[aria-expanded]"),
+    ].find((button) => button.textContent?.includes(label));
+    if (!body) throw new Error(`no row for ${label}`);
+    const svg = body.previousElementSibling?.querySelector<SVGElement>("svg");
+    return svg?.style.color ?? "";
+  };
+  expect(iconColorOf("a")).toBe("rgb(242, 85, 85)");
+  expect(iconColorOf("b")).toBe("");
+});

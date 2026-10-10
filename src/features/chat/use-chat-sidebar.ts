@@ -9,7 +9,7 @@ import type { AiChatRepo, AiChatRepoSection, ThreadAction } from "@/components/a
 import { ARCHIVED_SECTION_ID } from "@/components/application/ai-chat/use-sidebar-state";
 import { copyText } from "@/lib/clipboard";
 import { worktreeMetaOf, type SessionMeta, type Workspace } from "@/lib/ipc";
-import { isWeb, pickDirectory } from "@/lib/platform";
+import { isWeb } from "@/lib/platform";
 import { recentPointerAnchor } from "@/lib/pointer-anchor";
 import { parseDraftSessionKey, sessionKey, useChatStore, sortedWorkspaceGroups } from "./store";
 import { dismissCenterSurfaces } from "./center-surfaces";
@@ -51,12 +51,11 @@ export function useChatSidebar({
     })),
   );
   // Store actions are stable references — one shallow subscription for all.
-  const { selectSession, startNewChat, addWorkspace, reorderWorkspaces, pinSession, archiveSession, setWorkspaceArchived, assignWorkspaceGroup, createWorkspaceGroup, focusTab, closeTab } =
+  const { selectSession, startNewChat, reorderWorkspaces, pinSession, archiveSession, setWorkspaceArchived, assignWorkspaceGroup, createWorkspaceGroup, focusTab, closeTab } =
     useChatStore(
       useShallow((s) => ({
         selectSession: s.selectSession,
         startNewChat: s.startNewChat,
-        addWorkspace: s.addWorkspace,
         reorderWorkspaces: s.reorderWorkspaces,
         pinSession: s.pinSession,
         archiveSession: s.archiveSession,
@@ -199,6 +198,8 @@ export function useChatSidebar({
         id: w.id,
         label: alias || w.name,
         originalLabel: alias ? w.name : undefined,
+        icon: typeof w.meta?.icon === "string" ? w.meta.icon : undefined,
+        color: typeof w.meta?.color === "string" ? w.meta.color : undefined,
         threads: [],
       });
     }
@@ -208,12 +209,10 @@ export function useChatSidebar({
   const handleAddWorkspace = useCallback(() => {
     // 移动端/网页访问模式没有目录选择器，侧栏也不渲染添加入口。
     if (isWeb) return;
-    void pickDirectory(t("chat.addWorkspace"))
-      .then((path) => {
-        if (path) void addWorkspace(path);
-      })
-      .catch(() => {});
-  }, [t, addWorkspace]);
+    // 先弹框：源文件夹、名称、图标、颜色在同一个对话框里定完再创建
+    // （目录选择器由对话框调，这里只负责打开它）。
+    setDialog({ kind: "workspaceCreate" });
+  }, [setDialog]);
 
   const handleThreadSelect = useCallback(
     (id: string) => {

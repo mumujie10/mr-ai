@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import FolderOpen from "lucide-react/dist/esm/icons/folder-open";
 import FolderSymlink from "lucide-react/dist/esm/icons/folder-symlink";
+import { workspaceColorById, workspaceIconById } from "./workspace-appearance";
 import GitBranch from "lucide-react/dist/esm/icons/git-branch";
 import Menu from "lucide-react/dist/esm/icons/menu";
 import Pencil from "lucide-react/dist/esm/icons/pencil";
@@ -276,7 +277,10 @@ function RepoHeaderRow({
   onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   const { t } = useTranslation();
-  const Icon = expanded ? FolderOpen : FolderSymlink;
+  // 新建工作区选的外观优先：id 存在 workspace.meta 上，未选过（undefined /
+  // 不认识的 id）就保持系统文件夹字形，worktree 子行同理不受影响。
+  const Icon = repo.icon ? workspaceIconById(repo.icon) : expanded ? FolderOpen : FolderSymlink;
+  const iconColor = repo.color ? workspaceColorById(repo.color) : undefined;
   const collapseLabel = expanded ? t("chat.collapseWorkspace") : t("chat.expandWorkspace");
   return (
     <div
@@ -319,7 +323,10 @@ function RepoHeaderRow({
           )}
           aria-hidden
         >
-          <Icon className="size-4 text-foreground-icon-secondary" />
+          <Icon
+            className="size-4 text-foreground-icon-secondary"
+            style={iconColor ? { color: iconColor } : undefined}
+          />
         </span>
         {dragHandleProps && (
           <span

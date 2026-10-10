@@ -3,6 +3,7 @@ import { useShallow } from "zustand/react/shallow";
 import { ConfirmDialog, ConfirmPopover, PromptDialog } from "@/components/dialogs";
 import { fileName, useFilesStore } from "@/features/files/store";
 import { WorktreeCreateDialog } from "@/features/worktree/WorktreeCreateDialog";
+import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
 import { DeleteWorktreeDialog } from "@/features/worktree/DeleteWorktreeDialog";
 import { useTerminalStore } from "@/features/terminal/store";
 import { worktreeMetaOf, type SessionMeta } from "@/lib/ipc";
@@ -23,6 +24,9 @@ export type ChatPageDialog =
   | { kind: "deleteWorktree"; workspaceId: string }
   /** 归档带 worktree 子项的父工作区时的级联确认。 */
   | { kind: "archiveWorkspace"; workspaceId: string }
+  /** 新建工作区弹框：源文件夹 / 名称 / 图标 / 颜色，创建入口在侧栏 ＋ 与
+   *  首次使用（工作 tab）时自动打开。 */
+  | { kind: "workspaceCreate" }
   | { kind: "closeFile"; path: string };
 
 /** Session rename/delete, dirty-file close, and workspace removal
@@ -35,10 +39,11 @@ export function ChatPageDialogs({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const { renameSession, removeWorkspace, setWorkspaceAlias, setWorkspaceArchived } = useChatStore(
+  const { renameSession, removeWorkspace, setWorkspaceAlias, setWorkspaceArchived, addWorkspace } = useChatStore(
     useShallow((s) => ({
       renameSession: s.renameSession,
       removeWorkspace: s.removeWorkspace,
+      addWorkspace: s.addWorkspace,
       setWorkspaceAlias: s.setWorkspaceAlias,
       setWorkspaceArchived: s.setWorkspaceArchived,
     })),
@@ -50,6 +55,27 @@ export function ChatPageDialogs({
 
   return (
     <>
+      {dialog?.kind === "workspaceCreate" && (
+        <CreateWorkspaceDialog
+          onClose={onClose}
+          onCreate={async (input) => {
+            // meta 是工作区已有的自由字段：外观就存这里，不加表。
+            const created = await addWorkspace(input.path, {
+              icon: input.icon,
+              color: input.color,
+            });
+            // addWorkspace 失败走 actionError 并返回 undefined：弹框留在原地，
+            // 不假装创建成功。
+            if (!created) return;
+            onClose();
+            // 名称走别名机制：等于文件夹名时不落库（store 的既有规则）。
+            const name = input.name.trim();
+            if (name && name !== created.name) {
+              await setWorkspaceAlias(created.id, name);
+            }
+          }}
+        />
+      )}
       {dialog?.kind === "rename" && (
         <PromptDialog
           title={t("chat.renameSession")}

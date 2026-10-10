@@ -46,11 +46,16 @@ export function createWorkspaceActions(
 
     addWorkspace: async (path, meta) => {
       try {
-        await ipc.addWorkspace(path, meta);
+        // The created row (id included) is what lets the create dialog set the
+        // user's sidebar name as an alias right after; undefined on failure —
+        // the actionError path still carries the message.
+        const created = await ipc.addWorkspace(path, meta);
         await get().refreshWorkspaces();
         set({ actionError: null });
+        return created;
       } catch (error) {
         set({ actionError: errorText(error) });
+        return undefined;
       }
     },
 

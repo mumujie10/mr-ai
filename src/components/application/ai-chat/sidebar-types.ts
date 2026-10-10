@@ -27,6 +27,10 @@ export interface AiChatRepo {
   /** Original workspace folder name when `label` is a user-set alias
    *  (surfaced as the row tooltip). */
   originalLabel?: string;
+  /** Chosen appearance from 新建工作区 (stored on the workspace's `meta`):
+   *  the icon id replaces the folder glyph and the color tints it. */
+  icon?: string;
+  color?: string;
   /** Recent chats listed when the repo is expanded. */
   threads: AiChatThread[];
   /** Max threads listed before collapsing behind a "show more" row. */
