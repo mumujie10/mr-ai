@@ -182,7 +182,8 @@ function Test() {
   return (
     <>
       {/* Anchored to the right: that is where the pill lives in the composer,
-          and the popover + model flyout open leftward from there. */}
+          and the popover (engine list + model flyout side by side) is
+          right-aligned to it, growing leftward. */}
       <div data-trigger style={{ position: "fixed", bottom: 30, right: 40 }}>
         <CliMenu
           options={[

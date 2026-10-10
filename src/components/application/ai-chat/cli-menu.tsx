@@ -11,7 +11,10 @@ import {
   DialogTrigger as AriaDialogTrigger,
   Popover as AriaPopover,
 } from "react-aria-components";
-import { menuPopoverSurface } from "@/components/base/dropdown/menu-styles";
+import {
+  MENU_POPOVER_MOTION,
+  menuPopoverSurface,
+} from "@/components/base/dropdown/menu-styles";
 import { ModalShell } from "@/components/dialogs";
 import { CLI_DISPLAY_NAMES } from "@/components/foundations/icons/engine-brands";
 import { EngineIcon } from "@/components/foundations/icons/engine-icon";
@@ -37,14 +40,24 @@ export type { EffortLevel } from "./effort-levels";
  *   (search field over a "Models" radio group over the effort slider,
  *   Board UI node 4035:6925). */
 
-/** CLI picker panel: shadcn-style menu (reference: desktop-cc-gui's
- *  ModelSelect) — 8px radius, 4px padding, hairline separators between rows,
- *  no header label. Distinct from the other ai_chat popovers above. */
-const CLI_POPOVER_CLASSES = menuPopoverSurface({
-  width: "w-64",
+/** CLI picker: two cards side by side — the engine list and, to its right,
+ *  the hovered engine's model flyout. The overlay itself is a transparent,
+ *  bottom-aligned row so the submenu reads left-to-right; it stays
+ *  right-aligned on the pill, so opening a flyout grows the row to the LEFT
+ *  instead of pushing the panel out of the window.
+ *  The list is deliberately narrow: a row is icon + CLI name + status dot +
+ *  chevron, and 208px already fits the longest name. */
+const CLI_POPOVER_CLASSES = [
+  "flex max-w-[calc(100vw-32px)] items-end gap-2 origin-bottom-right",
+  MENU_POPOVER_MOTION,
+].join(" ");
+
+const CLI_LIST_CARD_CLASSES = menuPopoverSurface({
+  width: "w-52 shrink-0",
   origin: "origin-bottom-right",
   radius: "rounded-lg",
   padding: "p-1",
+  motion: false,
 });
 
 /* ------------------------------------------------------------- engine picker */
@@ -249,50 +262,25 @@ function CliMenuTrigger({
   );
 }
 
-/** Popover body: the hairline-separated engine rows and, on desktop, the
- *  hovered engine's model flyout floating to the left of the list (the pill
- *  sits on the composer's right). Row hover opens the flyout after the
- *  parent's hover-intent delay; keyboard focus opens it immediately. */
+/** The engine list card: hairline-separated rows only. The model flyout is a
+ *  SIBLING of this card inside the popover row (see `CliMenu`), so the two
+ *  cards sit side by side instead of one floating over the other. Row hover
+ *  opens the flyout after the parent's hover-intent delay; keyboard focus
+ *  opens it immediately. */
 function EngineMenuBody({
   options,
   value,
   openEngine,
-  modelsByEngine,
-  models,
-  efforts,
-  effortLevels,
-  query,
-  onQueryChange,
   isMobile,
   onSelectEngine,
   onHoverEngine,
   onHoverEngineEnd,
   onFocusEngine,
-  onPickModel,
-  onEffortChange,
-  channelsByEngine,
-  selectedChannels,
-  onPickChannel,
-  ompServiceTier,
-  onOmpServiceTierChange,
-  codexServiceTier,
-  onCodexServiceTierChange,
-  onRefreshModels,
-  loadingEngines,
 }: {
   options: MenuOption[];
   value: string;
   /** Engine whose model flyout is open, null when closed. */
   openEngine: string | null;
-  modelsByEngine: Record<string, ModelOption[]>;
-  models: Record<string, string>;
-  efforts: Record<string, EffortLevel>;
-  /** Reasoning levels each engine reported for its current model, keyed by
-   *  engine id; passed to the panel so the slider shows only stops that
-   *  actually exist. Missing = not reported yet. */
-  effortLevels?: Record<string, string[] | null>;
-  query: string;
-  onQueryChange: (value: string) => void;
   isMobile: boolean;
   onSelectEngine: (option: MenuOption) => void;
   /** Row hover: pre-open this engine's model flyout. */
@@ -301,73 +289,30 @@ function EngineMenuBody({
   onHoverEngineEnd: () => void;
   /** Row keyboard focus: open this engine's flyout immediately. */
   onFocusEngine: (option: MenuOption) => void;
-  onPickModel: (engine: string, id: string) => void;
-  onEffortChange: (engine: string, level: EffortLevel) => void;
-  channelsByEngine?: Record<string, ChannelOption[]>;
-  selectedChannels?: Record<string, string>;
-  onPickChannel?: (engine: string, id: string) => void;
-  ompServiceTier: OmpServiceTier;
-  onOmpServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
-  codexServiceTier: OmpServiceTier;
-  onCodexServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
-  onRefreshModels?: () => void | Promise<void>;
-  /** Engine ids whose catalog probe has not returned yet. */
-  loadingEngines?: readonly string[];
 }) {
-  const flyoutOption = options.find((o) => o.id === openEngine);
   return (
     <div className="flex w-full flex-col">
-      <div className="relative">
-        <div className="flex w-full flex-col">
-          {options.map((option, index) => (
-            <Fragment key={option.id}>
-              {index > 0 && (
-                <div
-                  aria-hidden
-                  className="-mx-1 my-1 border-t border-separator-border"
-                />
-              )}
-              {/* Not `disabled`: that attribute would swallow the click that
-                  switches the panel. */}
-              <EngineRow
-                option={option}
-                selected={option.id === value}
-                flyoutOpen={option.id === openEngine}
-                onSelect={() => onSelectEngine(option)}
-                onHover={isMobile ? undefined : () => onHoverEngine(option)}
-                onHoverEnd={isMobile ? undefined : onHoverEngineEnd}
-                onFocusEngine={isMobile ? undefined : () => onFocusEngine(option)}
-              />
-            </Fragment>
-          ))}
-        </div>
-
-        {!isMobile && flyoutOption && (
-          <EngineFlyout
-            // Remount per engine: the panel's channel filter is local state
-            // and must not leak into the next engine's flyout.
-            key={flyoutOption.id}
-            option={flyoutOption}
-            models={modelsByEngine[flyoutOption.id] ?? []}
-            selectedModelId={models[flyoutOption.id] ?? ""}
-            query={query}
-            onQueryChange={onQueryChange}
-            effort={efforts[flyoutOption.id] ?? "medium"}
-            effortLevels={effortLevels}
-            onPickModel={onPickModel}
-            onEffortChange={onEffortChange}
-            channels={channelsByEngine?.[flyoutOption.id]}
-            selectedChannelId={selectedChannels?.[flyoutOption.id]}
-            onPickChannel={onPickChannel}
-            ompServiceTier={ompServiceTier}
-            onOmpServiceTierChange={onOmpServiceTierChange}
-            codexServiceTier={codexServiceTier}
-            onCodexServiceTierChange={onCodexServiceTierChange}
-            onRefresh={onRefreshModels}
-            loading={loadingEngines?.includes(flyoutOption.id)}
+      {options.map((option, index) => (
+        <Fragment key={option.id}>
+          {index > 0 && (
+            <div
+              aria-hidden
+              className="-mx-1 my-1 border-t border-separator-border"
+            />
+          )}
+          {/* Not `disabled`: that attribute would swallow the click that
+              switches the panel. */}
+          <EngineRow
+            option={option}
+            selected={option.id === value}
+            flyoutOpen={option.id === openEngine}
+            onSelect={() => onSelectEngine(option)}
+            onHover={isMobile ? undefined : () => onHoverEngine(option)}
+            onHoverEnd={isMobile ? undefined : () => onHoverEngineEnd()}
+            onFocusEngine={isMobile ? undefined : () => onFocusEngine(option)}
           />
-        )}
-      </div>
+        </Fragment>
+      ))}
     </div>
   );
 }
@@ -627,7 +572,9 @@ export function CliMenu({
     setOpenEngine(option.id);
   };
 
-
+  // The flyout is a sibling of the list card in the popover row, so the engine
+  // it previews is resolved here rather than inside the list.
+  const flyoutOption = options.find((o) => o.id === openEngine);
 
   return (
     <>
@@ -652,34 +599,48 @@ export function CliMenu({
         offset={8}
         className={CLI_POPOVER_CLASSES}
       >
-        <AriaDialog aria-label={t("chat.cliPicker")} className="outline-none">
-          <EngineMenuBody
-            options={options}
-            value={value}
-            openEngine={openEngine}
-            modelsByEngine={modelsByEngine}
-            models={models}
-            efforts={efforts}
-            effortLevels={effortLevels}
-            query={query}
-            onQueryChange={setQuery}
-            isMobile={isMobile}
-            onSelectEngine={selectEngine}
-            onHoverEngine={hoverEngine}
-            onHoverEngineEnd={clearHoverTimer}
-            onFocusEngine={focusEngine}
-            onPickModel={pickModel}
-            onEffortChange={onEffortChange}
-            channelsByEngine={channelsByEngine}
-            selectedChannels={selectedChannels}
-            onPickChannel={pickChannel}
-            ompServiceTier={ompServiceTier}
-            onOmpServiceTierChange={onOmpServiceTierChange}
-            codexServiceTier={codexServiceTier}
-            onCodexServiceTierChange={onCodexServiceTierChange}
-            onRefreshModels={onRefreshModels}
-            loadingEngines={loadingEngines}
-          />
+        <AriaDialog
+          aria-label={t("chat.cliPicker")}
+          className="flex max-w-[calc(100vw-32px)] items-end gap-2 outline-none"
+        >
+          <div className={CLI_LIST_CARD_CLASSES}>
+            <EngineMenuBody
+              options={options}
+              value={value}
+              openEngine={openEngine}
+              isMobile={isMobile}
+              onSelectEngine={selectEngine}
+              onHoverEngine={hoverEngine}
+              onHoverEngineEnd={clearHoverTimer}
+              onFocusEngine={focusEngine}
+            />
+          </div>
+
+          {!isMobile && flyoutOption && (
+            <EngineFlyout
+              // Remount per engine: the panel's channel filter is local state
+              // and must not leak into the next engine's flyout.
+              key={flyoutOption.id}
+              option={flyoutOption}
+              models={modelsByEngine[flyoutOption.id] ?? []}
+              selectedModelId={models[flyoutOption.id] ?? ""}
+              query={query}
+              onQueryChange={setQuery}
+              effort={efforts[flyoutOption.id] ?? "medium"}
+              effortLevels={effortLevels}
+              onPickModel={pickModel}
+              onEffortChange={onEffortChange}
+              channels={channelsByEngine?.[flyoutOption.id]}
+              selectedChannelId={selectedChannels?.[flyoutOption.id]}
+              onPickChannel={pickChannel}
+              ompServiceTier={ompServiceTier}
+              onOmpServiceTierChange={onOmpServiceTierChange}
+              codexServiceTier={codexServiceTier}
+              onCodexServiceTierChange={onCodexServiceTierChange}
+              onRefresh={onRefreshModels}
+              loading={loadingEngines?.includes(flyoutOption.id)}
+            />
+          )}
         </AriaDialog>
       </AriaPopover>
     </AriaDialogTrigger>

@@ -6,8 +6,10 @@
  * motion, and row treatments from here.
  */
 
-/** Enter/exit motion shared by every popover surface in the app. */
-const MENU_POPOVER_MOTION = [
+/** Enter/exit motion shared by every popover surface in the app. Exported for
+ *  an overlay that is only a positioning box (its cards are styled children),
+ *  which still has to animate like every other menu. */
+export const MENU_POPOVER_MOTION = [
   "transition duration-150 ease-out",
   "data-[entering]:opacity-0 data-[entering]:scale-95 data-[entering]:blur-[2px]",
   "data-[exiting]:opacity-0 data-[exiting]:scale-95 data-[exiting]:blur-[2px]",
@@ -32,6 +34,7 @@ export function menuPopoverSurface({
   origin,
   radius = "rounded-2xl",
   padding = "p-2.5",
+  motion = true,
 }: {
   /** Tailwind width class, e.g. "w-[266px]". */
   width: string;
@@ -39,11 +42,15 @@ export function menuPopoverSurface({
   origin: string;
   radius?: string;
   padding?: string;
+  /** False for a card nested inside an animated overlay: the enter/exit
+   *  attributes land on the overlay element, so the nested card would carry
+   *  selectors that can never match. */
+  motion?: boolean;
 }): string {
   return [
     `${width} max-w-[calc(100vw-32px)] ${origin}`,
     `${radius} border border-border-button-default bg-background-primary-default ${padding} shadow-dropdown`,
-    MENU_POPOVER_MOTION,
+    ...(motion ? [MENU_POPOVER_MOTION] : []),
   ].join(" ");
 }
 

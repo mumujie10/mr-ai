@@ -21,6 +21,27 @@ window.__TAURI_INTERNALS__ = {
   },
 };
 </script>
+<script>
+// Harness-only override: a browser window this narrow (< 768px) is mobile
+// layout, where the model flyout is a modal instead of the second card. Report
+// the mobile query as unmatched so the desktop row — engine list + flyout side
+// by side — can be measured. The viewport is still the real 588px, so the
+// cluster genuinely has to fit in it.
+const realMatchMedia = window.matchMedia.bind(window);
+window.matchMedia = (query) =>
+  query === "(max-width: 767px)"
+    ? {
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener() {},
+        removeEventListener() {},
+        addListener() {},
+        removeListener() {},
+        dispatchEvent: () => false,
+      }
+    : realMatchMedia(query);
+</script>
 <script type="module" src="./composer-footer-repro.tsx"></script>
 </body>
 </html>

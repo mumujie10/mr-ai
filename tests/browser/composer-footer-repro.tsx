@@ -4,8 +4,8 @@
 // pickers exactly as the app does. Probe: after typing, document body text
 // must contain 我的智能体 / 新建智能体 (agent menu) or 新建提示词.
 // The composer's bottom row also carries the real engine pill on the right, so
-// the pill's own width and the left-opening popover / model flyout can be
-// checked against the window edge.
+// the pill's own width and the two-card popover row (engine list, then model
+// flyout to its right) can be checked against the window edge.
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { HashRouter } from "react-router-dom";
