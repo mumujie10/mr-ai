@@ -1,5 +1,5 @@
 import type { Message, TodosPayload } from "@/lib/ipc";
-import type { EngineCommandPayload } from "@/lib/events";
+import type { DelegationSnapshotPayload, EngineCommandPayload } from "@/lib/events";
 import type { ResponseCheckState } from "../response-check";
 
 /**
@@ -86,6 +86,11 @@ export interface SessionState {
    *  engine reports (keep the engine's own default list); `[]` means the model
    *  declares no effort knob at all, so there is nothing to offer. */
   effortLevels?: string[] | null;
+  /** The CLI's delegation tree for this session, newest snapshot wins
+   *  (`mcode/session/delegation_update`). Null until the engine reports one: a
+   *  CLI that never broadcasts keeps the subagent strip on its tool-call
+   *  heuristic instead of claiming there are no subagents. */
+  delegation?: DelegationSnapshotPayload | null;
 }
 
 export const EMPTY_SESSION: SessionState = {

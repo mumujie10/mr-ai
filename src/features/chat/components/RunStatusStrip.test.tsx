@@ -658,3 +658,40 @@ describe("RunStatusStrip", () => {
     expect(document.activeElement?.getAttribute("data-todo-item-key")).toBe("定位页面查询零条数原因");
   });
 });
+
+/** The CLI's own delegation tree (`mcode/session/delegation_update`) beats the
+ *  tool-label heuristic: that one reads a row out of any tool named "task",
+ *  which both invents subagents and misses the ones that matter. */
+describe("RunStatusStrip with a reported delegation tree", () => {
+  it("lists the children the CLI reported, labelled with its own status words", async () => {
+    useChatStore.setState({
+      bySession: {
+        [KEY]: {
+          messages: TURN,
+          streaming: true,
+          delegation: {
+            rootSessionId: "mvs_root",
+            members: [
+              {
+                sessionId: "mvs_a",
+                parentSessionId: "mvs_root",
+                status: "failed",
+                agentName: "explore",
+                task: "数一下 src 下的 .ts",
+                errorMessage: "429 Too Many Requests",
+              },
+            ],
+          },
+        } as never,
+      },
+    });
+    await renderStrip();
+    await click(pill(i18n.t("chat.subagentPill")));
+    const rows = document.querySelector('[data-testid="run-status-subagents"]');
+    expect(rows?.textContent).toContain("数一下 src 下的 .ts");
+    // One child, not the "10 parallel fix agents" the transcript label claims.
+    expect(rows?.textContent).not.toContain("Dispatching");
+    // A failure is not shown as a success: the row carries the CLI's word.
+    expect(rows?.textContent).toContain(i18n.t("chat.delegationStatusFailed"));
+  });
+});

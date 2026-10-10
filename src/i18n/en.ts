@@ -296,6 +296,13 @@ export const en: Messages = {
     messageCollapse: "Collapse message",
     agentStatusRunning: "Running",
     agentStatusDone: "Done",
+    // The CLI's own delegation states (`mcode/session/delegation_update`).
+    delegationStatusQueued: "Queued",
+    delegationStatusRunning: "Running",
+    delegationStatusCompleted: "Completed",
+    delegationStatusFailed: "Failed",
+    delegationStatusStopped: "Stopped",
+    delegationStatusUnknown: "Unknown",
     agentDetailBack: "Back to subagents",
     todoDetailBack: "Back to tasks",
     todoExecutionStatus: "Execution Status",

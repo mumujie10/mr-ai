@@ -6,9 +6,11 @@ import { useGitStore } from "@/features/git/store";
 import type { GitStatus, Message, TodoItem } from "@/lib/ipc";
 import { useChatStore } from "../store";
 import {
+  DELEGATION_STATUS_KEYS,
   deriveAgentTaskSteps,
   deriveEditedFiles,
   deriveTodoList,
+  stepsFromDelegation,
   type AgentTaskStep,
 } from "./agent-task-steps";
 import { createEditLineStatsBuilder, type EditLineStat } from "./edit-line-stats";
@@ -607,7 +609,13 @@ function SubagentRows({ steps }: { steps: AgentTaskStep[] }) {
                       : "font-medium text-blue-500",
                   )}
                 >
-                  {complete ? t("chat.agentStatusDone") : t("chat.agentStatusRunning")}
+                  {step.status
+                    ? t(DELEGATION_STATUS_KEYS[step.status] ?? "", {
+                        defaultValue: step.status,
+                      })
+                    : complete
+                      ? t("chat.agentStatusDone")
+                      : t("chat.agentStatusRunning")}
                 </span>
               </button>
             </li>
@@ -796,13 +804,22 @@ export const RunStatusStrip = memo(function RunStatusStrip({
   const streaming = useChatStore((s) =>
     sessionKey ? (s.bySession[sessionKey]?.streaming ?? false) : false,
   );
+  // The CLI's own delegation tree, when this engine reports one. It beats the
+  // tool-label guess below: that one invents rows for any tool called "task"
+  // and misses children that never show up in this transcript.
+  const delegation = useChatStore((s) =>
+    sessionKey ? (s.bySession[sessionKey]?.delegation ?? null) : null,
+  );
   const allHistory = useMemo(
     () => (subagentHistory.length ? [...subagentHistory, ...messages] : messages),
     [subagentHistory, messages],
   );
   const steps = useMemo(
-    () => deriveAgentTaskSteps(allHistory, streaming, engine),
-    [allHistory, streaming, engine],
+    () =>
+      delegation
+        ? stepsFromDelegation(delegation)
+        : deriveAgentTaskSteps(allHistory, streaming, engine),
+    [delegation, allHistory, streaming, engine],
   );
   const files = useMemo(() => deriveEditedFiles(messages), [messages]);
   const todos = useMemo(() => deriveTodoList(allHistory), [allHistory]);

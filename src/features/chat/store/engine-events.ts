@@ -1,6 +1,11 @@
 import { ipc, type Message, type QuestionSpec, type SessionMeta } from "@/lib/ipc";
 import type { PlanReview, PlanReviewStatus } from "@/lib/ipc";
-import type { EngineCommandPayload, EngineEventPayload } from "@/lib/events";
+import type {
+  DelegationMemberPayload,
+  DelegationSnapshotPayload,
+  EngineCommandPayload,
+  EngineEventPayload,
+} from "@/lib/events";
 import {
   applyPlanDraft,
   applyPlanReview,
@@ -743,6 +748,47 @@ function onAvailableCommands(
   const commands = parseEngineCommands(event.data);
   if (!commands) return;
   patchSession(deps.set, key, { engineCommands: commands });
+}
+
+/** Read one delegation frame. Returns null when it is not a tree this client
+ *  can render (no root id, members not an array), so a bad frame never clears
+ *  a tree that is already on screen. */
+export function parseDelegationSnapshot(data: unknown): DelegationSnapshotPayload | null {
+  if (!data || typeof data !== "object") return null;
+  const raw = data as { rootSessionId?: unknown; members?: unknown };
+  const rootSessionId =
+    typeof raw.rootSessionId === "string" ? raw.rootSessionId.trim() : "";
+  if (!rootSessionId || !Array.isArray(raw.members)) return null;
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : undefined;
+  const members: DelegationMemberPayload[] = [];
+  for (const entry of raw.members) {
+    if (!entry || typeof entry !== "object") continue;
+    const member = entry as Record<string, unknown>;
+    const sessionId = text(member.sessionId);
+    if (!sessionId) continue;
+    members.push({
+      sessionId,
+      parentSessionId: text(member.parentSessionId) ?? "",
+      status: text(member.status) ?? "unknown",
+      agentName: text(member.agentName),
+      task: text(member.task),
+      errorMessage: text(member.errorMessage),
+    });
+  }
+  return { rootSessionId, members };
+}
+
+/** The delegation tree the CLI reported (`mcode/session/delegation_update`).
+ *  Every frame is the whole tree, so this replaces: a child that finished in a
+ *  later frame must not stay `running` because the snapshot was appended. An
+ *  empty member list is a real answer ("this run delegated nothing") and is
+ *  stored; a malformed frame keeps the tree already on screen rather than
+ *  pretending the run has no subagents. */
+function onDelegation(event: ChatEngineEvent, key: string, deps: EngineEventDeps) {
+  const snapshot = parseDelegationSnapshot(event.data);
+  if (!snapshot) return;
+  patchSession(deps.set, key, { delegation: snapshot });
 }
 
 /** The reasoning levels the engine advertises for the model this session
@@ -1980,7 +2026,8 @@ export function handleEngineEvents(
     const isSessionScopedEvent =
       isPlanEvent ||
       event.kind === "available_commands" ||
-      event.kind === "effort_levels";
+      event.kind === "effort_levels" ||
+      event.kind === "delegation";
     // EOF stderr/failure can follow Done, and the turn's final usage report
     // can trail either terminal event. Keep those, but never adopt the run
     // again or drain its queue a second time.
@@ -2164,6 +2211,9 @@ export function handleEngineEvents(
         break;
       case "effort_levels":
         onEffortLevels(event, key, deps);
+        break;
+      case "delegation":
+        onDelegation(event, key, deps);
         break;
       case "launch":
         onLaunch(event, key, deps);

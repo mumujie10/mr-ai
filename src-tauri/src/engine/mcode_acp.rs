@@ -182,7 +182,7 @@ async fn handshake_and_prompt(
 ) -> Result<(), String> {
     acp.routed(
         "initialize",
-        initialize_params(),
+        mcode_initialize_params(),
         RPC_HANDSHAKE_TIMEOUT,
         killed,
         None,
@@ -216,6 +216,16 @@ async fn handshake_and_prompt(
                 core.dispatch_event(state, EngineEvent::Usage(usage));
             }
             handle_session_update(core, state, view, params);
+            None
+        }
+        // The CLI's delegation tree changed (a child started, finished or
+        // failed). It is a private extension notification, not a
+        // `session/update`, so it used to fall through the catch-all below and
+        // be discarded — the app showed nothing while subagents ran.
+        AcpLine::Notification { method, params } if method == "mcode/session/delegation_update" => {
+            if let Some(snapshot) = super::events::delegation_snapshot(params) {
+                core.dispatch_event(state, EngineEvent::Delegation(snapshot));
+            }
             None
         }
         // The permission ask is the user's line to answer: return None so the
@@ -307,6 +317,30 @@ async fn attach_session(
             )
         })?;
     Ok((session_id, session_result))
+}
+
+/// The CLI's own private-extension notification contract version
+/// (`TUI_ACP_EXTENSION_VERSION` in `cli/packages/tui/src/acp/extensions.ts`).
+/// Declaring a different one is not a version negotiation: the CLI compares it
+/// for equality and emits nothing when it does not match.
+const TUI_ACP_EXTENSION_VERSION: u64 = 1;
+
+/// `initialize` params for THIS CLI only. Its private extension notifications
+/// (among them `mcode/session/delegation_update`) are built only when the
+/// client declares support for them — `supportsTuiAcpExtensionNotifications`
+/// returns before those projections otherwise, so without this the app never
+/// receives a delegation tree it could show. The `_meta` key is this runtime's
+/// own, which is why it is not in the shared `initialize_params()` that the
+/// kimi / grok / omp adapters send to unrelated CLIs.
+fn mcode_initialize_params() -> Value {
+    let mut params = initialize_params();
+    params["clientCapabilities"]["_meta"] = json!({
+        "minimax-code/extensions": {
+            "version": TUI_ACP_EXTENSION_VERSION,
+            "notifications": true,
+        }
+    });
+    params
 }
 
 /// `session/new` params for this transport, and the ONLY shape it accepts:
@@ -884,7 +918,7 @@ async fn probe_handshake(
 ) -> Result<Vec<ProbeModel>, String> {
     acp.routed(
         "initialize",
-        initialize_params(),
+        mcode_initialize_params(),
         RPC_HANDSHAKE_TIMEOUT,
         killed,
         None,
@@ -1246,6 +1280,24 @@ mod tests {
         assert_eq!(
             resolve_model_value(&json!({}), "minimax/MiniMax-M3", None),
             None
+        );
+    }
+
+    /// The CLI builds no delegation projections unless the client declares its
+    /// private extension notifications, so the declaration is part of speaking
+    /// to this runtime — and it must stay here rather than in the shared
+    /// `initialize_params()` that kimi / grok / omp send to unrelated CLIs.
+    #[test]
+    fn initialize_declares_the_extension_notifications() {
+        let meta = mcode_initialize_params()["clientCapabilities"]["_meta"].clone();
+        let extensions = &meta["minimax-code/extensions"];
+        assert_eq!(extensions["version"], TUI_ACP_EXTENSION_VERSION);
+        assert_eq!(extensions["notifications"], json!(true));
+        assert!(
+            initialize_params()["clientCapabilities"]
+                .get("_meta")
+                .is_none(),
+            "the shared params must not carry this CLI's key"
         );
     }
 

@@ -281,6 +281,13 @@ export const zh = {
     messageCollapse: "收起消息",
     agentStatusRunning: "运行中",
     agentStatusDone: "已完成",
+    // The CLI's own delegation states (`mcode/session/delegation_update`).
+    delegationStatusQueued: "排队中",
+    delegationStatusRunning: "运行中",
+    delegationStatusCompleted: "已完成",
+    delegationStatusFailed: "失败",
+    delegationStatusStopped: "已停止",
+    delegationStatusUnknown: "状态未知",
     agentDetailBack: "返回子代理列表",
     todoDetailBack: "返回任务列表",
     todoExecutionStatus: "执行情况",

@@ -25,6 +25,7 @@ export interface EngineEventPayload {
     | "effort"
     | "effort_levels"
     | "available_commands"
+    | "delegation"
     | "launch"
     | "served";
   data: unknown;
@@ -47,6 +48,27 @@ export interface EngineCommandPayload {
   name: string;
   description?: string;
   argumentHint?: string;
+}
+
+/** One delegated child session, as the CLI's delegation snapshot reports it.
+ *  `status` is the runtime's own word (`queued` / `running` / `completed` /
+ *  `failed` / `stopped` / `unknown`); anything a fork adds stays as text. */
+export interface DelegationMemberPayload {
+  sessionId: string;
+  parentSessionId: string;
+  status: string;
+  agentName?: string;
+  /** The child's title — what it was asked to do. */
+  task?: string;
+  errorMessage?: string;
+}
+
+/** The whole delegation tree of one root session
+ *  (`mcode/session/delegation_update`). Every frame replaces the previous one:
+ *  the CLI recomputes the tree, it does not patch it. */
+export interface DelegationSnapshotPayload {
+  rootSessionId: string;
+  members: DelegationMemberPayload[];
 }
 
 /** Batched engine events arrive as an array under a single event name. */

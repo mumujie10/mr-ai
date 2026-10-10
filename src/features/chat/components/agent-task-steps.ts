@@ -1,4 +1,5 @@
 import type { Message, TodoItem, TodosPayload } from "@/lib/ipc";
+import type { DelegationSnapshotPayload } from "@/lib/events";
 
 export type AgentTaskStepState = "active" | "complete";
 
@@ -9,6 +10,10 @@ export interface AgentTaskStep {
   state: AgentTaskStepState;
   /** Subagent type / role, e.g. "code-reviewer", "planner" */
   subagentType?: string;
+  /** The CLI's own status word, present only on delegation-sourced rows. The
+   *  strip labels the row with it instead of guessing done/running from
+   *  `state`, which cannot tell a failure from a success. */
+  status?: string;
   /** Detailed description or prompt preview */
   detail?: string;
 }
@@ -587,4 +592,42 @@ export function deriveTodoList(messages: Message[]): TodoItem[] {
     }
   }
   return items;
+}
+
+/** The CLI's terminal delegation states. Anything else — including a word this
+ *  build does not know — keeps the row active: an unrecognised status is not
+ *  evidence that the child finished. */
+const DELEGATION_SETTLED = new Set(["completed", "failed", "stopped"]);
+
+/** i18n keys for the statuses the runtime can report. An unknown word falls
+ *  through to the CLI's own text rather than being relabelled "unknown". */
+export const DELEGATION_STATUS_KEYS: Record<string, string> = {
+  queued: "chat.delegationStatusQueued",
+  running: "chat.delegationStatusRunning",
+  completed: "chat.delegationStatusCompleted",
+  failed: "chat.delegationStatusFailed",
+  stopped: "chat.delegationStatusStopped",
+  unknown: "chat.delegationStatusUnknown",
+};
+
+/**
+ * The subagent rows the CLI itself reported (`mcode/session/delegation_update`).
+ *
+ * Preferred over `deriveAgentTaskSteps` whenever a snapshot exists: that
+ * function guesses subagent activity from tool-call labels, which both invents
+ * rows for tools named "task" and misses children that never appear in this
+ * session's transcript. One row per delegated child session, keyed by its id so
+ * a re-sent tree updates in place instead of appending.
+ */
+export function stepsFromDelegation(
+  snapshot: DelegationSnapshotPayload,
+): AgentTaskStep[] {
+  return snapshot.members.map((member) => ({
+    key: member.sessionId,
+    label: member.task ?? member.agentName ?? member.sessionId,
+    state: DELEGATION_SETTLED.has(member.status) ? "complete" : "active",
+    subagentType: member.agentName,
+    detail: member.errorMessage ?? member.task,
+    status: member.status,
+  }));
 }

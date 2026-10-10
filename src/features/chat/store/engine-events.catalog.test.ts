@@ -227,3 +227,80 @@ describe("engine-advertised effort levels", () => {
     expect(levelsOf(state, key)).toEqual(["minimal", "low"]);
   });
 });
+
+/** The delegation tree (`mcode/session/delegation_update`): the CLI's own
+ *  answer to "what did this run delegate", which replaces the tool-label guess
+ *  in the status strip. Same three contracts as the catalog: whole-tree
+ *  replacement, junk cannot clear what is on screen, and a late frame still
+ *  counts because the tree keeps changing after the turn settles. */
+describe("engine delegation snapshot", () => {
+  const snapshotOf = (state: any, key: string) =>
+    state.bySession[key]?.delegation as
+      | { rootSessionId: string; members: { status: string }[] }
+      | null;
+
+  const tree = (statuses: string[]) => ({
+    rootSessionId: "mvs_root",
+    members: statuses.map((status, index) => ({
+      sessionId: `mvs_child_${index}`,
+      parentSessionId: "mvs_root",
+      status,
+      agentName: "researcher",
+      task: `子任务 ${index}`,
+    })),
+  });
+
+  it("stores the tree and replaces it whole on the next frame", () => {
+    const key = "mireai/session-delegation-1";
+    const runId = "run-delegation-1";
+    const { state, deps } = harness(key);
+
+    handleEngineEvents(
+      [event(runId, "session-delegation-1", "delegation", tree(["running", "queued"]))],
+      deps as never,
+    );
+    expect(snapshotOf(state, key)?.members.map((m) => m.status)).toEqual([
+      "running",
+      "queued",
+    ]);
+
+    handleEngineEvents(
+      [event(runId, "session-delegation-1", "delegation", tree(["completed", "completed"]))],
+      deps as never,
+    );
+    // Replaced, not appended: a finished child must not keep a stale row.
+    expect(snapshotOf(state, key)?.members.map((m) => m.status)).toEqual([
+      "completed",
+      "completed",
+    ]);
+  });
+
+  it("keeps the tree it already shows when a frame is not a tree", () => {
+    const key = "mireai/session-delegation-2";
+    const runId = "run-delegation-2";
+    const { state, deps } = harness(key);
+    handleEngineEvents(
+      [event(runId, "session-delegation-2", "delegation", tree(["running"]))],
+      deps as never,
+    );
+    for (const junk of [null, {}, { members: [] }, { rootSessionId: "r", members: "nope" }]) {
+      handleEngineEvents(
+        [event(runId, "session-delegation-2", "delegation", junk)],
+        deps as never,
+      );
+    }
+    expect(snapshotOf(state, key)?.members.map((m) => m.status)).toEqual(["running"]);
+  });
+
+  it("accepts the frame that follows the turn: children finish after the reply", () => {
+    const key = "mireai/session-delegation-3";
+    const runId = "run-delegation-3";
+    const { state, deps } = harness(key);
+    handleEngineEvents([event(runId, "session-delegation-3", "done", { usage: null })], deps as never);
+    handleEngineEvents(
+      [event(runId, "session-delegation-3", "delegation", tree(["completed"]))],
+      deps as never,
+    );
+    expect(snapshotOf(state, key)?.members[0]?.status).toBe("completed");
+  });
+});

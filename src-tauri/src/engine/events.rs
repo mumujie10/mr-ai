@@ -163,6 +163,10 @@ pub enum EngineEvent {
         model: Option<String>,
         effort: Option<String>,
     },
+    /// The CLI's delegation tree for this session, re-sent whole whenever a
+    /// child changes (`mcode/session/delegation_update`). A replacement, not a
+    /// delta: the frontend keeps only the newest snapshot.
+    Delegation(DelegationSnapshot),
     /// MCP servers the CLI reported as loaded for this session (claude
     /// `system/init`): `(name, status)` pairs plus the session's tool names
     /// (used to attribute `mcp__<server>__<tool>` tools back to their server).
@@ -173,6 +177,72 @@ pub enum EngineEvent {
         tools: Vec<String>,
     },
 }
+
+/// One child session in the CLI's delegation tree. The runtime's own status
+/// vocabulary, passed through rather than mapped: `queued`, `running`,
+/// `completed`, `failed`, `stopped`, `unknown`. Anything else (a fork that
+/// invents a status) stays as the CLI's word — the UI colours known states and
+/// renders the rest as text instead of guessing a state it was not told.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DelegationMember {
+    pub session_id: String,
+    pub parent_session_id: String,
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_name: Option<String>,
+    /// The child's title — what it was asked to do.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub task: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+/// The whole delegation tree of one root session, as the CLI reports it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DelegationSnapshot {
+    pub root_session_id: String,
+    pub members: Vec<DelegationMember>,
+}
+
+/// Read `mcode/session/delegation_update`'s `{ sessionId, snapshot }`. Returns
+/// None for anything that is not a snapshot of the version this client understands,
+/// so an unknown shape is dropped rather than rendered as an empty tree.
+pub(crate) fn delegation_snapshot(params: &Value) -> Option<DelegationSnapshot> {
+    let snapshot = params.get("snapshot")?;
+    if snapshot["schemaVersion"].as_u64()? != 1 {
+        return None;
+    }
+    let text = |value: &Value| {
+        value
+            .as_str()
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(str::to_string)
+    };
+    let root_session_id = text(&snapshot["rootSessionId"])?;
+    let members = snapshot["members"]
+        .as_array()?
+        .iter()
+        .filter_map(|member| {
+            let session_id = text(&member["sessionId"])?;
+            Some(DelegationMember {
+                parent_session_id: text(&member["parentSessionId"]).unwrap_or_default(),
+                status: text(&member["status"]).unwrap_or_else(|| "unknown".to_string()),
+                agent_name: text(&member["agentName"]),
+                task: text(&member["task"]),
+                error_message: text(&member["errorMessage"]),
+                session_id,
+            })
+        })
+        .collect();
+    Some(DelegationSnapshot {
+        root_session_id,
+        members,
+    })
+}
+
 /// One command the engine advertises for the composer's `/` picker.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EngineCommand {
@@ -665,5 +735,56 @@ mod tool_args_tests {
             EngineEvent::Message { patch, .. } => assert!(patch),
             _ => panic!("expected patch"),
         }
+    }
+}
+
+#[cfg(test)]
+mod delegation_tests {
+    use super::delegation_snapshot;
+    use serde_json::json;
+
+    /// The live `mcode/session/delegation_update` frame: a full snapshot, one
+    /// member per delegated child session, fields the CLI chooses to fill.
+    #[test]
+    fn delegation_snapshot_reads_the_cli_shape() {
+        let snapshot = delegation_snapshot(&json!({
+            "sessionId": "mvs_root",
+            "snapshot": {
+                "schemaVersion": 1,
+                "rootSessionId": "mvs_root",
+                "members": [
+                    { "sessionId": "mvs_a", "parentSessionId": "mvs_root",
+                      "status": "running", "agentName": "researcher",
+                      "task": "读一下 src-tauri", "createdAtMs": 1 },
+                    { "sessionId": "mvs_b", "parentSessionId": "mvs_root",
+                      "status": "failed", "errorMessage": "boom" },
+                    { "sessionId": "  ", "parentSessionId": "mvs_root", "status": "queued" },
+                ],
+            },
+        }))
+        .expect("a v1 snapshot");
+        assert_eq!(snapshot.root_session_id, "mvs_root");
+        assert_eq!(snapshot.members.len(), 2, "a member without an id is not a member");
+        assert_eq!(snapshot.members[0].status, "running");
+        assert_eq!(snapshot.members[0].agent_name.as_deref(), Some("researcher"));
+        assert_eq!(snapshot.members[1].error_message.as_deref(), Some("boom"));
+        // Absent optional fields stay None rather than echoing a status the CLI
+        // never reported.
+        assert_eq!(snapshot.members[1].agent_name, None);
+        // camelCase on the wire, which is what the frontend reads.
+        let value = serde_json::to_value(&snapshot).unwrap();
+        assert_eq!(value["members"][0]["sessionId"], "mvs_a");
+        assert_eq!(value["members"][0]["parentSessionId"], "mvs_root");
+        assert!(value["members"][1].get("agentName").is_none());
+    }
+
+    /// An unknown schema version or a malformed frame is dropped, not rendered
+    /// as an empty tree — "no subagents" is a statement the CLI has to make.
+    #[test]
+    fn delegation_snapshot_refuses_shapes_it_does_not_understand() {
+        assert!(delegation_snapshot(&json!({"snapshot": {"schemaVersion": 2, "rootSessionId": "r", "members": []}})).is_none());
+        assert!(delegation_snapshot(&json!({"snapshot": {"schemaVersion": 1, "members": []}})).is_none());
+        assert!(delegation_snapshot(&json!({"snapshot": {"schemaVersion": 1, "rootSessionId": "r"}})).is_none());
+        assert!(delegation_snapshot(&json!({})).is_none());
     }
 }

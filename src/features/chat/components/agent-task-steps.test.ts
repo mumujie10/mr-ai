@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Message } from "@/lib/ipc";
-import { deriveAgentTaskSteps, deriveTodoList, subagentRefsFromArgs } from "./agent-task-steps";
+import {
+  deriveAgentTaskSteps,
+  deriveTodoList,
+  stepsFromDelegation,
+  subagentRefsFromArgs,
+} from "./agent-task-steps";
 
 function tool(seq: number, text: string, args?: unknown, result?: unknown): Message {
   return { seq, role: "tool", text, ts: null, args, result } as Message;
@@ -369,5 +374,41 @@ describe("subagent counting", () => {
     ];
     const items = deriveTodoList(messages);
     expect(items).toEqual([{ content: "实现功能", status: "complete", phase: "impl", reason: undefined, detail: undefined }]);
+  });
+});
+
+describe("stepsFromDelegation", () => {
+  it("maps the CLI's tree to one row per child, keyed by its session id", () => {
+    const steps = stepsFromDelegation({
+      rootSessionId: "mvs_root",
+      members: [
+        { sessionId: "mvs_a", parentSessionId: "mvs_root", status: "running", agentName: "researcher", task: "读代码" },
+        { sessionId: "mvs_b", parentSessionId: "mvs_root", status: "failed", errorMessage: "429" },
+      ],
+    });
+    expect(steps.map((step) => step.key)).toEqual(["mvs_a", "mvs_b"]);
+    expect(steps[0]).toMatchObject({
+      label: "读代码",
+      subagentType: "researcher",
+      state: "active",
+      status: "running",
+    });
+    // A failure is settled but not a success: the row stops breathing and the
+    // status word carries the difference.
+    expect(steps[1]).toMatchObject({
+      label: "mvs_b",
+      state: "complete",
+      status: "failed",
+      detail: "429",
+    });
+  });
+
+  it("keeps an unrecognised status active — the CLI never said it finished", () => {
+    const steps = stepsFromDelegation({
+      rootSessionId: "r",
+      members: [{ sessionId: "c", parentSessionId: "r", status: "pausing" }],
+    });
+    expect(steps[0].state).toBe("active");
+    expect(steps[0].status).toBe("pausing");
   });
 });

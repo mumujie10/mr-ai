@@ -334,10 +334,17 @@ impl TurnCore {
     pub(crate) fn dispatch_event(&self, state: &mut TurnState, event: EngineEvent) {
         // Terminal state is monotonic, even if a CLI or its usage tail emits
         // more data before exiting: no late retry/content/warn event may
-        // revive a settled run. The one exception is SessionId — a done that
+        // revive a settled run. The exceptions are SessionId — a done that
         // raced the CLI's session announcement must still rekey/announce, or
-        // the conversation strands under its provisional key.
-        if (state.saw_done || state.saw_error) && !matches!(event, EngineEvent::SessionId(_)) {
+        // the conversation strands under its provisional key — and Delegation,
+        // which is session state the CLI re-sends as children finish, so the
+        // last (most complete) tree routinely arrives after the turn settled.
+        if (state.saw_done || state.saw_error)
+            && !matches!(
+                event,
+                EngineEvent::SessionId(_) | EngineEvent::Delegation(_)
+            )
+        {
             return;
         }
         match event {
@@ -723,6 +730,20 @@ impl TurnCore {
                     "effort_levels",
                     Value::Array(levels.into_iter().map(Value::String).collect()),
                 );
+            }
+            EngineEvent::Delegation(snapshot) => {
+                // The tree is session state, not run content: an empty member
+                // list is still the answer ("this run spawned nothing"), so it
+                // is sent rather than swallowed.
+                if let Ok(value) = serde_json::to_value(snapshot) {
+                    state.push(
+                        &self.sink,
+                        &self.run_id,
+                        &self.engine_id,
+                        "delegation",
+                        value,
+                    );
+                }
             }
             EngineEvent::AvailableCommands(commands) => {
                 // The catalog is session state the composer reads when `/` is
