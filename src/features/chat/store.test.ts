@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ipc, type SessionMeta } from "@/lib/ipc";
+import {
+  ipc,
+  type EngineInfo,
+  type SessionMeta,
+} from "@/lib/ipc";
+import { BUNDLED_ENGINE_ID } from "@/features/settings/providers";
 import {
   pluginBus,
   resetPluginBusForTests,
   SESSION_ACTIVATED_TOPIC,
 } from "@/features/plugins/runtime/events";
 import { setPluginSessionEffort, useChatStore } from "./store";
-import { OPEN_TABS_KEY } from "./store/persistence";
+import { ENGINE_PREF_KEY, OPEN_TABS_KEY } from "./store/persistence";
 import { EMPTY_SESSION } from "./store/stream";
 import { handleEngineEvents, type EngineEventDeps } from "./store/engine-events";
 import { registerSessionHooks, registerTurnHooks } from "@/features/plugins/runtime/hooks";
@@ -30,6 +35,7 @@ vi.mock("@/lib/ipc", () => ({
     getAppSettings: vi.fn(async () => ({})),
     updateAppSettings: vi.fn(async () => {}),
     rescanSessions: vi.fn(async () => {}),
+    listEngines: vi.fn(async () => [] as EngineInfo[]),
   },
 }));
 vi.mock("@/lib/events", () => ({
@@ -906,5 +912,51 @@ describe("setPluginSessionEffort (ctx.sessions.setEffort backend)", () => {
     expect(() => setPluginSessionEffort("", "s-effort", WS, "high")).toThrow(
       "required",
     );
+  });
+});
+
+describe("which engine the composer defaults to", () => {
+  beforeEach(resetStore);
+
+  it("a profile with no stored preference starts on the bundled CLI", async () => {
+    // The store reads the preference once, at creation, so this asserts
+    // against a freshly created instance rather than the shared one.
+    localStorage.removeItem(ENGINE_PREF_KEY);
+    vi.resetModules();
+    const { useChatStore: fresh } = (await import("./store")) as typeof import("./store");
+    expect(fresh.getState().activeEngine).toBe(BUNDLED_ENGINE_ID);
+  });
+
+  it("a pref naming a CLI that is not in the list lands on the bundled one", async () => {
+    vi.mocked(ipc.listEngines).mockResolvedValue([
+      // Sorted ahead of the bundled engine on purpose: the old rule took the
+      // first *available* entry, which here is a vendor CLI the user may not
+      // even have configured.
+      { id: "kimi", enabled: true, available: true },
+      { id: BUNDLED_ENGINE_ID, enabled: true, available: true },
+    ] as EngineInfo[]);
+    useChatStore.setState({ activeEngine: "codex" });
+    await useChatStore.getState().refreshEngines();
+    expect(useChatStore.getState().activeEngine).toBe(BUNDLED_ENGINE_ID);
+  });
+
+  it("leaves an explicit choice alone while that CLI is still enabled", async () => {
+    vi.mocked(ipc.listEngines).mockResolvedValue([
+      { id: "kimi", enabled: true, available: true },
+      { id: BUNDLED_ENGINE_ID, enabled: true, available: true },
+    ] as EngineInfo[]);
+    useChatStore.setState({ activeEngine: "kimi" });
+    await useChatStore.getState().refreshEngines();
+    expect(useChatStore.getState().activeEngine).toBe("kimi");
+  });
+
+  it("with the bundled CLI uninstalled, still prefers an available vendor CLI", async () => {
+    vi.mocked(ipc.listEngines).mockResolvedValue([
+      { id: "kimi", enabled: true, available: true },
+      { id: BUNDLED_ENGINE_ID, enabled: true, available: false },
+    ] as EngineInfo[]);
+    useChatStore.setState({ activeEngine: "codex" });
+    await useChatStore.getState().refreshEngines();
+    expect(useChatStore.getState().activeEngine).toBe("kimi");
   });
 });

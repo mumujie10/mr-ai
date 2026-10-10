@@ -11,6 +11,7 @@ import { errorText } from "@/lib/errors";
 import { writeStored } from "@/lib/storage";
 import { subscribeTauriEvent } from "@/hooks/use-tauri-event";
 import {
+  BUNDLED_ENGINE_ID,
   CLI_CONFIG_CHANGED_EVENT,
   engineCurrents,
 } from "@/features/settings/providers";
@@ -121,14 +122,22 @@ export function createSessionActions(
     turnSettled,
   } = deps;
 
-  /** Migrate the engine pref off a CLI that is gone or disabled in
-   * settings. All CLIs disabled: leave the pref alone — the composer shows
-   * the "no CLI enabled" placeholder instead of a misleading fallback. */
+  /** Migrate the engine pref off a CLI that is gone or disabled in settings.
+   *  A dead pref lands on the bundled MireAI CLI: it is the one engine every
+   *  install ships, so "first enabled CLI that happens to sort first" would
+   *  drop a fresh user onto a vendor CLI they never installed. All CLIs
+   *  disabled: leave the pref alone — the composer shows the "no CLI enabled"
+   *  placeholder instead of a misleading fallback. */
   function ensureUsableEngine(engines: EngineInfo[]) {
     const usable = engines.filter((e) => e.enabled);
     if (usable.length === 0 || usable.some((e) => e.id === get().activeEngine))
       return;
-    get().setActiveEngine(usable.find((e) => e.available)?.id ?? usable[0].id);
+    const bundled = usable.find(
+      (e) => e.id === BUNDLED_ENGINE_ID && e.available,
+    );
+    get().setActiveEngine(
+      bundled?.id ?? usable.find((e) => e.available)?.id ?? usable[0].id,
+    );
   }
 
   return {

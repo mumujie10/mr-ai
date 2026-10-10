@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { ipc, type SessionMeta, type SessionPage } from "@/lib/ipc";
+import { BUNDLED_ENGINE_ID } from "@/features/settings/providers";
 import { botById } from "@/features/bots/bot-store";
 import { getSelectedBot } from "@/features/bots/selected-bot";
 import {
@@ -178,7 +179,11 @@ export const useChatStore = create<ChatStore>((set, get) => {
     engines: [],
     active: null,
     openTabs: [],
-    activeEngine: localStorage.getItem(ENGINE_PREF_KEY) ?? "claude",
+    // The bundled MireAI CLI is the one engine every install can run (BYOK
+    // channels are written into it, nothing has to be installed first), so a
+    // fresh profile starts there. `ensureUsableEngine` moves a dead pref back
+    // to it too.
+    activeEngine: localStorage.getItem(ENGINE_PREF_KEY) ?? BUNDLED_ENGINE_ID,
     permission: readPermissionPref(),
     efforts: {},
     ompServiceTier: null,
