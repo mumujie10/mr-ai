@@ -1,13 +1,6 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/wordmark-light.svg">
-    <img src="docs/assets/wordmark-light.svg" alt="MiniMax Code" width="760">
-  </picture>
-</p>
-
-<h1 align="center">MiniMax Code</h1>
-<p align="center">Turn a prompt into something that works. Build, test, and keep iterating from your terminal—with MiniMax or your own model.</p>
+<h1 align="center">MireAI CLI</h1>
+<p align="center">The agent runtime bundled with the MireAI desktop app — turn a prompt into something that works, with your own model API.</p>
+<p align="center"><sub>A fork of MiniMax Code; its license and attribution files live alongside this README.</sub></p>
 <p align="center">
   <a href="#quick-start">Get started</a> ·
   <a href="docs/README.md">Documentation</a> ·
@@ -27,13 +20,15 @@ Give a blinking pocket pet a focus timer. Then ask: “Make pause a long press, 
 
 <p align="center"><a href="docs/demo.md">Watch the build story and browser demo →</a> · <a href="examples/pocket-pet">Build it yourself →</a></p>
 
-**No hardware required.** The example runs locally in your browser, with no frontend dependencies. Asking the CLI to edit code requires a MiniMax account with available credits or your own compatible model API; model calls may incur charges. The finished example runs without a model account.
+**No hardware required.** The example runs locally in your browser, with no frontend dependencies. Asking the CLI to edit code requires your own compatible model API — this build has no vendor account path at all; model calls may incur charges. The finished example runs without a model API key.
 
 ## Quick start
 
 ### 1. Install MCode
 
-Use the official installer for your platform. It installs the latest CLI, prepares a compatible Node.js runtime when needed, and does not require `sudo` or administrator privileges. Alpine / musl Linux is not supported by the one-command installer.
+**This runtime is normally not installed on its own:** the MireAI app bundles it (built here with `pnpm cli:build` and staged with `pnpm runtime:stage`), and it keeps its state in `~/.mireai`. The installers below fetch upstream **MiniMax Code** instead — a different engine with its own launchers and `~/.minimax` data directory — so use them only if that is what you want.
+
+Otherwise, use the official installer for your platform. It installs the latest CLI, prepares a compatible Node.js runtime when needed, and does not require `sudo` or administrator privileges. Alpine / musl Linux is not supported by the one-command installer.
 
 **macOS / Linux / WSL**
 
@@ -235,7 +230,7 @@ A profile uses `~/.mireai-<profile>`; `MIREAI_DATA_DIR` (or `--data-dir`) can se
 | Task | Capabilities |
 | --- | --- |
 | **Edit and verify code** | Read files, inspect diffs, run shell commands and tests, and control tool execution with permissions and sandboxing. |
-| **Choose your model** | Use a MiniMax account / Token Plan, or custom providers with OpenAI- or Anthropic-compatible API formats. |
+| **Choose your model** | Custom providers you add with your own key, in OpenAI- or Anthropic-compatible API formats. No vendor account route exists in this build. |
 | **Search and work with media** | Use built-in search, `mcode-tools` media tools, MCP, and managed connectors, subject to account access and service credits. |
 | **Keep work moving** | Resume sessions, plan tasks, use subagents, and extend the agent with official, local, or GitHub plugins and built-in skills. |
 | **Connect your workflow** | Run scripted tasks with the headless CLI, or connect compatible editors and clients through ACP. |

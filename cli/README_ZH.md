@@ -1,13 +1,6 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/wordmark-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="docs/assets/wordmark-light.svg">
-    <img src="docs/assets/wordmark-light.svg" alt="MiniMax Code" width="760">
-  </picture>
-</p>
-
-<h1 align="center">MiniMax Code</h1>
-<p align="center">把一句话，做成能运行的东西。用 MiniMax 或自己的模型，在终端里构建、验证、继续改进。</p>
+<h1 align="center">MireAI CLI</h1>
+<p align="center">随 MireAI 桌面应用一起打包的 agent runtime——把一句话，做成能运行的东西，用你自己的模型 API。</p>
+<p align="center"><sub>本 runtime 是 MiniMax Code 的分叉，许可与署名文件就在本目录。</sub></p>
 <p align="center">
   <a href="#快速开始">Get started</a> ·
   <a href="docs/README.md">Documentation</a> ·
@@ -27,13 +20,15 @@
 
 <p align="center"><a href="docs/demo.md">看真实修改与浏览器演示 →</a> · <a href="examples/pocket-pet">自己做一次 →</a></p>
 
-**无需硬件。** 示例在本地浏览器运行，不需要前端依赖。让 CLI 修改代码需要 MiniMax 账号及可用额度，或你自己的兼容模型 API；模型调用可能产生费用。完成版可直接运行，无需模型账号。
+**无需硬件。** 示例在本地浏览器运行，不需要前端依赖。让 CLI 修改代码需要你自己的兼容模型 API——本构建完全没有厂商账号这条路；模型调用可能产生费用。完成版可直接运行，无需模型 API 密钥。
 
 ## 快速开始
 
 ### 1. 安装 MCode
 
-按操作系统选择官方安装器。安装器会安装最新版 CLI，并在需要时准备兼容的 Node.js，无需 `sudo` 或管理员权限；目前不支持 Alpine / musl Linux。
+**这个 runtime 通常不单独安装：**MireAI 应用已经把它打包进去了（本仓库用 `pnpm cli:build` 构建、`pnpm runtime:stage` 打进应用），运行数据在 `~/.mireai`。下面的安装器装的是上游 **MiniMax Code**——另一个引擎，自己的启动器和 `~/.minimax` 数据目录——只有你想要的就是它时才用。
+
+其余情况按操作系统选择官方安装器。安装器会安装最新版 CLI，并在需要时准备兼容的 Node.js，无需 `sudo` 或管理员权限；目前不支持 Alpine / musl Linux。
 
 **macOS / Linux / WSL**
 
@@ -232,7 +227,7 @@ profile 使用 `~/.mireai-<profile>`；`MIREAI_DATA_DIR`（或 `--data-dir`）�
 | 场景 | 使用方式 |
 | --- | --- |
 | **修改与验证代码** | 读取文件、编辑 diff、执行 Shell 和测试；通过权限与沙箱控制工具执行。 |
-| **选择模型** | MiniMax 账号 / Token Plan，或兼容 OpenAI、Anthropic 格式的自定义提供方。 |
+| **选择模型** | 用你自己的密钥添加的自定义提供方，兼容 OpenAI、Anthropic 格式。本构建没有厂商账号这条路。 |
 | **搜索与多模态** | 内置搜索、`mcode-tools` 媒体工具、MCP 和托管连接器；按账号权限和服务额度使用。 |
 | **延续工作** | 会话恢复、任务规划、子 Agent、官方 / 本地 / GitHub 插件与内置 Skills。 |
 | **接入工作流** | Headless CLI 用于脚本任务，ACP 用于兼容的编辑器和客户端。 |

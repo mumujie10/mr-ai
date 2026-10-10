@@ -21,7 +21,7 @@ The video pairs actual browser recordings with clearly labeled prompt excerpts, 
 - Only synthetic project content appears. Private run logs, account state, provider aliases, local paths and session identifiers are excluded. Captions and layout are editorial; the cursor highlight follows actual pointer events. Browser footage is cropped for readability and its interaction segment plays continuously at 1×. No tool results were invented.
 - Video assembly uses HyperFrames with locally staged browser footage. The video is silent so it works in muted README and social contexts. The revised cut uses a warm page and a cobalt device, with larger interaction shots and visible action labels.
 
-To edit the starter, install and configure MCode with a MiniMax account with available credits or your own compatible model API. Calls may incur charges. Running the finished example requires only Node.js and a browser.
+To edit the starter, configure MCode with your own compatible model API — this build has no vendor account route. Calls may incur charges. Running the finished example requires only Node.js and a browser.
 
 ---
 
