@@ -3,6 +3,7 @@
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { InfoTip } from "@/components/base/tooltip/tooltip";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
 import FolderPlus from "lucide-react/dist/esm/icons/folder-plus";
 import FolderSymlink from "lucide-react/dist/esm/icons/folder-symlink";
@@ -291,8 +292,12 @@ export function WorkspaceSection({
         {...{ [WORKSPACE_DROP_TARGET_ATTR]: "" }}
         className="flex w-full items-center justify-between rounded-2lg transition-colors duration-150 data-[drop-hover=true]:bg-background-secondary-hover data-[drop-hover=true]:ring-1 data-[drop-hover=true]:ring-border-button-active"
       >
-        <span className="text-body-2-medium text-text-secondary">
+        <span className="flex min-w-0 items-center gap-1 text-body-2-medium text-text-secondary">
           {t("chat.workspaces")}
+          {/* The word "工作区" reads like a folder bookmark; what it actually
+              decides is where the agent looks, edits, runs commands and reads
+              Git state. Say so where the choice is made, not in a document. */}
+          <InfoTip label={t("chat.workspacesHint")} />
         </span>
         {!isWeb && (
           <button

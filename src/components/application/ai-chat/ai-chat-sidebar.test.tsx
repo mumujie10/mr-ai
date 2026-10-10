@@ -655,3 +655,12 @@ function worktreeDisclosure(): HTMLElement {
   if (!region) throw new Error("no worktree group disclosure");
   return region;
 }
+
+it("工作区标题带一条悬停说明：它决定 Agent 在哪里动手", async () => {
+  // The word 工作区 alone reads like a folder bookmark; the tooltip is the
+  // product's only in-place explanation of what adding one actually grants.
+  await render([repo("a")]);
+  expect(
+    node.querySelector('button[aria-label="chat.workspacesHint"]'),
+  ).not.toBeNull();
+});

@@ -86,6 +86,7 @@ export const en: Messages = {
     emptyPaneHint: "Drag a session here, or",
     emptyPaneNewChat: "start a new one",
     workspaces: "Workspaces",
+    workspacesHint: "The workspace is where the agent works: it reads and edits files here, runs commands here, and reads Git status from here.",
     expandWorkspace: "Expand session list",
     collapseWorkspace: "Collapse session list",
     noProjectSelected: "No project selected",
