@@ -21,16 +21,15 @@ export const ENGINE_IDS = [
 export type EngineId = (typeof ENGINE_IDS)[number];
 
 /**
- * MireAI ships one agent runtime of its own — the bundled CLI, engine
- * `mireai` — and that is the engine every user starts on. MiniMax Code is
- * listed beside it as the vendor's own CLI: it stays unavailable (and out of the
- * composer's active list) until the user installs `mcode` himself, and nothing
- * about it is implied by our bundle. Every other engine adapter stays in the
- * codebase (protocol modules, capability metadata, history rendering, docs URLs
- * over `ENGINE_IDS`) without being offered anywhere a user chooses an engine.
- * Re-enabling one is a one-entry change here.
+ * Every engine adapter in the codebase is offered. MireAI still leads with its
+ * own bundled runtime (`mireai`), but the other CLIs are shown as-is: an
+ * uninstalled one reads 未安装 in settings (with an install channel when the
+ * vendor ships one) and stays selectable-but-failing in the composer rather
+ * than being hidden as if it did not exist. Whether a CLI actually works is
+ * the probe's `available`, not this list — hiding entries here would be the
+ * product claiming those CLIs are not integrations at all.
  */
-export const VISIBLE_ENGINE_IDS: readonly EngineId[] = ["mireai", "minimax"];
+export const VISIBLE_ENGINE_IDS: readonly EngineId[] = ENGINE_IDS;
 
 /** The agent runtime this app ships in its own bundle (`cli/`, binary `mr`). */
 export const BUNDLED_ENGINE_ID: EngineId = "mireai";

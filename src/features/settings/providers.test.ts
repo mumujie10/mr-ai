@@ -62,19 +62,18 @@ describe("providerFamilyModels", () => {
 });
 
 describe("engine visibility", () => {
-  it("offers its own runtime first, then the vendor's CLI", () => {
-    // MireAI bundles exactly one agent runtime (cli/), and that is the engine
-    // the product surface leads with. MiniMax Code sits beside it as the
-    // vendor's own CLI; adding a third engine is a deliberate edit here.
-    expect([...VISIBLE_ENGINE_IDS]).toEqual(["mireai", "minimax"]);
-    expect(BUNDLED_ENGINE_ID).toBe("mireai");
+  it("offers every engine adapter, led by the bundled runtime", () => {
+    // The bundled runtime is the engine the product ships working out of the
+    // box, but the other CLI adapters are real integrations too: they are
+    // listed (未安装 until the user installs them) rather than hidden. Order
+    // follows ENGINE_IDS itself; "bundled" is a default, not a sort key.
+    expect([...VISIBLE_ENGINE_IDS]).toEqual([...ENGINE_IDS]);
+    expect(VISIBLE_ENGINE_IDS).toContain(BUNDLED_ENGINE_ID);
   });
 
-  it("keeps every other engine id valid metadata while hiding it", () => {
+  it("keeps every engine id visible", () => {
     for (const engine of ENGINE_IDS) {
-      expect(isEngineVisible(engine)).toBe(
-        engine === BUNDLED_ENGINE_ID || engine === "minimax",
-      );
+      expect(isEngineVisible(engine)).toBe(true);
     }
   });
 
@@ -91,7 +90,9 @@ describe("engine visibility", () => {
     expect(isEngineVisible("")).toBe(false);
   });
 
-  it("drops every row that is not on the visibility list", () => {
+  it("keeps engine rows and still drops non-engine rows", () => {
+    // The visibility list now covers every adapter; the filter's remaining job
+    // is keeping non-engine rows (plugins, misc) out of engine choices.
     const rows = [
       { id: "claude" },
       { id: "mireai" },
@@ -99,7 +100,12 @@ describe("engine visibility", () => {
       { id: "codex" },
       { id: "plugin:auto" },
     ];
-    expect(visibleEngines(rows).map((row) => row.id)).toEqual(["mireai", "minimax"]);
+    expect(visibleEngines(rows).map((row) => row.id)).toEqual([
+      "claude",
+      "mireai",
+      "minimax",
+      "codex",
+    ]);
   });
 });
 
