@@ -1984,18 +1984,18 @@ export function handleEngineEvents(
     // EOF stderr/failure can follow Done, and the turn's final usage report
     // can trail either terminal event. Keep those, but never adopt the run
     // again or drain its queue a second time.
+    // The catalog and the effort stops are session state, not turn output, and
+    // the CLI sends both asynchronously: the catalog re-arrives once skill
+    // discovery finishes, and the levels re-arrive when a model change re-sends
+    // the option list. Either frame can follow the turn that was already
+    // running, so it must not be dropped — and it cannot revive the run,
+    // because these handlers only patch catalog state.
     if (
       settled &&
       !(
         event.kind === "usage" ||
         event.kind === "plan_review_settled" ||
-        // The catalog is session state, not turn output: the CLI re-sends it
-        // once skill discovery finishes, and that frame can follow the turn
-        // that was already running. Keep it, without reviving the run.
-        event.kind === "available_commands" ||
-        // Same reasoning for the effort stops: they describe the session's
-        // model, not the turn that has just ended.
-        event.kind === "effort_levels" ||
+        isSessionScopedEvent ||
         (settled === "done" &&
           (event.kind === "warn" ||
             event.kind === "error" ||
