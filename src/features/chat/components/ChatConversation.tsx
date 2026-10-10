@@ -208,7 +208,7 @@ function useConversationMenus({
         <button
           type="button"
           onClick={() => navigate("/settings?page=cli:claude")}
-          className="flex cursor-pointer items-center rounded-md px-1.5 py-1 text-body-2-medium whitespace-nowrap text-text-tertiary transition-colors duration-150 ease hover:text-text-primary"
+          className="flex cursor-pointer items-center rounded-md px-1.5 py-1 text-caption-1-medium whitespace-nowrap text-text-tertiary transition-colors duration-150 ease hover:text-text-primary"
         >
           {t("chat.noEngineEnabled")}
         </button>

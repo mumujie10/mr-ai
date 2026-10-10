@@ -42,7 +42,7 @@ export type { EffortLevel } from "./effort-levels";
  *  no header label. Distinct from the other ai_chat popovers above. */
 const CLI_POPOVER_CLASSES = menuPopoverSurface({
   width: "w-64",
-  origin: "origin-bottom-left",
+  origin: "origin-bottom-right",
   radius: "rounded-lg",
   padding: "p-1",
 });
@@ -165,12 +165,14 @@ function useLockedMinWidth(isOpen: boolean, triggerRef: Ref<HTMLButtonElement>) 
   return lockedMinWidth;
 }
 
-/** Borderless trigger carrying the whole selection at a glance:
- *  "{CLI} / {model} · {effort}" (CLI name / model / effort). The model
- *  part only drops out when the engine has no model list at all.
- *  min-w-0 lets the trigger shrink instead of pushing the send button out
- *  of the composer on narrow widths; below md it collapses to icon +
- *  truncated model (aria-label carries the full selection). */
+/** Trigger for the pill on the composer's right: the engine's brand mark plus
+ *  what is actually being run — "{model} · {effort}". The engine name is left
+ *  out on purpose: the logo already says which CLI is active, and spelling it
+ *  out made the pill the loudest thing in the composer. Caption size keeps it
+ *  subordinate to the input. The model part only drops out when the engine has
+ *  no model list at all. min-w-0 lets the trigger shrink instead of pushing
+ *  the send button out of the composer on narrow widths; the aria-label still
+ *  carries the whole selection including the engine. */
 function CliMenuTrigger({
   triggerRef,
   engine,
@@ -185,7 +187,7 @@ function CliMenuTrigger({
 }: {
   triggerRef: Ref<HTMLButtonElement>;
   engine: string;
-  /** Display name of the active engine. */
+  /** Display name of the active engine — aria-label only. */
   engineName: string;
   /** Selected model of the active engine, when it has a model list. */
   model: ModelOption | undefined;
@@ -218,21 +220,17 @@ function CliMenuTrigger({
       className="group flex min-w-0 cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring"
     >
       <EngineIcon engine={engine} size={16} className="shrink-0 text-foreground-icon-secondary" />
-      <span className="flex min-w-0 items-center gap-1 text-body-2-medium whitespace-nowrap text-text-secondary transition-colors duration-150 ease group-hover:text-text-primary">
-        <span className="shrink-0 max-md:hidden">{engineName}</span>
+      <span className="flex min-w-0 items-center gap-1 text-caption-1-medium whitespace-nowrap text-text-secondary transition-colors duration-150 ease group-hover:text-text-primary">
         {model && (
-          <>
-            <span aria-hidden className="shrink-0 text-text-tertiary max-md:hidden">
-              /
-            </span>
-            <span className="max-w-44 truncate max-md:max-w-28">{model.label}</span>
-          </>
+          <span className="max-w-44 truncate max-md:max-w-28">{model.label}</span>
         )}
         {hasEffort && (
           <>
-            <span aria-hidden className="shrink-0 text-text-tertiary max-md:hidden">
-              ·
-            </span>
+            {model && (
+              <span aria-hidden className="shrink-0 text-text-tertiary max-md:hidden">
+                ·
+              </span>
+            )}
             {/* Reserve the widest localized level so the right-aligned popover stays put. */}
             <span className="inline-grid shrink-0 max-md:hidden">
               {pillEffortStops(effort).map(level => (
@@ -252,9 +250,9 @@ function CliMenuTrigger({
 }
 
 /** Popover body: the hairline-separated engine rows and, on desktop, the
- *  hovered engine's model flyout floating to the right. Row hover opens
- *  the flyout after the parent's hover-intent delay; keyboard focus opens
- *  it immediately. */
+ *  hovered engine's model flyout floating to the left of the list (the pill
+ *  sits on the composer's right). Row hover opens the flyout after the
+ *  parent's hover-intent delay; keyboard focus opens it immediately. */
 function EngineMenuBody({
   options,
   value,
@@ -508,9 +506,9 @@ export function CliMenu({
   const { isOpen, triggerRef, popoverRef, close, setOpen } = usePopoverState();
   const current = options.find((o) => o.id === value);
 
-  // Trigger carries the whole selection at a glance:
-  // "Claude Code / 默认 · 高" (CLI name / model / effort). The model part
-  // only drops out when the engine has no model list at all.
+  // Trigger reads "logo + MiniMax-M3 · 中": the mark says which CLI is active,
+  // the text says what it will run. The model part only drops out when the
+  // engine has no model list at all.
   const selectedModelId = models[value] ?? "";
   const selectedModel = (modelsByEngine[value] ?? []).find((m) => m.id === selectedModelId);
   const engineName = CLI_DISPLAY_NAMES[value] ?? current?.label ?? value;

@@ -5,9 +5,11 @@ import CircleStop from "lucide-react/dist/esm/icons/circle-stop";
 import { cx } from "@/utils/cx";
 
 /**
- * ComposerToolbar — the composer's bottom row: menu slots (add attachment,
- * CLI + model switcher, permission mode) on the left; the send button on the
- * right, which becomes a stop control while a turn streams.
+ * ComposerToolbar — the composer's bottom row. The engine + model pill sits on
+ * the right, next to the send button (the reference client puts the selection
+ * where the eye already goes before sending); the add-attachment and
+ * permission-mode menus stay on the left. Send becomes a stop control while a
+ * turn streams.
  */
 export function ComposerToolbar({
   addMenu,
@@ -20,7 +22,7 @@ export function ComposerToolbar({
 }: {
   /** Slot for the add-attachment menu (template AddMenu). */
   addMenu?: ReactNode;
-  /** Slot for the CLI + model switcher (CliMenu). */
+  /** Slot for the engine + model pill (CliMenu), right-aligned. */
   cliMenu?: ReactNode;
   /** Slot for the permission-mode picker (PermissionMenu). */
   permissionMenu?: ReactNode;
@@ -38,11 +40,11 @@ export function ComposerToolbar({
     <div className="flex items-center gap-2 select-none">
       {addMenu}
 
-      {cliMenu}
-
       {permissionMenu}
 
       <div aria-hidden className="min-w-0 flex-1" />
+
+      {cliMenu}
 
       {streaming ? (
         <button

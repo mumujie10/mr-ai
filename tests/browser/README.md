@@ -226,7 +226,16 @@ matching rows while holding it open, and a pick must clear the filter and
 close the list. With Claude first and Codex active, a focused channel pick
 must leave the Codex panel mounted and return focus to its channel trigger.
 The fixture drives the real CliMenu with controlled selection state and reports
-PASS/FAIL with measured heights and focus. No app, no backend.
+PASS/FAIL with measured heights and focus. The trigger is anchored to the
+window's right edge, the way the composer's pill is: its popover is
+right-aligned to the pill and the model flyout opens to the LEFT, so a narrow
+window must push nothing off-screen. No app, no backend.
+
+Open `/tests/browser/composer-footer-repro.html` for the same pill inside the
+real `ComposerToolbar` row: it must sit left of the send button, show only the
+engine mark, the model name and the effort at caption size (the engine name
+stays in the pill's `aria-label`), and the open popover must keep its right
+edge on the pill's right edge. No app, no backend.
 
 Open `/tests/browser/branch-picker.html` to check the changes-panel branch
 dropdown: filtering to `1.0.6` and clicking the `v1.0.6` row must run the

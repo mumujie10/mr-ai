@@ -25,11 +25,12 @@ export interface ChannelOption {
   label: string;
 }
 
-/** Per-engine model flyout: pops to the right of the CLI popover, bottom-
- *  aligned with the engine list so the taller panel never clips below the
+/** Per-engine model flyout: the CLI pill sits on the composer's right and its
+ *  popover is right-aligned to it, so the panel opens to the LEFT of the
+ *  engine list — bottom-aligned so the taller panel never clips below the
  *  composer-anchored popover. */
 const FLYOUT_CLASSES = cx(
-  "absolute left-full bottom-0 z-10 ml-2 w-80 max-w-[calc(100vw-32px)]",
+  "absolute right-full bottom-0 z-10 mr-2 w-80 max-w-[calc(100vw-32px)]",
   "rounded-lg border border-border-button-default bg-background-primary-default p-1 shadow-dropdown",
 );
 

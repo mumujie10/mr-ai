@@ -234,17 +234,19 @@ describe("CliMenu trigger pill", () => {
   function pillHarness({
     efforts,
     effortLevels,
+    modelRows,
   }: {
     efforts?: Record<string, "low" | "medium" | "high" | "xhigh" | "max" | "ultra">;
     effortLevels?: Record<string, string[] | null>;
+    modelRows?: Record<string, { id: string; label: string }[]>;
   }) {
     return (
       <CliMenu
         options={[{ id: "claude", label: "Claude Code", available: true }]}
         value="claude"
         onChange={() => {}}
-        modelsByEngine={{}}
-        models={{}}
+        modelsByEngine={modelRows ?? {}}
+        models={modelRows ? { claude: "m1" } : {}}
         onModelChange={() => {}}
         efforts={efforts ?? { claude: "ultra" }}
         effortLevels={effortLevels}
@@ -286,6 +288,22 @@ describe("CliMenu trigger pill", () => {
       root.render(pillHarness({}));
     });
     expect(container.textContent).toContain("ultra");
+    act(() => root.unmount());
+  });
+
+  it("shows the mark, the model and the effort — the CLI name stays in the label", async () => {
+    const { container, root } = setup();
+    await act(async () => {
+      root.render(
+        pillHarness({ modelRows: { claude: [{ id: "m1", label: "Fable-5" }] } }),
+      );
+    });
+    const trigger = container.querySelector("button");
+    // The brand mark already says which CLI is active; spelling it out made the
+    // pill the loudest thing in the composer.
+    expect(trigger?.textContent).not.toContain("Claude Code");
+    expect(trigger?.textContent).toContain("Fable-5");
+    expect(trigger?.getAttribute("aria-label")).toBe("Claude Code / Fable-5 · ultra");
     act(() => root.unmount());
   });
 });
