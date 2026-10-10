@@ -15,6 +15,8 @@ vi.mock("./PiFamilyAuthSection", () => ({
 
 import { CLI_DISPLAY_NAMES } from "@/components/foundations/icons/engine-brands";
 import i18n from "@/lib/i18n";
+import { useChatStore } from "@/features/chat/store";
+import type { EngineInfo } from "@/lib/ipc";
 import { CliConfigBody } from "./CliConfigBody";
 import type { CliConfigState } from "./useCliConfig";
 
@@ -108,6 +110,60 @@ describe("CliConfigBody disabled overlay", () => {
   it("enabled: no overlay is rendered", async () => {
     await render(makeCli({ enabled: true }));
     expect(overlay()).toBeNull();
+  });
+});
+
+describe("CliConfigBody enable switch vs availability", () => {
+  let container: HTMLDivElement;
+  let root: Root | null;
+  let restore: EngineInfo[] | undefined;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = null;
+    restore = useChatStore.getState().engines;
+  });
+
+  afterEach(async () => {
+    if (root) await act(async () => root?.unmount());
+    container.remove();
+    useChatStore.setState({ engines: restore ?? [] });
+  });
+
+  async function renderWithEngine(available: boolean) {
+    useChatStore.setState({
+      engines: [
+        {
+          id: "pi",
+          available,
+          enabled: true,
+          supportsImages: false,
+          permissions: [],
+        },
+      ],
+    });
+    root = createRoot(container);
+    await act(async () => root?.render(<CliConfigBody cli={makeCli({ enabled: true })} />));
+  }
+
+  it("an uninstalled engine cannot be enabled and says why", async () => {
+    await renderWithEngine(false);
+
+    const input = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(input.disabled).toBe(true);
+    const reason = i18n.t("settings.cliEnableNeedsInstall", { name: "PI CLI" });
+    expect(container.textContent).toContain(reason);
+  });
+
+  it("an installed engine keeps its switch usable", async () => {
+    await renderWithEngine(true);
+
+    const input = container.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    expect(input.disabled).toBe(false);
+    expect(container.textContent).not.toContain(
+      i18n.t("settings.cliEnableNeedsInstall", { name: "PI CLI" }),
+    );
   });
 });
 

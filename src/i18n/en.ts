@@ -1060,6 +1060,7 @@ export const en: Messages = {
     cliCustomModelsDup: "Model already exists",
     cliEngineSection: "Engine Settings",
     cliEnableTitle: "Enable {{name}}",
+    cliEnableNeedsInstall: "{{name}} was not detected — install it to enable",
     cliEnableDesc:
       "While disabled, this CLI is hidden from the CLI picker and its history is not rendered.",
     cliChannelsHint: "Click a row to switch · applies to new sessions",

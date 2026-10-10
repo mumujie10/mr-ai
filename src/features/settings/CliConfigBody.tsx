@@ -7,6 +7,7 @@ import {
 } from "@/components/application/settings/settings-rows";
 import { WorkspaceSortableList } from "@/components/application/ai-chat/workspace-sortable-list";
 import { ipc } from "@/lib/ipc";
+import { useChatStore } from "@/features/chat/store";
 import { PSEUDO_LOCAL, type EngineId } from "./providers";
 import { ChannelRow } from "./CliChannelRow";
 import { CliEngineCard } from "./CliEngineCard";
@@ -52,6 +53,10 @@ export function CliConfigBody({ cli }: { cli: CliConfigState }) {
   // pi/omp official files are never cc-gui-managed: their 编辑 entry opens
   // the models.json/models.yml editor already living in the auth section.
   const [customEditorSignal, setCustomEditorSignal] = useState(0);
+  // Same source as the nav's 未安装 bucket: one fact, one place to be true.
+  const available = useChatStore((s) =>
+    s.engines.find((candidate) => candidate.id === engine)?.available,
+  );
 
   return (
     <>
@@ -68,6 +73,7 @@ export function CliConfigBody({ cli }: { cli: CliConfigState }) {
         engine={engine}
         enabled={enabled}
         busy={busy}
+        available={available}
         onToggleEnabled={(on) => void mutate(() => ipc.setEngineEnabled(engine, on))}
       />
 

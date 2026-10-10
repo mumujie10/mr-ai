@@ -1019,6 +1019,7 @@ export const zh = {
     cliCustomModelsDup: "该模型已存在",
     cliEngineSection: "引擎设置",
     cliEnableTitle: "启用 {{name}}",
+    cliEnableNeedsInstall: "未检测到 {{name}}，安装后才能启用",
     cliEnableDesc:
       "停用后该 CLI 不会出现在 CLI 选择页面，该 CLI 的历史记录也不会渲染。",
     cliChannelsHint: "点击行即切换 · 对新会话生效",
