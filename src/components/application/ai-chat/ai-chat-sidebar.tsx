@@ -7,6 +7,7 @@ import {
   ARCHIVED_SECTION_ID,
   useCollapsedGroups,
   useExpandedWorkspaces,
+  useWorkspaceViewMode,
   useSearchPalette,
   useWorkspaceMenu,
   useBlankMenu,
@@ -114,13 +115,32 @@ export function AiChatSidebar({
 } = {}) {
   const { t } = useTranslation();
   const { searchOpen, openSearch, closeSearch } = useSearchPalette();
-  const { collapsedGroups, toggleGroup } = useCollapsedGroups();
+  const { collapsedGroups, toggleGroup, setCollapsedGroups } = useCollapsedGroups();
   // Worktree 子行也进展开集/搜索面板的数据源：跟着父行扁平化。
   const allRepos = useMemo(() => {
     const topLevel = sections ? sections.flatMap((section) => section.repos) : repos;
     return topLevel.flatMap((repo) => [repo, ...(repo.worktrees ?? [])]);
   }, [sections, repos]);
-  const { isRepoExpanded, toggleRepoExpanded } = useExpandedWorkspaces(allRepos, activeThreadId);
+  const { isRepoExpanded, toggleRepoExpanded, collapseAllRepos, expandAllRepos } =
+    useExpandedWorkspaces(allRepos, activeThreadId);
+  const { viewMode, changeViewMode } = useWorkspaceViewMode();
+  // ⑥ 两颗标题按钮的状态：全部收起后按钮变成"全部展开"。列表视图里分组根本
+  // 不渲染，批量收起只看行展开。空侧栏两颗都无害。
+  const everyGroupCollapsed =
+    viewMode === "list" ||
+    (sections ?? []).every((section) => section.id === null || collapsedGroups.has(section.id));
+  const noRepoExpanded = allRepos.every((repo) => !isRepoExpanded(repo));
+  const allCollapsed = everyGroupCollapsed && noRepoExpanded;
+  const collapseAllWorkspaces = useCallback(() => {
+    setCollapsedGroups(
+      new Set([ARCHIVED_SECTION_ID, ...(sections ?? []).flatMap((s) => (s.id ? [s.id] : []))]),
+    );
+    collapseAllRepos();
+  }, [sections, setCollapsedGroups, collapseAllRepos]);
+  const expandAllWorkspaces = useCallback(() => {
+    setCollapsedGroups(new Set());
+    expandAllRepos();
+  }, [setCollapsedGroups, expandAllRepos]);
   const { workspaceMenu, closeWorkspaceMenu, openWorkspaceMenu, openArchivedMenu } =
     useWorkspaceMenu(onWorkspaceAlias, onSetWorkspaceArchived);
   const { blankMenu, openBlankMenu, closeBlankMenu } = useBlankMenu();
@@ -190,6 +210,11 @@ export function AiChatSidebar({
             repos={repos}
             sections={sections}
             collapsedGroups={collapsedGroups}
+            allCollapsed={allCollapsed}
+            onCollapseAll={collapseAllWorkspaces}
+            onExpandAll={expandAllWorkspaces}
+            viewMode={viewMode}
+            onViewModeChange={changeViewMode}
             isRepoExpanded={isRepoExpanded}
             onToggleRepo={toggleRepoExpanded}
             activeThreadId={activeThreadId}

@@ -45,7 +45,7 @@ function writeCollapsedGroups(collapsed: Set<string>) {
 
 /** Group collapse: persisted so the tree reopens the way it was left. */
 export function useCollapsedGroups() {
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(readCollapsedGroups);
+  const [collapsedGroups, setCollapsedGroupsState] = useState<Set<string>>(readCollapsedGroups);
   const toggleGroup = useCallback(
     (groupId: string) => {
       const next = new Set(collapsedGroups);
@@ -56,7 +56,12 @@ export function useCollapsedGroups() {
     },
     [collapsedGroups],
   );
-  return { collapsedGroups, toggleGroup };
+  /** ⑥ 全部收起/展开：批量写并落盘，和单组开关走同一份存储。 */
+  const setCollapsedGroups = useCallback((next: Set<string>) => {
+    setCollapsedGroupsState(next);
+    writeCollapsedGroups(next);
+  }, []);
+  return { collapsedGroups, toggleGroup, setCollapsedGroups };
 }
 
 /** localStorage key for the expanded workspace id set. */
@@ -142,7 +147,16 @@ export function useExpandedWorkspaces(allRepos: AiChatRepo[], activeThreadId?: s
       if (!isRepoExpanded(repo)) toggleRepoExpanded(repo);
     }
   }
-  return { isRepoExpanded, toggleRepoExpanded };
+  /** ⑥ 全部收起：物化成空集——"用户没动过"的 null 默认（首组展开）就此结束，
+   *  之后就是用户自己定的全收形态。 */
+  const collapseAllRepos = useCallback(() => setExpandedWorkspaces(new Set<string>()), []);
+  /** ⑥ 全部展开：所有行（含 worktree 子行）进展开集。 */
+  const expandAllRepos = useCallback(
+    () =>
+      setExpandedWorkspaces(new Set(allRepos.flatMap((r) => (r.id ? [r.id] : [])))),
+    [allRepos],
+  );
+  return { isRepoExpanded, toggleRepoExpanded, collapseAllRepos, expandAllRepos };
 }
 
 /** Workspace right-click menu: pointer-anchored, one open at a time. The
@@ -229,4 +243,30 @@ export function useSearchPalette() {
   useEffect(() => registerShortcutHandler("sidebarSearch", () => setSearchOpen((v) => !v)), []);
 
   return { searchOpen, openSearch, closeSearch };
+}
+
+/** localStorage key for the workspace list view mode (⑥ 视图 popover). */
+const WORKSPACE_VIEW_KEY = "ccgui-next.sidebarWorkspaceView:v1";
+
+export type WorkspaceViewMode = "grouped" | "list";
+
+/** 分组视图 / 列表视图：整侧栏一份，持久化。非法值回分组视图——列表视图是
+ *  显式选择，不该被一份坏存储悄悄改成默认。 */
+export function useWorkspaceViewMode() {
+  const [viewMode, setViewMode] = useState<WorkspaceViewMode>(() => {
+    try {
+      return localStorage.getItem(WORKSPACE_VIEW_KEY) === "list" ? "list" : "grouped";
+    } catch {
+      return "grouped";
+    }
+  });
+  const changeViewMode = useCallback((mode: WorkspaceViewMode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem(WORKSPACE_VIEW_KEY, mode);
+    } catch {
+      // Storage unavailable/full is non-fatal: the view stays for this session.
+    }
+  }, []);
+  return { viewMode, changeViewMode };
 }

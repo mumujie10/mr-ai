@@ -5,13 +5,25 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { InfoTip } from "@/components/base/tooltip/tooltip";
 import ChevronRight from "lucide-react/dist/esm/icons/chevron-right";
+import ChevronsDownUp from "lucide-react/dist/esm/icons/chevrons-down-up";
+import ChevronsUpDown from "lucide-react/dist/esm/icons/chevrons-up-down";
 import FolderPlus from "lucide-react/dist/esm/icons/folder-plus";
+import ListTree from "lucide-react/dist/esm/icons/list-tree";
+import {
+  Dropdown,
+  DropdownItem,
+  DropdownPopover,
+  DropdownTrigger,
+} from "@/components/base/dropdown/dropdown";
 import FolderSymlink from "lucide-react/dist/esm/icons/folder-symlink";
 import {
   WORKSPACE_DROP_TARGET_ATTR,
   WorkspaceSortableList,
 } from "@/components/application/ai-chat/workspace-sortable-list";
-import { ARCHIVED_SECTION_ID } from "@/components/application/ai-chat/use-sidebar-state";
+import {
+  ARCHIVED_SECTION_ID,
+  type WorkspaceViewMode,
+} from "@/components/application/ai-chat/use-sidebar-state";
 import { isWeb } from "@/lib/platform";
 import { Input } from "@/components/base/input/input";
 import { RepoItem } from "@/components/application/ai-chat/repo-tree";
@@ -177,6 +189,52 @@ export function ArchivedSection({
 /** Workspaces section: header with the add button + the sortable repo tree.
  *  With workspace groups configured, repos render under collapsible group
  *  headers (工作区二级分类); otherwise the flat list renders unchanged. */
+/** ⑥ 视图切换：分组 / 列表。筛选（对话/工作）在会话标识落地后加进同一张卡。 */
+function ViewModePopover({
+  viewMode,
+  onChange,
+}: {
+  viewMode: WorkspaceViewMode;
+  onChange: (mode: WorkspaceViewMode) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  return (
+    <Dropdown isOpen={open} onOpenChange={setOpen}>
+      <DropdownTrigger
+        aria-label={t("chat.workspaceView")}
+        className="flex size-7 cursor-pointer items-center justify-center rounded-full text-foreground-icon-secondary transition-colors duration-150 hover:bg-background-tertiary-hover/55 hover:text-foreground-icon-primary"
+      >
+        <ListTree className="size-4" aria-hidden />
+      </DropdownTrigger>
+      <DropdownPopover aria-label={t("chat.workspaceView")} placement="bottom end" className="w-44!">
+        <DropdownItem
+          key="grouped"
+          selected={viewMode === "grouped"}
+          className="px-2 py-1.5"
+          onSelect={() => {
+            onChange("grouped");
+            setOpen(false);
+          }}
+        >
+          {t("chat.viewGrouped")}
+        </DropdownItem>
+        <DropdownItem
+          key="list"
+          selected={viewMode === "list"}
+          className="px-2 py-1.5"
+          onSelect={() => {
+            onChange("list");
+            setOpen(false);
+          }}
+        >
+          {t("chat.viewList")}
+        </DropdownItem>
+      </DropdownPopover>
+    </Dropdown>
+  );
+}
+
 export function WorkspaceSection({
   repos,
   sections,
@@ -196,6 +254,11 @@ export function WorkspaceSection({
   onRepoContextMenu,
   onWorkspaceDragActiveChange,
   onDropWorkspaceToSection,
+  allCollapsed = false,
+  onCollapseAll,
+  onExpandAll,
+  viewMode = "grouped",
+  onViewModeChange,
   creatingGroup = false,
   onCreateGroup,
   onCreateGroupCancel,
@@ -225,6 +288,13 @@ export function WorkspaceSection({
   /** Drop of a workspace row onto a section container (group id, the
    *  archived sentinel, or null = ungrouped). */
   onDropWorkspaceToSection?: (workspaceId: string, targetSectionId: string | null) => void;
+  /** ⑥ 批量收起/展开：状态在侧栏（持久化），标题行只渲染当前该出现的那颗。 */
+  allCollapsed?: boolean;
+  onCollapseAll?: () => void;
+  onExpandAll?: () => void;
+  /** ⑥ 视图：分组（默认，尊重分组与折叠）或列表（拍平全部仓库行）。 */
+  viewMode?: WorkspaceViewMode;
+  onViewModeChange?: (mode: WorkspaceViewMode) => void;
   /** Blank-area menu「新建分组」is pending: render the inline name composer
    *  at the end of the section. */
   creatingGroup?: boolean;
@@ -299,20 +369,44 @@ export function WorkspaceSection({
               Git state. Say so where the choice is made, not in a document. */}
           <InfoTip label={t("chat.workspacesHint")} />
         </span>
-        {!isWeb && (
-          <button
-            type="button"
-            aria-label={t("chat.addWorkspace")}
-            title={t("chat.addWorkspace")}
-            onClick={onAddWorkspace}
-            className="flex size-7 cursor-pointer items-center justify-center rounded-full text-foreground-icon-secondary transition-colors duration-150 hover:bg-background-tertiary-hover/55 hover:text-foreground-icon-primary"
-          >
-            <FolderPlus className="size-4" aria-hidden />
-          </button>
-        )}
+        <span className="flex items-center gap-0.5">
+          {onCollapseAll && onExpandAll && (
+            <button
+              type="button"
+              aria-label={
+                allCollapsed ? t("chat.expandAllWorkspaces") : t("chat.collapseAllWorkspaces")
+              }
+              title={
+                allCollapsed ? t("chat.expandAllWorkspaces") : t("chat.collapseAllWorkspaces")
+              }
+              onClick={allCollapsed ? onExpandAll : onCollapseAll}
+              className="flex size-7 cursor-pointer items-center justify-center rounded-full text-foreground-icon-secondary transition-colors duration-150 hover:bg-background-tertiary-hover/55 hover:text-foreground-icon-primary"
+            >
+              {allCollapsed ? (
+                <ChevronsUpDown className="size-4" aria-hidden />
+              ) : (
+                <ChevronsDownUp className="size-4" aria-hidden />
+              )}
+            </button>
+          )}
+          {onViewModeChange && (
+            <ViewModePopover viewMode={viewMode} onChange={onViewModeChange} />
+          )}
+          {!isWeb && (
+            <button
+              type="button"
+              aria-label={t("chat.addWorkspace")}
+              title={t("chat.addWorkspace")}
+              onClick={onAddWorkspace}
+              className="flex size-7 cursor-pointer items-center justify-center rounded-full text-foreground-icon-secondary transition-colors duration-150 hover:bg-background-tertiary-hover/55 hover:text-foreground-icon-primary"
+            >
+              <FolderPlus className="size-4" aria-hidden />
+            </button>
+          )}
+        </span>
       </div>
-      {!hasGroups && renderRepoList(repos, null)}
-      {hasGroups &&
+      {(!hasGroups || viewMode === "list") && renderRepoList(repos, null)}
+      {hasGroups && viewMode === "grouped" &&
         sections!.map((section) =>
           section.id === null ? (
             <div key="ungrouped" {...{ [WORKSPACE_DROP_TARGET_ATTR]: "" }} className={dropTargetClasses}>

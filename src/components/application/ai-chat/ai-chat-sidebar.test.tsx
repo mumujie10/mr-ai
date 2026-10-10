@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sessionMenuRegistry, workspaceMenuRegistry } from "@ccgui/plugin-sdk";
 import { AiChatSidebar } from "./ai-chat-sidebar";
 import type { AiChatRepo } from "./ai-chat-sidebar";
@@ -682,4 +682,78 @@ it("新建工作区选的图标与颜色渲染在行首，默认行保持文件�
   };
   expect(iconColorOf("a")).toBe("rgb(242, 85, 85)");
   expect(iconColorOf("b")).toBe("");
+});
+
+describe("工作区标题行的批量收起与视图", () => {
+  const VIEW_KEY = "ccgui-next.sidebarWorkspaceView:v1";
+  const GROUPS_KEY = "ccgui-next.sidebarCollapsedGroups:v1";
+  const EXPANDED_KEY = "ccgui-next.sidebarExpandedWorkspaces:v1";
+
+  const twoRepos = () => [
+    { ...repo("a"), threads: [] },
+    { ...repo("b"), threads: [] },
+  ];
+
+  const collapseButton = () =>
+    [...node.querySelectorAll<HTMLButtonElement>("button")].find((button) =>
+      ["chat.collapseAllWorkspaces", "chat.expandAllWorkspaces"].includes(
+        button.getAttribute("aria-label") ?? "",
+      ),
+    );
+
+  it("全部收起：组与仓库行一起收，存储两处都写，按钮翻成全部展开", async () => {
+    await act(async () => {
+      root.render(
+        <AiChatSidebar
+          repos={twoRepos()}
+          sections={[{ id: "g1", name: "开源项目", repos: twoRepos() }]}
+          onThreadSelect={() => {}}
+        />,
+      );
+    });
+    expect(rowFor("开源项目").getAttribute("aria-expanded")).toBe("true");
+    // Make one repo expanded so "collapse all" has real work to do.
+    await act(async () => rowFor("a").click());
+    expect(JSON.parse(localStorage.getItem(EXPANDED_KEY) ?? "[]")).toContain("a");
+
+    await act(async () => collapseButton()!.click());
+
+    expect(rowFor("开源项目").getAttribute("aria-expanded")).toBe("false");
+    expect(JSON.parse(localStorage.getItem(GROUPS_KEY) ?? "[]")).toContain("g1");
+    expect(JSON.parse(localStorage.getItem(EXPANDED_KEY) ?? "[]")).not.toContain("a");
+    expect(collapseButton()?.getAttribute("aria-label")).toBe("chat.expandAllWorkspaces");
+
+    // And back: everything reopens, including the group.
+    await act(async () => collapseButton()!.click());
+    expect(rowFor("开源项目").getAttribute("aria-expanded")).toBe("true");
+    expect(rowFor("a").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("列表视图拍平分组：组标题不渲染，选择落盘", async () => {
+    localStorage.setItem(VIEW_KEY, "list");
+    await act(async () => {
+      root.render(
+        <AiChatSidebar
+          repos={twoRepos()}
+          sections={[{ id: "g1", name: "开源项目", repos: twoRepos() }]}
+        />,
+      );
+    });
+    expect(node.textContent).not.toContain("开源项目");
+    expect(node.textContent).toContain("a");
+
+    // 切回分组视图：组标题回来了。
+    const viewButton = [...node.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.getAttribute("aria-label") === "chat.workspaceView",
+    )!;
+    await act(async () => viewButton.click());
+    // DropdownItem 是普通 button[aria-pressed]，不是 listbox option。
+    const listRow = [
+      ...document.body.querySelectorAll<HTMLButtonElement>("button[aria-pressed]"),
+    ].find((option) => option.textContent === "chat.viewGrouped");
+    expect(listRow).toBeTruthy();
+    await act(async () => listRow!.click());
+    expect(node.textContent).toContain("开源项目");
+    expect(localStorage.getItem(VIEW_KEY)).toBe("grouped");
+  });
 });
