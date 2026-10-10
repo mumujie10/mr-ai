@@ -1,6 +1,6 @@
 {
   "name": "mr-cli",
-  "version": "0.6.3",
+  "version": "0.0.1",
   "private": true,
   "type": "module",
   "description": "Standalone MR CLI agent runtime with BYOK models, plugins and ACP.",

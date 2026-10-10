@@ -1150,9 +1150,11 @@ mod tests {
             &effort_session_result("high"),
             "ultra"
         ));
-        // A BYOK channel without the option advertises no levels: the CLI's own
-        // default runs, and nothing is sent to set it (measured on mcode 0.6.3:
-        // `provider add` declares no reasoning levels for custom providers).
+        // A channel that declared no levels advertises no levels, so the CLI's
+        // own default runs and nothing is sent to set it. Measured on the staged
+        // runtime: `provider add` without `--effort-levels` yields only
+        // `permissionMode` + `model`, and adding the flag makes `thinkingEffort`
+        // appear with exactly the declared values.
         assert!(effort_levels_of(&model_session_result()).is_empty());
         assert!(!effort_already_current(&model_session_result(), "high"));
     }

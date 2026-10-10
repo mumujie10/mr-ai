@@ -1,6 +1,6 @@
 {
   "name": "@mr/tui",
-  "version": "0.6.3",
+  "version": "0.0.1",
   "private": true,
   "description": "MireAI CLI — the agent runtime this app ships.",
   "type": "module",
