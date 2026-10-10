@@ -772,6 +772,7 @@ mod tests {
                     supports_memory: false,
                     supports_effort: true,
                     supports_tool_constraints: false,
+                    update_kind: Some("npm".into()),
                     permissions: vec!["default".to_string()],
                     plan: crate::engine::plan_review::PlanApproval::Unavailable {
                         reason: "test stub",

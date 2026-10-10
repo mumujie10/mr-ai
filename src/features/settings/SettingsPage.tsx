@@ -164,11 +164,21 @@ export default function SettingsPage() {
         // probe has landed and at least one CLI qualifies.
         // Plugin sections in this rail have no `cli:` key — no engine state,
         // they always stay in the main group.
+        // Only engines with an install channel belong in the 未安装 bucket:
+        // the bucket's promise is "you can fix this by clicking". An engine
+        // whose vendor ships no channel has no such click, so it stays inline
+        // in the main rail instead of being folded away.
+        const installChannelEngines = new Set(
+          engines.flatMap((engine) =>
+            engine.updateKind ? [engine.id] : [],
+          ),
+        );
         const uninstalledItems =
           engines.length > 0
             ? ordered.flatMap((item) =>
                 item.key.startsWith("cli:") &&
-                !availableEngines.has(item.key.slice("cli:".length))
+                !availableEngines.has(item.key.slice("cli:".length)) &&
+                installChannelEngines.has(item.key.slice("cli:".length))
                   ? [{ ...item, disabled: true }]
                   : [],
               )

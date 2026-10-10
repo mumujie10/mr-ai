@@ -71,12 +71,18 @@ settingsRegistry.register({
   component: () => <div>stub page</div>,
 });
 
-const engine = (id: string, available: boolean, enabled: boolean): EngineInfo => ({
+const engine = (
+  id: string,
+  available: boolean,
+  enabled: boolean,
+  updateKind?: string,
+): EngineInfo => ({
   id,
   available,
   enabled,
   supportsImages: false,
   permissions: [],
+  ...(updateKind ? { updateKind } : {}),
 });
 
 /** Row labels currently rendered in the nav rail (exact text, no substring
@@ -247,12 +253,18 @@ describe("SettingsPage system rail", () => {
 });
 
 describe("SettingsPage CLI rail", () => {
-  it("buckets uninstalled CLIs under 未安装, disabled ones under 未启用", async () => {
+  it("buckets only installable CLIs under 未安装; channel-less ones stay inline", async () => {
     await render([
       engine("claude", true, true),
       engine("codex", true, false),
+      // Uninstalled WITH an install channel: the bucket's promise ("click to
+      // fix") is one click away.
+      engine("minimax", false, true, "native"),
+      // Uninstalled WITHOUT a channel: nothing to click, so it stays in the
+      // main rail instead of being folded away as if coming soon. enabled
+      // mirrors the backend default (a section with no current is enabled).
       engine("qoder", false, true),
-      engine("agy", false, false),
+      engine("agy", false, true),
     ]);
 
     // Headings stay visible while folded, so every bucket is discoverable.
@@ -261,20 +273,30 @@ describe("SettingsPage CLI rail", () => {
     expect(labels).toContain("Codex CLI");
     expect(labels).toContain("Qoder CLI");
     expect(labels).toContain("Antigravity CLI");
+    expect(labels).toContain("MiniMax Code");
 
-    // Main rail holds only the installed+enabled CLI.
-    expect(itemsUnder("settings.cliManage")).toEqual(["Claude Code"]);
-
-    // 未安装 holds every uninstalled CLI (the probe lists 4 engines, the rail
-    // registers all of them); 未启用 only the installed disabled one — an
-    // uninstalled CLI never lands in the disabled bucket.
-    const missingItems = itemsUnder("settings.cliNotInstalledGroup");
-    expect(missingItems).toEqual(
-      expect.arrayContaining(["Qoder CLI", "Antigravity CLI"]),
+    // Main rail holds the installed+enabled CLI plus the channel-less
+    // uninstalled ones — visible, not hidden. (Rows also carry textless drag
+    // handles, so assert membership rather than exact sequence.)
+    const mainRail = itemsUnder("settings.cliManage");
+    expect(mainRail).toEqual(
+      expect.arrayContaining(["Claude Code", "Qoder CLI", "Antigravity CLI"]),
     );
+    expect(mainRail).not.toContain("MiniMax Code");
+
+    // 未安装 holds only the uninstalled engine that has an install channel.
+    const missingItems = itemsUnder("settings.cliNotInstalledGroup");
+    expect(missingItems).toEqual(["MiniMax Code"]);
     expect(missingItems).not.toContain("Claude Code");
-    expect(missingItems).not.toContain("Codex CLI");
-    expect(itemsUnder("settings.cliDisabledGroup")).toEqual(["Codex CLI"]);
+    expect(missingItems).not.toContain("Qoder CLI");
+    // 未启用 stays "installed but off": codex. (Engines the fixture says
+    // nothing about are the registry's own concern here — the rule under test
+    // is only about where an uninstalled engine lands.)
+    expect(itemsUnder("settings.cliDisabledGroup")).toEqual(
+      expect.arrayContaining(["Codex CLI"]),
+    );
+    expect(itemsUnder("settings.cliDisabledGroup")).not.toContain("MiniMax Code");
+    expect(itemsUnder("settings.cliDisabledGroup")).not.toContain("Qoder CLI");
 
     // 未安装 sorts before 未启用 in the rail.
     const missingAt = labels.indexOf(i18n.t("settings.cliNotInstalledGroup"));
@@ -287,7 +309,7 @@ describe("SettingsPage CLI rail", () => {
     await render([
       engine("claude", true, true),
       engine("codex", true, false),
-      engine("qoder", false, true),
+      engine("minimax", false, true, "native"),
     ]);
 
     // Both buckets carry the negative top margin that shrinks the 24px
@@ -320,7 +342,9 @@ describe("SettingsPage CLI rail", () => {
     await render([
       engine("claude", true, true),
       engine("codex", true, false),
-      engine("qoder", false, true),
+      // The stub bucket member needs an install channel: the 未安装 fold only
+      // exists for engines a click can actually install.
+      engine("qoder", false, true, "npm"),
     ]);
 
     // CLI 管理 starts open; 未安装 and 未启用 start folded (their lists carry
@@ -354,7 +378,9 @@ describe("SettingsPage CLI rail", () => {
     await render([
       engine("claude", true, true),
       engine("codex", true, false),
-      engine("qoder", false, true),
+      // The stub bucket member needs an install channel: the 未安装 fold only
+      // exists for engines a click can actually install.
+      engine("qoder", false, true, "npm"),
     ]);
 
     // Only the three CLI sections fold.
@@ -370,7 +396,9 @@ describe("SettingsPage CLI rail", () => {
     await render([
       engine("claude", true, true),
       engine("codex", true, false),
-      engine("qoder", false, true),
+      // The stub bucket member needs an install channel: the 未安装 fold only
+      // exists for engines a click can actually install.
+      engine("qoder", false, true, "npm"),
     ]);
 
     // The chevron is the heading row's trailing element, so the label keeps
@@ -517,7 +545,10 @@ describe("SettingsPage capabilities rail", () => {
       component: () => <div>stub cli page</div>,
     });
     try {
-      await render([engine("claude", true, true)], "cli:stubcli");
+      await render(
+        [engine("claude", true, true), engine("stubcli", false, true, "npm")],
+        "cli:stubcli",
+      );
 
       expect(
         groupToggle("settings.cliNotInstalledGroup").getAttribute("aria-expanded"),

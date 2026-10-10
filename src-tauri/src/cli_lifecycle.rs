@@ -116,7 +116,7 @@ fn claude_update_kind(bin: &str) -> &'static str {
     }
 }
 
-fn update_kind(engine: &str, bin: &str) -> Option<&'static str> {
+pub(crate) fn update_kind(engine: &str, bin: &str) -> Option<&'static str> {
     if engine == "claude" || engine == "codex" {
         return Some(claude_update_kind(bin));
     }

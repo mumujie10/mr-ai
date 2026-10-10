@@ -244,6 +244,11 @@ export interface EngineInfo {
    * picker and history lists; running sessions are unaffected. */
   enabled: boolean;
   supportsImages: boolean;
+  /** The engine's one-click install/update channel ("npm"/"native"), when its
+   *  vendor ships one. The settings nav keeps only engines WITH a channel in
+   *  the 未安装 bucket; engines without one stay inline — hiding them behind a
+   *  fold would read as "coming soon" when there is nothing to click. */
+  updateKind?: string | null;
   supportsEffort?: boolean;
   /** Whether the engine can mount the app's computer-use driver (an MCP
    *  server it accepts at launch). The composer's `/ccgui-cua` refuses on

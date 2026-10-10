@@ -386,6 +386,12 @@ pub struct EngineInfo {
     /// Whether this engine can enforce a per-call tool whitelist (mission
     /// read-only nodes); the workbench blocks read-only nodes otherwise.
     pub supports_tool_constraints: bool,
+    /// The engine's one-click install/update channel ("npm" / "native"), when
+    /// its vendor ships one. The settings nav keeps only engines WITH a
+    /// channel in the 未安装 bucket — an engine without one is shown inline
+    /// instead of hidden behind a fold, because there is nothing to click
+    /// there and hiding it reads as "coming soon".
+    pub update_kind: Option<String>,
     /// Permission modes the engine honors at spawn; drives the composer
     /// picker's disabled options.
     pub permissions: Vec<String>,
@@ -464,6 +470,9 @@ fn list_engines_blocking() -> Vec<EngineInfo> {
                 _ if *id == "codex" && codex_bin_from_home(&settings).is_some() => true,
                 _ => resolve::find_cli_binary(cli_binary_name(id), None).is_some(),
             };
+            // The same resolution the version header uses, so the nav and the
+            // header can never disagree about who has an install channel.
+            let update_kind = crate::cli_lifecycle::update_kind(id, &engine_bin(&settings, id));
             EngineInfo {
                 id: id.to_string(),
                 available,
@@ -474,6 +483,7 @@ fn list_engines_blocking() -> Vec<EngineInfo> {
                 supports_memory: engine.supports_memory(),
                 supports_effort: engine.supports_effort(),
                 supports_tool_constraints: engine.supports_tool_constraints(),
+                update_kind: update_kind.map(str::to_string),
                 permissions: engine
                     .supported_permissions()
                     .iter()
@@ -2108,11 +2118,14 @@ mod permission_tests {
             supports_memory: true,
             supports_effort: true,
             supports_tool_constraints: false,
+            update_kind: Some("native".into()),
             permissions: vec!["auto".into()],
         };
         let json = serde_json::to_value(&info).expect("EngineInfo serializes");
         assert_eq!(json["supportsComputerUse"], serde_json::json!(true));
         assert_eq!(json["supportsMemory"], serde_json::json!(true));
+        // The nav reads updateKind to decide who may sit in the 未安装 bucket.
+        assert_eq!(json["updateKind"], serde_json::json!("native"));
         assert!(json.get("supports_computer_use").is_none());
     }
 
