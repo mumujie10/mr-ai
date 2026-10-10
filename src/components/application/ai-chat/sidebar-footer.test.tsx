@@ -90,7 +90,7 @@ describe("sidebar footer cluster", () => {
     expect(container.textContent).toContain("徐");
   });
 
-  it("the gauge opens the local usage popup with real ledger numbers", async () => {
+  it("the gauge opens the anchored usage card with real ledger numbers", async () => {
     await render();
     await act(async () => {
       container.querySelector<HTMLButtonElement>(
@@ -99,8 +99,7 @@ describe("sidebar footer cluster", () => {
     });
     await act(async () => {});
     expect(vi.mocked(ipc.usageSummary)).toHaveBeenCalled();
-    // The dialog portals to document.body.
-    // 110 input + 55 output from the mocked rows.
+    // The popover portals to document.body, anchored over the footer.
     expect(document.body.textContent).toContain("我的用量");
     expect(document.body.textContent).toContain("110");
     expect(document.body.textContent).toContain("55");

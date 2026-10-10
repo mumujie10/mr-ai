@@ -8,6 +8,9 @@ import MessageSquarePlus from "lucide-react/dist/esm/icons/message-square-plus";
 import PanelLeft from "lucide-react/dist/esm/icons/panel-left";
 import ScanSearch from "lucide-react/dist/esm/icons/scan-search";
 import Gauge from "lucide-react/dist/esm/icons/gauge";
+import Ghost from "lucide-react/dist/esm/icons/ghost";
+import History from "lucide-react/dist/esm/icons/history";
+import BarChart3 from "lucide-react/dist/esm/icons/bar-chart-3";
 import Settings from "lucide-react/dist/esm/icons/settings";
 import Workflow from "lucide-react/dist/esm/icons/workflow";
 import { Focusable } from "react-aria-components";
@@ -33,7 +36,7 @@ import {
   DropdownTrigger,
   DropdownItem,
 } from "@/components/base/dropdown/dropdown";
-import { UsagePopupDialog } from "@/components/application/ai-chat/usage-popup-dialog";
+import { UsagePopupCard } from "@/components/application/ai-chat/usage-popup-dialog";
 import { compareByOrder, sidebarNavRegistry, useRegistry } from "@ccgui/plugin-sdk";
 
 type IconComponent = ComponentType<{
@@ -252,7 +255,6 @@ const ACCOUNT_AVATAR_CHAR = "徐";
 export function SidebarFooter({ onOpenSettings }: { onOpenSettings?: (page?: string) => void }) {
   const { t } = useTranslation();
   const remoteActive = useRemoteControl();
-  const [usageOpen, setUsageOpen] = useState(false);
   return (
     <div className="flex w-full shrink-0 flex-col gap-2 px-3 pb-3">
       <div className="relative flex w-full items-center gap-1">
@@ -280,15 +282,26 @@ export function SidebarFooter({ onOpenSettings }: { onOpenSettings?: (page?: str
             </span>
           </div>
         )}
-        <button
-          type="button"
-          aria-label={t("usage.popupTitle")}
-          title={t("usage.popupTitle")}
-          onClick={() => setUsageOpen(true)}
-          className="flex cursor-pointer items-center rounded-lg p-2 transition-colors duration-150 ease hover:bg-background-secondary-hover"
-        >
-          <Gauge className="size-4 shrink-0 text-foreground-icon-secondary" aria-hidden />
-        </button>
+        <Dropdown>
+          <DropdownTrigger
+            aria-label={t("usage.popupTitle")}
+            className="flex cursor-pointer items-center rounded-lg p-2 outline-none transition-colors duration-150 ease hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+          >
+            <Gauge className="size-4 shrink-0 text-foreground-icon-secondary" aria-hidden />
+          </DropdownTrigger>
+          <DropdownPopover
+            aria-label={t("usage.popupTitle")}
+            placement="top end"
+            className="w-[340px]!"
+          >
+            <div className="flex items-center justify-between px-1 pb-1">
+              <span className="text-title-3-medium text-text-primary">
+                {t("usage.popupTitle")}
+              </span>
+            </div>
+            <UsagePopupCard />
+          </DropdownPopover>
+        </Dropdown>
         <Dropdown>
           <DropdownTrigger
             aria-label={t("settings.title")}
@@ -297,23 +310,34 @@ export function SidebarFooter({ onOpenSettings }: { onOpenSettings?: (page?: str
             <Settings className="size-4 shrink-0 text-foreground-icon-secondary" aria-hidden />
           </DropdownTrigger>
           <DropdownPopover aria-label={t("settings.footerMenu")} placement="top end">
-            <DropdownItem onSelect={() => onOpenSettings?.()}>
-              {t("settings.title")}
-            </DropdownItem>
-            <DropdownItem onSelect={() => onOpenSettings?.("usage")}>
-              {t("usage.title")}
-            </DropdownItem>
-            <DropdownItem onSelect={() => onOpenSettings?.("pet")}>
-              {t("settings.pet")}
-            </DropdownItem>
-            <DropdownItem onSelect={() => onOpenSettings?.("update")}>
-              {t("settings.checkUpdates")}
-            </DropdownItem>
+            <FooterMenuRow icon={Settings} label={t("settings.title")} onSelect={() => onOpenSettings?.()} />
+            <FooterMenuRow icon={BarChart3} label={t("usage.title")} onSelect={() => onOpenSettings?.("usage")} />
+            <FooterMenuRow icon={Ghost} label={t("settings.pet")} onSelect={() => onOpenSettings?.("pet")} />
+            <FooterMenuRow icon={History} label={t("settings.checkUpdates")} onSelect={() => onOpenSettings?.("update")} />
           </DropdownPopover>
         </Dropdown>
       </div>
-      {usageOpen && <UsagePopupDialog onClose={() => setUsageOpen(false)} />}
     </div>
+  );
+}
+
+/** One settings-menu row: icon + label, the same rhythm as the reference
+ *  menu. DropdownItem renders arbitrary content; the icon column is fixed
+ *  width so labels align across rows. */
+function FooterMenuRow({
+  icon: Icon,
+  label,
+  onSelect,
+}: {
+  icon: IconComponent;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <DropdownItem onSelect={onSelect} className="gap-2.5 py-2">
+      <Icon className="size-4 shrink-0 text-foreground-icon-secondary" aria-hidden />
+      <span className="text-body-2-medium text-text-primary">{label}</span>
+    </DropdownItem>
   );
 }
 

@@ -2,21 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ModalShell } from "@/components/dialogs";
 import { ipc, type UsageRow } from "@/lib/ipc";
 
 /**
- * 「我的用量」popup behind the sidebar footer's gauge button: the local
- * usage ledger (per day/engine/model token buckets) over the last 7 days,
- * aggregated into a headline total and a per-day bar list.
+ * 「我的用量」card behind the sidebar footer's gauge button: an anchored
+ * dropdown card (opens from the button, closes on outside press or the ×),
+ * not a centered modal — mirroring the reference design's quota card.
  *
- * This is deliberately NOT the vendor's plan-quota card: with BYOK channels
- * there is no provider-side quota endpoint to ask, so the only honest numbers
- * here are the ones the app measured itself. The 设置 → 用量 page shows the
- * same ledger with charts; this popup is the quick glance.
+ * Content is the local usage ledger (per day/engine/model token buckets)
+ * over the last 7 days, aggregated into a headline total and a per-day bar
+ * list. This is deliberately NOT the vendor's plan-quota card: with BYOK
+ * channels there is no provider-side quota endpoint to ask, so the only
+ * honest numbers here are the ones the app measured itself. The
+ * 设置 → 用量 page shows the same ledger with charts; this card is the
+ * quick glance.
  */
 
-/** Aggregated totals for the popup header. */
+/** Aggregated totals for the card header. */
 export interface UsageTotals {
   requests: number;
   input: number;
@@ -53,7 +55,7 @@ export function usageByDay(rows: UsageRow[]): { day: string; total: number }[] {
 /** Thousands separator; token counts read better grouped. */
 const formatTokens = (value: number) => value.toLocaleString();
 
-export function UsagePopupDialog({ onClose }: { onClose: () => void }) {
+export function UsagePopupCard() {
   const { t } = useTranslation();
   const [rows, setRows] = useState<UsageRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,16 +83,15 @@ export function UsagePopupDialog({ onClose }: { onClose: () => void }) {
   const peak = Math.max(1, ...days.map((day) => day.total));
 
   return (
-    <ModalShell onClose={onClose} className="w-[380px] max-w-[calc(100vw-32px)] p-5">
-      <p className="text-title-3-medium text-text-primary">{t("usage.popupTitle")}</p>
+    <div className="flex flex-col gap-3">
       {error !== null ? (
-        <p className="mt-3 text-body-2-regular text-text-tertiary">{error}</p>
+        <p className="text-body-2-regular text-text-tertiary">{error}</p>
       ) : rows === null ? (
-        <p className="mt-3 text-body-2-regular text-text-tertiary">
+        <p className="text-body-2-regular text-text-tertiary">
           {t("usage.popupLoading")}
         </p>
       ) : (
-        <div className="mt-3 flex flex-col gap-3">
+        <>
           <div className="grid grid-cols-3 gap-2">
             <UsageStat label={t("usage.popupRequests")} value={formatTokens(totals.requests)} />
             <UsageStat label={t("usage.popupInput")} value={formatTokens(totals.input)} />
@@ -102,7 +103,7 @@ export function UsagePopupDialog({ onClose }: { onClose: () => void }) {
             <div className="flex flex-col gap-1.5">
               {days.map((day) => (
                 <div key={day.day} className="flex items-center gap-2">
-                  <span className="w-20 shrink-0 text-caption-1-regular text-text-tertiary">
+                  <span className="w-16 shrink-0 text-caption-1-regular text-text-tertiary">
                     {day.day.slice(5)}
                   </span>
                   <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-background-tertiary-default">
@@ -111,7 +112,7 @@ export function UsagePopupDialog({ onClose }: { onClose: () => void }) {
                       style={{ width: `${Math.round((day.total / peak) * 100)}%` }}
                     />
                   </span>
-                  <span className="w-20 shrink-0 text-right text-caption-1-regular text-text-secondary">
+                  <span className="w-16 shrink-0 text-right text-caption-1-regular text-text-secondary">
                     {formatTokens(day.total)}
                   </span>
                 </div>
@@ -119,9 +120,9 @@ export function UsagePopupDialog({ onClose }: { onClose: () => void }) {
             </div>
           )}
           <p className="text-caption-1-regular text-text-tertiary">{t("usage.popupFootnote")}</p>
-        </div>
+        </>
       )}
-    </ModalShell>
+    </div>
   );
 }
 
