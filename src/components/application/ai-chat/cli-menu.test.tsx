@@ -215,3 +215,77 @@ describe("CliMenu flyout switching", () => {
     expect(flyoutTitle()).toBe("Claude Code 引擎");
   });
 });
+
+describe("CliMenu trigger pill", () => {
+  beforeEach(() => {
+    // jsdom has no matchMedia; CliMenu reads it for the mobile/desktop split.
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }));
+  });
+
+  function pillHarness({
+    efforts,
+    effortLevels,
+  }: {
+    efforts?: Record<string, "low" | "medium" | "high" | "xhigh" | "max" | "ultra">;
+    effortLevels?: Record<string, string[] | null>;
+  }) {
+    return (
+      <CliMenu
+        options={[{ id: "claude", label: "Claude Code", available: true }]}
+        value="claude"
+        onChange={() => {}}
+        modelsByEngine={{}}
+        models={{}}
+        onModelChange={() => {}}
+        efforts={efforts ?? { claude: "ultra" }}
+        effortLevels={effortLevels}
+        onEffortChange={() => {}}
+        channelsByEngine={{}}
+        selectedChannels={{}}
+        onChannelChange={() => {}}
+        ompServiceTier={null}
+        onOmpServiceTierChange={async () => {}}
+        codexServiceTier={null}
+        onCodexServiceTierChange={async () => {}}
+      />
+    );
+  }
+
+  const setup = () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    return { container, root };
+  };
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("drops the effort segment when the engine reported no knob", async () => {
+    const { container, root } = setup();
+    await act(async () => {
+      root.render(pillHarness({ effortLevels: { claude: [] } }));
+    });
+    expect(container.textContent).not.toContain("ultra");
+    act(() => root.unmount());
+  });
+
+  it("keeps the stored effort until the engine reports", async () => {
+    const { container, root } = setup();
+    await act(async () => {
+      root.render(pillHarness({}));
+    });
+    expect(container.textContent).toContain("ultra");
+    act(() => root.unmount());
+  });
+});

@@ -177,6 +177,7 @@ function CliMenuTrigger({
   engineName,
   model,
   effort,
+  effortKnob,
   ompServiceTier,
   codexServiceTier,
   modelId,
@@ -189,6 +190,11 @@ function CliMenuTrigger({
   /** Selected model of the active engine, when it has a model list. */
   model: ModelOption | undefined;
   effort: EffortLevel;
+  /** False once the engine reported that this model has no effort knob: the
+   *  pill then drops its effort segment instead of naming a level the engine
+   *  would ignore. Undefined (nothing reported yet) keeps showing the stored
+   *  default, matching the slider. */
+  effortKnob?: boolean;
   ompServiceTier: OmpServiceTier;
   codexServiceTier: OmpServiceTier;
   modelId: string;
@@ -203,7 +209,7 @@ function CliMenuTrigger({
   // Snapshot width on open; clear on close. Shorter model labels then can't
   // shrink the trigger mid-session and slide the popover.
   const lockedMinWidth = useLockedMinWidth(isOpen, triggerRef);
-  const hasEffort = supportsEffort(engine);
+  const hasEffort = supportsEffort(engine) && effortKnob !== false;
   return (
     <AriaButton
       ref={triggerRef}
@@ -509,6 +515,10 @@ export function CliMenu({
   const selectedModel = (modelsByEngine[value] ?? []).find((m) => m.id === selectedModelId);
   const engineName = CLI_DISPLAY_NAMES[value] ?? current?.label ?? value;
   const triggerEffort: EffortLevel = efforts[value] ?? "medium";
+  // The stored default stays visible until the engine reports; an empty report
+  // (`[]`) is the model saying it has no knob, so the pill stops claiming one.
+  const effortKnob =
+    effortLevels?.[value] === undefined || (effortLevels[value]?.length ?? 0) > 0;
 
   // Which engine's model flyout is open. Pre-opens on the active engine so
   // the current selection is visible the moment the menu opens.
@@ -630,6 +640,7 @@ export function CliMenu({
         engineName={engineName}
         model={selectedModel}
         effort={triggerEffort}
+        effortKnob={effortKnob}
         ompServiceTier={ompServiceTier}
         codexServiceTier={codexServiceTier}
         modelId={selectedModelId}
