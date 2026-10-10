@@ -571,10 +571,76 @@ fn page_from_cached(
         }
     };
     SessionPage {
-        messages: page,
+        messages: split_inline_think(page),
         next_before,
         subagent_history: subagent_history_until(messages, &cached.fold, start),
     }
+}
+
+/// Re-lane a leading `<think>…</think>` block out of a stored assistant row.
+///
+/// Some models (measured: MiniMax-M3 over a BYOK channel) write their
+/// reasoning inline in the answer text. The runtime now splits that on the
+/// stream, but rows recorded before that fix carry the reasoning inside
+/// `assistant` text, and replaying them verbatim would open every old
+/// conversation with a wall of raw reasoning. The block becomes a `thinking`
+/// row followed by the remaining answer — the same shape live thinking rows
+/// already take — so the timeline folds it like any other thinking. Only a
+/// block at the very start is recognized (a mid-text `<think>` is the model
+/// discussing tags, not reasoning), and an unclosed one is left untouched:
+/// hiding half of what was recorded would be worse than showing it raw.
+fn split_inline_think(messages: Vec<Message>) -> Vec<Message> {
+    messages
+        .into_iter()
+        .flat_map(|message| {
+            if message.role != "assistant" {
+                return vec![message];
+            }
+            let trimmed = message.text.trim_start();
+            let Some(after_open) = trimmed.strip_prefix("<think>") else {
+                return vec![message];
+            };
+            let Some(close) = after_open.find("</think>") else {
+                return vec![message];
+            };
+            let thinking = after_open[..close].trim();
+            let rest = after_open[close + "</think>".len()..].trim_start();
+            let thinking_row = Message {
+                seq: message.seq,
+                role: "thinking".into(),
+                text: thinking.to_string(),
+                ts: message.ts.clone(),
+                path: None,
+                args: None,
+                result: None,
+                todos: None,
+                usage: None,
+                model: message.model.clone(),
+                effort: message.effort.clone(),
+                duration_ms: None,
+                images: Vec::new(),
+            };
+            if rest.is_empty() {
+                return vec![thinking_row];
+            }
+            let answer = Message {
+                seq: message.seq,
+                role: "assistant".into(),
+                text: rest.to_string(),
+                ts: message.ts,
+                path: None,
+                args: None,
+                result: None,
+                todos: None,
+                usage: message.usage,
+                model: message.model,
+                effort: message.effort,
+                duration_ms: message.duration_ms,
+                images: message.images,
+            };
+            vec![thinking_row, answer]
+        })
+        .collect()
 }
 
 /// Sync body of `load_session_page` (parsing multi-MB session files must not
@@ -1471,6 +1537,66 @@ pub fn remove_workspace(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Rows recorded before the runtime learned to split inline reasoning
+    /// replay with the reasoning folded, not as a wall of raw `<think>` text
+    /// opening the conversation.
+    #[test]
+    fn inline_think_rows_replay_split_into_thinking_and_answer() {
+        let message = |role: &str, text: &str| Message {
+            seq: 1,
+            role: role.into(),
+            text: text.into(),
+            ts: None,
+            path: None,
+            args: None,
+            result: None,
+            todos: None,
+            usage: None,
+            model: Some("MiniMax-M3".into()),
+            effort: None,
+            duration_ms: None,
+            images: Vec::new(),
+        };
+
+        // A closed leading block: thinking row + trimmed answer, model kept.
+        let page = split_inline_think(vec![message(
+            "assistant",
+            "<think>check the readme</think>Here is the plan.",
+        )]);
+        assert_eq!(page.len(), 2);
+        assert_eq!(page[0].role, "thinking");
+        assert_eq!(page[0].text, "check the readme");
+        assert_eq!(page[0].model.as_deref(), Some("MiniMax-M3"));
+        assert_eq!(page[1].role, "assistant");
+        assert_eq!(page[1].text, "Here is the plan.");
+
+        // A block that is the whole row leaves a thinking row only.
+        let page = split_inline_think(vec![message("assistant", "<think>all of it</think>")]);
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].role, "thinking");
+
+        // A mid-text tag is the model discussing tags — untouched.
+        let original = message("assistant", "Answer. <think>quoted</think> tail");
+        let page = split_inline_think(vec![original.clone()]);
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].text, original.text);
+
+        // An unclosed leading block is shown as recorded, not hidden.
+        let original = message("assistant", "<think>never closed");
+        let page = split_inline_think(vec![original.clone()]);
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].text, original.text);
+
+        // User rows and clean assistant rows pass through untouched.
+        let page = split_inline_think(vec![
+            message("user", "<think>weird quote</think> hi"),
+            message("assistant", "just an answer"),
+        ]);
+        assert_eq!(page.len(), 2);
+        assert_eq!(page[0].role, "user");
+        assert_eq!(page[1].role, "assistant");
+    }
 
     fn scratch_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
