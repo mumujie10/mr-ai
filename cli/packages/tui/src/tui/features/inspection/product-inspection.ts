@@ -17,6 +17,7 @@ import {
   isDangerousTuiPermissionMode,
   type TuiPermissionMode,
 } from '../../../application/permission-mode.js';
+import { TUI_ACCOUNT_NEEDS_PROVIDER_LABEL } from '../../../application/login-gate.js';
 import { sanitizeTerminalText } from '../../rendering/terminal-text.js';
 import { sanitizeTuiUrl } from '../../rendering/url.js';
 import { resolveTuiThinkingChoice } from '../model/thinking.js';
@@ -69,7 +70,7 @@ export function createTuiAccountStatusInspection(
     : needsLogin
       ? account?.modelSource === 'byok'
         ? 'Not signed in'
-        : 'Sign in with /login'
+        : TUI_ACCOUNT_NEEDS_PROVIDER_LABEL
       : identity
         ? safeInline(identity)
         : status === 'ready'
@@ -231,7 +232,13 @@ function createTokenPlanRows(
   needsLogin: boolean,
 ): TranscriptUsageAccountRow[] {
   if (needsLogin) {
-    return [{ label: 'Plan', value: 'Run /login to view plan and quota', tone: 'warning' }];
+    return [
+      {
+        label: 'Plan',
+        value: 'No account plan or quota in this build; usage comes from the model response.',
+        tone: 'warning',
+      },
+    ];
   }
   const summary = account?.tokenPlanSummary;
   const hasTokenPlan =
@@ -508,7 +515,7 @@ export function formatTuiUsage(
   const presentation = resolveTuiUsagePresentation(usage, options);
   if (!presentation) {
     return options.scope === 'account'
-      ? 'No account usage is available. Sign in with /login to view plan and quota.'
+      ? 'No account usage in this build — BYOK providers report usage only when the model answers.'
       : 'No usage has been recorded for this Session.';
   }
   return formatInspectionReport({

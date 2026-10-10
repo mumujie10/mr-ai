@@ -6,10 +6,15 @@ import type {
 } from '../runtime/port.js';
 
 export const MINIMAX_CODE_TUI_LOGIN_REQUIRED_MESSAGE =
-  'Sign in to MiniMax to use Agent features. Run /login, then retry.';
+  'No usable model provider. Add one with /provider (bring your own key), then retry.';
 
 export const MINIMAX_CODE_HEADLESS_LOGIN_REQUIRED_MESSAGE =
-  'Sign in to MiniMax to use Agent features. Run `mcode login`, then retry.';
+  'No usable model provider. Add one with `mr provider add` (bring your own key), then retry.';
+
+/** The account row's single label. Chrome, the welcome card and the inspection
+ *  panel all keyed off a literal copy of this string, which meant renaming the
+ *  hint silently broke two of the three readers. */
+export const TUI_ACCOUNT_NEEDS_PROVIDER_LABEL = 'Add a provider with /provider';
 
 type TuiLoginStatusPort = Pick<TuiConfigurationPort, 'getAccountStatus'>;
 

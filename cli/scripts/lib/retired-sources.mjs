@@ -54,6 +54,16 @@ export const retiredSourceRoots = [
   // deleted rather than hidden: without it no flag, docs snippet or future
   // caller can bring the browser sign-in flow back into this product.
   "packages/tui/src/cli/auth-command.ts",
+  // The interactive TUI's account entries and the OAuth client behind them go
+  // together: headless/ACP launches never used them, so keeping the client would
+  // leave a live browser sign-in path reachable only from a command this product
+  // no longer offers — and a future caller could walk back into it.
+  "packages/tui/src/tui/features/auth/login-region-picker.ts",
+  "packages/tui/src/auth/application.ts",
+  "packages/tui/src/auth/factory.ts",
+  "packages/tui/src/auth/authorization-url.ts",
+  "packages/tui/src/auth/logout-url.ts",
+  "packages/tui/test/unit/auth-application.test.ts",
 ];
 
 // May exist as public source, but must never be reachable from the standalone

@@ -198,7 +198,7 @@ describe('TuiPluginManager', () => {
     );
   });
 
-  it('directs an incomplete Plugin login back through /login', async () => {
+  it('says a plugin needs a source this build can offer', async () => {
     const { options } = createManager();
     options.onSetEnabled.mockRejectedValueOnce(
       Object.assign(new Error('PLUGIN_AUTH_REQUIRED'), { code: 'PLUGIN_AUTH_REQUIRED' }),
@@ -209,7 +209,7 @@ describe('TuiPluginManager', () => {
     await vi.waitFor(() => expect(options.onSetEnabled).toHaveBeenCalledOnce());
 
     const rendered = stripVTControlCharacters(manager.render(100).join('\n'));
-    expect(rendered).toContain('Run /login, then retry.');
+    expect(rendered).toContain('No sign-in here; use a local plugin source.');
   });
 
   it('ignores a mutation result after the manager is disposed', async () => {

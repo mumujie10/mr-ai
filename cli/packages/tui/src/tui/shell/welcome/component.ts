@@ -9,6 +9,7 @@ import {
   renderFrameHeader,
   renderFrameRow,
 } from '../frame.js';
+import { TUI_ACCOUNT_NEEDS_PROVIDER_LABEL } from '../../../application/login-gate.js';
 import { resolveTuiLayoutPolicy } from '../layout-policy.js';
 import { formatTuiKeybinding, type TuiKeybindingRegistry } from '../keybindings.js';
 import {
@@ -220,7 +221,7 @@ function resolveWelcomeCopy(value: string, keybindings: TuiKeybindingRegistry | 
 }
 
 function resolveWelcomeAccountNotice(state: TuiShellState): string | undefined {
-  return state.accountStatus === 'Sign in with /login'
+  return state.accountStatus === TUI_ACCOUNT_NEEDS_PROVIDER_LABEL
     ? state.accountStatus
     : state.accountStatus === 'Connected with warnings'
       ? 'Check /provider or /status for details.'
@@ -240,8 +241,8 @@ function renderWelcomeAccountNoticeRows(state: TuiShellState, width: number): st
 }
 
 function renderActivity(state: TuiShellState): string {
-  if (state.accountStatus === 'Sign in with /login') {
-    return chalk.bold.hex(colors.warning)('○ Login required');
+  if (state.accountStatus === TUI_ACCOUNT_NEEDS_PROVIDER_LABEL) {
+    return chalk.bold.hex(colors.warning)('○ No provider configured');
   }
   if (state.runtimeStatus === 'error') {
     return chalk.bold.hex(colors.error)('× Error');

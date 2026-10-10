@@ -1257,13 +1257,13 @@ describe("TuiFeatureFlow", () => {
     };
 
     expect(picker.render(80).join("\n")).toContain(
-      "Sign in with /login to use official MiniMax models.",
+      "Official models need a provider: add one with /provider.",
     );
     picker.handleInput("\r");
 
     expect(harness.runtime.selectModel).not.toHaveBeenCalled();
     expect(harness.append).toHaveBeenCalledWith(
-      "Sign in with /login to use official MiniMax models.",
+      "Official models need a provider: add one with /provider.",
       "warning",
     );
   });

@@ -1,5 +1,4 @@
 import type { TuiObservability } from '../observability/index.js';
-import type { McodeAuthPort } from '../auth/application.js';
 import type { TuiRuntime, TuiWorkspaceRoot } from '../runtime/port.js';
 import type { TuiCommandFlow } from '../tui/controller/product/command-flow.js';
 import type {
@@ -71,7 +70,6 @@ export interface CreateTuiAppOptions {
   automationResultPath?: string;
   productFeatures?: Partial<TuiProductFeatures>;
   observability?: TuiObservability;
-  auth?: McodeAuthPort;
   externalEditorCommand?: string;
   editDraftInExternalEditor?: EditTuiDraftInExternalEditor;
   readClipboardText?: TuiTextClipboardReader;

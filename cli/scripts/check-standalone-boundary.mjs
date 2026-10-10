@@ -9,7 +9,6 @@ const violations = Object.keys(metafile.inputs).filter((input) =>
   retiredBuildInputs.some((prefix) => input.startsWith(prefix)),
 );
 const required = [
-  'packages/tui/src/auth/application.ts',
   'packages/tui/src/runtime/auth-session.ts',
   'packages/tui/src/runtime/mcode-tools-integration.ts',
   'packages/tui/src/account/matrix-account-client.ts',

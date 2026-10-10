@@ -607,7 +607,7 @@ describe('runTuiExec', () => {
     expect(runtime.createSession).not.toHaveBeenCalled();
     expect(runtime.sendMessage).not.toHaveBeenCalled();
     expect(stderr).toHaveBeenCalledWith(
-      'mcode exec failed: Sign in to MiniMax to use Agent features. Run `mcode login`, then retry.\n',
+      'mcode exec failed: No usable model provider. Add one with `mr provider add` (bring your own key), then retry.\n',
     );
   });
 

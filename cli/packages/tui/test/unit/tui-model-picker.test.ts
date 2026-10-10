@@ -516,7 +516,7 @@ describe("TuiModelPicker", () => {
       },
     );
 
-    expect(picker.render(90).join("\n")).toContain("Login required");
+    expect(picker.render(90).join("\n")).toContain("Needs a provider");
     picker.handleInput("\r");
 
     expect(onUnavailable).toHaveBeenCalledOnce();

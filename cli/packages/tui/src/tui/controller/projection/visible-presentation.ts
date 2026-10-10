@@ -6,7 +6,10 @@ import { resolveTuiSessionCacheMetrics } from '../../../application/session-cach
 import type { TuiState } from '../../state/index.js';
 import type { TranscriptActivitySource } from '../../transcript/store.js';
 import type { TuiAccountStatus, TuiModel } from '../../../runtime/port.js';
-import { tuiAccountNeedsLoginPrompt } from '../../../application/login-gate.js';
+import {
+  TUI_ACCOUNT_NEEDS_PROVIDER_LABEL,
+  tuiAccountNeedsLoginPrompt,
+} from '../../../application/login-gate.js';
 import type { TuiPermissionModeSnapshot } from '../interaction/permission-mode-flow.js';
 import { isTuiDelegatedSession } from '../../../runtime/delegation.js';
 import { resolveTuiThinkingChoice } from '../../features/model/thinking.js';
@@ -367,7 +370,7 @@ function resolveAccountShellState(
 
 function resolveWelcomeAccountStatus(account: TuiAccountStatus | undefined): string {
   if (!account) return 'Checking account';
-  if (tuiAccountNeedsLoginPrompt(account)) return 'Sign in with /login';
+  if (tuiAccountNeedsLoginPrompt(account)) return TUI_ACCOUNT_NEEDS_PROVIDER_LABEL;
   if (account.status === 'ready') return 'Account ready';
   if (account.status === 'warning') return 'Connected with warnings';
   return 'Account unavailable';

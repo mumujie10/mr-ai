@@ -9,7 +9,6 @@ import {
 } from '../../commands/catalog.js';
 import type { TuiComposerDraft } from '../../features/composer/draft.js';
 import type { TuiWorkspaceRoots } from '../../features/composer/workspace-roots.js';
-import { TuiLoginRegionPicker } from '../../features/auth/login-region-picker.js';
 import { TuiPermissionModePicker } from '../../features/interaction/permission-mode-picker.js';
 import { TuiSettingsPicker } from '../../features/settings/picker.js';
 import { TuiHotkeysPicker } from '../../features/settings/hotkeys-picker.js';
@@ -29,8 +28,6 @@ import type { TuiGoalFlow } from './goal-flow.js';
 import type { TuiPlanModeFlow } from '../interaction/plan-mode-flow.js';
 import type { TuiPermissionModeFlow } from '../interaction/permission-mode-flow.js';
 import type { MavisRegion } from '@mavis/config';
-import type { McodeAuthPort } from '../../../auth/application.js';
-import { markTuiAuthorizationUrl } from '../../../auth/authorization-url.js';
 import type { TuiMode } from '../../engine/public.js';
 import type { TuiKeybindingOverride, TuiKeybindingRegistry } from '../../shell/keybindings.js';
 import {
@@ -74,7 +71,6 @@ export interface TuiCommandFlowOptions {
   readonly goalFlow?: Pick<TuiGoalFlow, 'execute' | 'resumeBlocked'>;
   readonly planModeFlow?: TuiPlanModeFlow;
   readonly permissionModeFlow?: TuiPermissionModeFlow;
-  readonly auth?: McodeAuthPort;
   readonly openExternalTarget?: TuiExternalTargetOpener;
   readonly interactionFlow: TuiInteractionFlow;
   readonly sessionFlow: TuiSessionFlow;
@@ -154,7 +150,6 @@ type SubmissionReadinessContext = {
 export class TuiCommandFlow {
   readonly catalog: TuiCommandCatalog;
   private preparationTail: Promise<void> = Promise.resolve();
-  private loginRegionPicker: TuiLoginRegionPicker | undefined;
   private permissionModePicker: TuiPermissionModePicker | undefined;
   private settingsPicker: TuiSettingsPicker | undefined;
   private hotkeysPicker: TuiHotkeysPicker | undefined;
@@ -1244,10 +1239,6 @@ export class TuiCommandFlow {
         }
         await this.options.permissionModeFlow.set(mode);
       },
-      login: () => {
-        this.showLoginRegionPicker();
-      },
-      logout: () => this.runAuthCommand('logout'),
       doctor: async () => this.options.featureFlow.showConfigurationInspection(false),
       context: async () => this.options.activeRunFlow.showContext(),
       steer: async ({ raw }) => {
@@ -1487,37 +1478,6 @@ export class TuiCommandFlow {
     }).retryable;
   }
 
-  /**
-   * Entry point for surfaces outside the command catalog — currently the
-   * `/provider` OAuth row — so sign-in always runs the same region picker and
-   * auth command as `/login`.
-   */
-  startMiniMaxLogin(): void {
-    this.showLoginRegionPicker();
-  }
-
-  private showLoginRegionPicker(): void {
-    if (!this.options.auth) {
-      this.options.append('MiniMax authentication is unavailable in this host.', 'warning');
-      return;
-    }
-    if (this.loginRegionPicker) this.options.surface.close(this.loginRegionPicker);
-    const picker = new TuiLoginRegionPicker(
-      (region) => {
-        if (this.loginRegionPicker !== picker) return;
-        this.options.surface.close(picker);
-        this.loginRegionPicker = undefined;
-        void this.runAuthCommand('login', region);
-      },
-      () => {
-        this.options.surface.close(picker);
-        if (this.loginRegionPicker === picker) this.loginRegionPicker = undefined;
-      },
-    );
-    this.loginRegionPicker = picker;
-    this.options.surface.show(picker);
-  }
-
   private showPermissionModePicker(): void {
     const flow = this.options.permissionModeFlow;
     if (!flow) {
@@ -1624,98 +1584,6 @@ export class TuiCommandFlow {
     });
     this.hotkeysPicker = picker;
     this.options.surface.show(picker);
-  }
-
-  private async runAuthCommand(operation: 'login' | 'logout', region?: MavisRegion): Promise<void> {
-    if (!this.options.auth) {
-      this.options.append('MiniMax authentication is unavailable in this host.', 'warning');
-      return;
-    }
-    this.options.setHint(operation === 'login' ? 'Starting MiniMax sign-in…' : 'Signing out…');
-    this.options.onChanged();
-    try {
-      const result =
-        operation === 'login'
-          ? await this.options.auth.login((progress) => {
-              const authorizationUrl = markTuiAuthorizationUrl(
-                progress.verificationUriComplete ?? progress.verificationUri,
-              );
-              this.options.append(
-                `Complete MiniMax login in your browser:\n` +
-                  `${authorizationUrl}\n` +
-                  `Code: ${progress.userCode}`,
-              );
-              this.options.setHint('Waiting for authorization…');
-              this.options.onChanged();
-              void this.openExternalTarget(authorizationUrl).catch(() => {
-                this.options.append(
-                  "Couldn't open the default browser. Open the authorization URL above manually.",
-                  'warning',
-                );
-                this.options.onChanged();
-              });
-            }, region)
-          : await this.options.auth.logout();
-      this.options.append(result.message);
-      if (operation === 'login') {
-        if (result.restartRequired) {
-          this.options.requestRestart?.(region);
-          await this.options.leaveUi();
-          return;
-        }
-        if (result.state === 'authenticated' || result.state === 'already-authenticated') {
-          await this.notifyAuthContextChanged('authenticated');
-        }
-        try {
-          await this.options.controller.requireLoginForAgentAction();
-        } catch (error) {
-          if (!(error instanceof TuiLoginRequiredError)) throw error;
-          this.options.controller.refreshAccountStatusNow();
-        }
-      } else {
-        if (result.logoutUrl) void this.openLogoutPage(result.logoutUrl);
-        if (result.state === 'signed-out' || result.state === 'already-signed-out') {
-          await this.notifyAuthContextChanged('logged_out');
-        }
-        this.options.controller.refreshAccountStatusNow();
-      }
-    } catch (error) {
-      this.options.append(
-        formatTuiActionFailure(error, {
-          summary: operation === 'login' ? "Sign-in wasn't completed." : "Couldn't sign out.",
-          nextStep:
-            operation === 'login'
-              ? 'Resolve the reported connection or service error before retrying sign-in.'
-              : 'Check the connection, then retry /logout.',
-        }),
-        'error',
-      );
-    } finally {
-      this.options.setHint(undefined);
-      this.options.onChanged();
-    }
-  }
-
-  private async openLogoutPage(logoutUrl: string): Promise<void> {
-    this.options.append(`Finish signing out in your browser:\n${logoutUrl}`);
-    this.options.onChanged();
-    try {
-      await this.openExternalTarget(logoutUrl);
-    } catch {
-      this.options.append(
-        "Couldn't open the default browser. Open the sign-out URL above manually.",
-        'warning',
-      );
-      this.options.onChanged();
-    }
-  }
-
-  private async notifyAuthContextChanged(authState: 'authenticated' | 'logged_out'): Promise<void> {
-    try {
-      await this.options.notifyAuthContextChanged?.(authState);
-    } catch {
-      // Authentication already succeeded; Hook cleanup is best-effort and invisible to users.
-    }
   }
 
   private async runLoginProtectedAction<T>(action: () => Promise<T>): Promise<T | undefined> {

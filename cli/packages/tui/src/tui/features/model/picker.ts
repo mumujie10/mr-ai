@@ -671,7 +671,7 @@ function formatModelDescription(model: TuiModel, unavailable: boolean): string {
   const efforts = normalizeTuiEffortOptions(model.effortOptions);
   return [
     sanitizeTerminalText(`${model.providerId}/${model.modelId}`),
-    unavailable ? 'Login required' : undefined,
+    unavailable ? 'Needs a provider' : undefined,
     model.variant && model.variant !== 'thinking' ? sanitizeTerminalText(model.variant) : undefined,
     efforts.length > 0 ? `${String(efforts.length)} efforts` : undefined,
     model.contextLimit ? `${formatContextWindow(model.contextLimit)} ctx` : undefined,

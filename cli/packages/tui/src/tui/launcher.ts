@@ -26,7 +26,6 @@ import {
   type TuiObservability,
 } from '../observability/index.js';
 import { resolveMcodeAuthEnvironment } from '../auth/environment.js';
-import { createDefaultMcodeAuthApplication } from '../auth/factory.js';
 import { createMcodeSharedAuthSession } from '../runtime/auth-session.js';
 import {
   MCODE_OAUTH_SCOPES,
@@ -125,7 +124,6 @@ export interface LaunchTuiDependencies {
   readTuiTheme?: typeof readTuiThemeSetting;
   writeTuiTheme?: typeof writeTuiThemeSetting;
   createSharedAuthSession?: typeof createMcodeSharedAuthSession;
-  createAuthApplication?: typeof createDefaultMcodeAuthApplication;
 }
 
 export async function launchTui(
@@ -301,11 +299,6 @@ export async function launchTui(
         persistStatusLineItems: (items) => writeTuiStatusLineSetting(dataDir, items),
         externalEditorCommand: options.externalEditorCommand,
         observability,
-        auth: (dependencies.createAuthApplication ?? createDefaultMcodeAuthApplication)({
-          dataDir,
-          ...authEnvironment,
-          sharedAuthCore,
-        }),
         notifyAuthContextChanged: async (authState: 'authenticated' | 'logged_out') => {
           const activeRuntime = await initializingRuntime;
           await activeRuntime.synchronizeAuthContext(authState);

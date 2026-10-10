@@ -570,7 +570,7 @@ export class TuiRuntimeEventFlow {
     if (matchesCurrentSession && event.type === 'content.retry.exceeded') {
       this.options.append(
         event.variant === 'auth'
-          ? 'Content review authentication expired. Run /login, then retry.'
+          ? 'Content review could not authenticate, so this response stopped. Unreviewed output was withheld.'
           : event.variant === 'network'
             ? 'Content review did not return a usable result, so this response stopped. Unreviewed output was withheld. Retry.'
             : 'Content review withdrew this response. Rephrase your request, then retry.',

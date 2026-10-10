@@ -37,8 +37,6 @@ export interface TuiProviderManagerOptions {
   onSaveCustom?(input: McodeSaveProviderCandidateInput): Promise<McodeSaveProviderCandidateResult>;
   onSetMiniMaxApiKey(apiKey: string): Promise<void>;
   onSetMiniMaxSource(source: 'token_plan' | 'minimax_api_key'): Promise<void>;
-  /** Starts the same sign-in flow as `/login`; absent when the host has no auth. */
-  onReLogin?(): void;
   onCancel(): void;
   requestRender(): void;
 }
@@ -293,23 +291,16 @@ export class TuiProviderManager implements Component, Focusable {
   }
 
   /**
-   * `e` edits the credential behind the highlighted MiniMax row. OAuth has no
-   * local secret to type, so it hands off to the same sign-in flow as
-   * `/login`; the API Key row opens the masked input, replacing any saved key.
+   * `e` edits the credential behind the highlighted MiniMax row: the API Key row
+   * opens the masked input, replacing any saved key. There is no OAuth branch —
+   * this build has no MiniMax account to sign into, and `provider list` stops
+   * synthesizing that row.
    */
   private editSelected(): void {
     const provider = this.selectedProvider();
     if (!provider) return;
     if (provider.kind === 'minimax-api-key') {
       this.startMiniMaxKey(provider.hasApiKey);
-      return;
-    }
-    if (provider.kind === 'minimax-oauth') {
-      if (!this.options.onReLogin) {
-        this.setStatus('MiniMax sign-in is unavailable in this host.', 'error');
-        return;
-      }
-      this.options.onReLogin();
       return;
     }
     if (provider.kind === 'codex-oauth') {
@@ -403,10 +394,6 @@ export class TuiProviderManager implements Component, Focusable {
     if (!provider) return;
     if (provider.kind === 'codex-oauth') {
       this.setStatus('Codex OAuth connectivity is managed by its sign-in flow.', 'info');
-      return;
-    }
-    if (provider.kind === 'minimax-oauth') {
-      this.setStatus('MiniMax OAuth sign-in and connectivity are managed by /login.', 'info');
       return;
     }
     await this.perform(async () => {
@@ -531,9 +518,6 @@ function providerDetail(provider: McodeProviderView): string {
       return `${provider.status.lastErrorMessage ?? 'Sign-in failed'} · Enter or Space to retry`;
     }
     return 'Not connected · Enter or Space to connect';
-  }
-  if (provider.kind === 'minimax-oauth') {
-    return 'Sign-in managed by /login · Space to use · e to sign in again';
   }
   if (provider.kind === 'minimax-api-key') {
     return provider.hasApiKey

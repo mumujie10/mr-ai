@@ -78,7 +78,8 @@ import { hyperlink } from '../../engine/public.js';
 import { sanitizeTerminalText } from '../../rendering/terminal-text.js';
 import { MR_CLI_VERSION } from '../../../build-info.js';
 
-const OFFICIAL_MODEL_LOGIN_HINT = 'Sign in with /login to use official MiniMax models.';
+const OFFICIAL_MODEL_LOGIN_HINT =
+  'Official models need a provider: add one with /provider.';
 const SESSION_MANAGER_PAGE_SIZE = 50;
 const SESSION_MANAGER_MAX_ROWS = 24;
 const SESSION_EXPORT_PAGE_SIZE = 200;
@@ -131,8 +132,6 @@ export interface TuiFeatureFlowOptions {
   readonly onOpenSession: (sessionId: string) => Promise<void>;
   readonly onArchivedCurrentSession: (sessionId: string) => Promise<void>;
   readonly refreshAutocomplete: () => void;
-  /** Starts the `/login` sign-in flow; absent when the host has no auth. */
-  readonly onStartMiniMaxLogin?: () => void;
   readonly loadProviderTemplates?: () => Promise<readonly McodeProviderTemplate[]>;
   readonly isStopped?: () => boolean;
   readonly hasLiveRun?: () => boolean;
@@ -942,16 +941,6 @@ export class TuiFeatureFlow {
       onSetMiniMaxApiKey: (apiKey) => this.providerApplication.setMiniMaxApiKey(apiKey),
       onSetMiniMaxSource: (source) =>
         this.providerApplication.setMiniMaxSource(source).then(() => undefined),
-      ...(this.options.onStartMiniMaxLogin
-        ? {
-            // Sign-in takes over the surface, so the panel closes first and the
-            // user reopens `/provider` once the browser round-trip finishes.
-            onReLogin: () => {
-              this.closeProviderManager();
-              this.options.onStartMiniMaxLogin?.();
-            },
-          }
-        : {}),
       onCancel: () => {
         this.options.surface.close(manager);
         if (this.providerManager === manager) this.providerManager = undefined;

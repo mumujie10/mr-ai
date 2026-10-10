@@ -162,9 +162,9 @@ describe("TuiProviderManager", () => {
     expect(rendered).toContain("Active · Token Plan");
     expect(rendered).toContain("MiniMax API Key");
     expect(rendered).toContain("OpenAI");
-    expect(rendered).toContain(
-      "Sign-in managed by /login · Space to use · e to sign in again",
-    );
+    // The row stays listed (it is a credential source), but nothing on it may
+    // point at a command this build does not have.
+    expect(rendered).not.toContain("/login");
     expect(rendered).toContain("r refresh models");
     expect(rendered).not.toContain("Add custom provider");
     expect(rendered).not.toContain("a add");
@@ -192,33 +192,6 @@ describe("TuiProviderManager", () => {
       expect(rendered).toContain("Active · Token Plan");
     });
     expect(onRefresh).toHaveBeenCalledOnce();
-  });
-
-  it("selects OAuth with enter and never sends it to the test API", async () => {
-    const onSetMiniMaxSource = vi.fn(async () => undefined);
-    const onTest = vi.fn(async () => ({
-      success: true,
-      status: { state: "available" },
-    }));
-    const manager = createManager({ onSetMiniMaxSource, onTest });
-
-    manager.handleInput("\r");
-
-    await vi.waitFor(() =>
-      expect(stripAnsi(manager.render(84).join("\n"))).toContain(
-        "Using MiniMax Token Plan.",
-      ),
-    );
-    expect(onSetMiniMaxSource).toHaveBeenCalledWith("token_plan");
-    expect(stripAnsi(manager.render(84).join("\n"))).not.toContain(
-      "Configure MiniMax API Key",
-    );
-
-    manager.handleInput("t");
-    expect(onTest).not.toHaveBeenCalled();
-    expect(stripAnsi(manager.render(84).join("\n"))).toContain(
-      "MiniMax OAuth sign-in and connectivity are managed by /login.",
-    );
   });
 
   it("captures the MiniMax API key when the row has none yet", async () => {
@@ -295,38 +268,14 @@ describe("TuiProviderManager", () => {
     );
   });
 
-  it("starts a fresh sign-in from the OAuth row with e", () => {
-    const onReLogin = vi.fn();
-    const onSetMiniMaxSource = vi.fn(async () => undefined);
-    const manager = createManager({ onReLogin, onSetMiniMaxSource });
-
-    manager.handleInput("e");
-
-    expect(onReLogin).toHaveBeenCalledOnce();
-    // Sign-in is not a source switch; the panel must not write the source too.
-    expect(onSetMiniMaxSource).not.toHaveBeenCalled();
-  });
-
-  it("reports a host without auth instead of silently dropping e", () => {
-    const manager = createManager();
-
-    manager.handleInput("e");
-
-    expect(stripAnsi(manager.render(84).join("\n"))).toContain(
-      "MiniMax sign-in is unavailable in this host.",
-    );
-  });
-
   it("explains when a host does not support editing a custom row", () => {
-    const onReLogin = vi.fn();
     const onSetMiniMaxApiKey = vi.fn(async () => undefined);
-    const manager = createManager({ onReLogin, onSetMiniMaxApiKey });
+    const manager = createManager({ onSetMiniMaxApiKey });
 
     manager.handleInput("\u001b[B");
     manager.handleInput("\u001b[B");
     manager.handleInput("e");
 
-    expect(onReLogin).not.toHaveBeenCalled();
     expect(onSetMiniMaxApiKey).not.toHaveBeenCalled();
     expect(stripAnsi(manager.render(84).join("\n"))).toContain(
       "This connection cannot be edited in this host.",

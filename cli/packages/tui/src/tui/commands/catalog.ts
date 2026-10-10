@@ -307,21 +307,6 @@ const COMMAND_SOURCES: readonly TuiCommandSource[] = [
     shortcut: 'Alt+M',
   },
   {
-    name: 'login',
-    description: 'Sign in to use MiniMax Code Agent features',
-    category: 'Runtime',
-    discoverability: 'contextual',
-    visibleWhen: (context) => !context.managedTokenPresent,
-  },
-  {
-    name: 'logout',
-    description: 'Sign out of the shared Desktop account',
-    category: 'Runtime',
-    discoverability: 'contextual',
-    visibleWhen: (context) => context.managedTokenPresent,
-    unavailableReason: 'No managed MiniMax account is signed in.',
-  },
-  {
     ...TUI_COMMAND_DESCRIPTORS.doctor,
     category: 'Runtime',
     discoverability: 'search-only',

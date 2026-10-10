@@ -612,7 +612,7 @@ describe("visible presentation selector", () => {
           account: { status: "needs-login", warnings: [] },
         },
       }).shell.accountStatus,
-    ).toBe("Sign in with /login");
+    ).toBe("Add a provider with /provider");
   });
 
   it.each([
@@ -634,13 +634,13 @@ describe("visible presentation selector", () => {
       "Setup warning",
       false,
     ],
-    ["official model signed out", "managed-login", false, [], "Login required", true],
+    ["official model signed out", "managed-login", false, [], "No provider configured", true],
     [
       "official model with expired credentials",
       "managed-login",
       false,
       ["Managed token expired"],
-      "Login required",
+      "No provider configured",
       true,
     ],
     ["official model signed in", "managed-login", true, [], "Ready", false],
@@ -671,8 +671,8 @@ describe("visible presentation selector", () => {
       for (const width of [50, 80, 120]) {
         const rendered = stripAnsi(new TuiWelcome(shell).render(width).join("\n"));
         expect(rendered).toContain(activity);
-        expect(rendered.includes("Sign in with /login")).toBe(loginRequired);
-        expect(rendered.includes("Login required")).toBe(loginRequired);
+        expect(rendered.includes("Add a provider with /provider")).toBe(loginRequired);
+        expect(rendered.includes("No provider configured")).toBe(loginRequired);
         if (warnings.length && !loginRequired) {
           expect(rendered).not.toContain("● Ready");
           expect(rendered).toContain("/provider or /status");
@@ -693,8 +693,8 @@ describe("visible presentation selector", () => {
       const rendered = stripAnsi(new TuiWelcome(shell).render(80).join("\n"));
       expect(rendered).toContain(account ? "Account unavailable" : "Checking account");
       expect(rendered).not.toContain("● Ready");
-      expect(rendered).not.toContain("Login required");
-      expect(rendered).not.toContain("Sign in with /login");
+      expect(rendered).not.toContain("No provider configured");
+      expect(rendered).not.toContain("Add a provider with /provider");
     }
   });
 

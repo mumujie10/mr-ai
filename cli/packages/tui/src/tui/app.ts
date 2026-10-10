@@ -304,7 +304,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     onOpenSession: (sessionId) => sessionFlow.activateSessionById(sessionId),
     onArchivedCurrentSession: (sessionId) => sessionFlow.archiveCurrentProjection(sessionId),
     refreshAutocomplete: () => activeRunFlow?.refreshAutocomplete(),
-    onStartMiniMaxLogin: () => commandFlow.startMiniMaxLogin(), // Wired below.
     isStopped: () => stopped,
     hasLiveRun,
   });
@@ -583,7 +582,6 @@ export function createTuiApp(options: CreateTuiAppOptions): TuiApp {
     goalFlow,
     planModeFlow,
     permissionModeFlow,
-    ...(options.auth ? { auth: options.auth } : {}),
     openExternalTarget: options.openExternalTarget,
     interactionFlow,
     sessionFlow,

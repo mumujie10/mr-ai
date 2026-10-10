@@ -239,7 +239,7 @@ export class TuiPluginManager implements TuiFeatureScreen, Component, Focusable 
       this.status = formatTuiActionFailure(error, {
         summary: `Couldn't update ${plugin.displayName}.`,
         nextStep: isPluginAuthRequired(error)
-          ? 'Run /login, then retry.'
+          ? 'No sign-in here; use a local plugin source.'
           : 'Retry or run mcode plugin for details.',
       });
     } finally {
