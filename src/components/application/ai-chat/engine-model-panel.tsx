@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import Check from "lucide-react/dist/esm/icons/check";
 import RefreshCw from "lucide-react/dist/esm/icons/refresh-cw";
 import Search from "lucide-react/dist/esm/icons/search";
+import SlidersHorizontal from "lucide-react/dist/esm/icons/sliders-horizontal";
 import X from "lucide-react/dist/esm/icons/x";
 import { m } from "motion/react";
 import { ActionFeedbackIcon, useActionFeedback } from "@/components/base/action-feedback";
@@ -334,19 +335,34 @@ function RefreshButton({ onRefresh }: { onRefresh: () => void | Promise<void> })
   );
 }
 
-/** Optional header actions: catalog refresh (flyout + dialog) and/or the
- * dialog's dismiss button. Renders nothing when neither applies. */
+/** Optional header actions: 模型设置 (per-model effort / context window /
+ *  visibility), catalog refresh (flyout + dialog) and/or the dialog's dismiss
+ *  button. Renders nothing when none applies. */
 function PanelActions({
+  onOpenModelSettings,
   onRefresh,
   onClose,
 }: {
+  /** Opens 模型设置 for this engine; absent when the host has no dialog. */
+  onOpenModelSettings?: () => void;
   onRefresh?: () => void | Promise<void>;
   onClose?: () => void;
 }) {
   const { t } = useTranslation();
-  if (!onRefresh && !onClose) return null;
+  if (!onOpenModelSettings && !onRefresh && !onClose) return null;
   return (
     <span className="mr-1 flex shrink-0 items-center">
+      {onOpenModelSettings && (
+        <button
+          type="button"
+          aria-label={t("chat.modelSettingsEntry")}
+          title={t("chat.modelSettingsEntry")}
+          onClick={onOpenModelSettings}
+          className="flex size-7 items-center justify-center rounded-lg text-foreground-icon-secondary hover:bg-background-secondary-hover hover:text-foreground-icon-primary"
+        >
+          <SlidersHorizontal className="size-3.5" aria-hidden />
+        </button>
+      )}
       {onRefresh && <RefreshButton onRefresh={onRefresh} />}
       {onClose && (
         <button
@@ -564,6 +580,7 @@ export function EngineModelPanel({
   codexServiceTier,
   onCodexServiceTierChange,
   onRefresh,
+  onOpenModelSettings,
   onClose,
   loading,
 }: {
@@ -588,6 +605,8 @@ export function EngineModelPanel({
   onCodexServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
   /** Re-probe provider configs and model catalogs without an app restart. */
   onRefresh?: () => void | Promise<void>;
+  /** Open 模型设置 for this engine (per-model effort / context / visibility). */
+  onOpenModelSettings?: () => void;
   onClose?: () => void;
   /** This engine's catalog probe is still running. */
   loading?: boolean;
@@ -613,7 +632,11 @@ export function EngineModelPanel({
         {hasChannels && onPickChannel && (
           <ChannelFilterField query={channelQuery} onQueryChange={setChannelQuery} />
         )}
-        <PanelActions onRefresh={onRefresh} onClose={onClose} />
+        <PanelActions
+          onOpenModelSettings={onOpenModelSettings}
+          onRefresh={onRefresh}
+          onClose={onClose}
+        />
       </div>
       {hasChannels && onPickChannel && (
         <ChannelPicker

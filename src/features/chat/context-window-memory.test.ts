@@ -110,4 +110,31 @@ describe("context window memory", () => {
       resolveContextMax({ usage: undefined, engine: "pi", model: "x" }),
     ).toBe(ASSUMED_CONTEXT_WINDOW);
   });
+
+  it("a window the user set in 模型设置 outranks a live report", () => {
+    rememberContextWindow("claude", "opus", 500_000);
+    const live = {
+      input_tokens: 10,
+      total_tokens: 10,
+      model_context_window: 1_000_000,
+    };
+    expect(
+      resolveContextMax({
+        usage: live,
+        engine: "claude",
+        model: "opus",
+        catalogWindow: 200_000,
+        modelWindow: 400_000,
+      }),
+    ).toBe(400_000);
+    // Without the override the old order still holds: report, memory, catalog.
+    expect(
+      resolveContextMax({
+        usage: live,
+        engine: "claude",
+        model: "opus",
+        catalogWindow: 200_000,
+      }),
+    ).toBe(1_000_000);
+  });
 });

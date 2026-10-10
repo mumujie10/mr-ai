@@ -20,6 +20,30 @@ pub struct WorkspaceGroup {
     pub copies_folder: Option<String>,
 }
 
+/// One model's user-set overrides, as edited in 输入框 → 引擎 → 模型设置.
+/// Keyed `<engine>::<picker model id>` in [`AppSettings::model_settings`]:
+/// the picker id already carries the channel (`llm/MiniMax-M3` for a BYOK
+/// channel, `minimax/MiniMax-M3` for the bundled runtime's own), so 官方配置
+/// and a vendor channel are separate rows without needing a third key part.
+///
+/// Every field is an override of something the app would otherwise take from
+/// the engine: an absent `contextWindow` keeps whatever the CLI reports, and
+/// an absent `effort` follows the engine default.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ModelSetting {
+    /// Default reasoning level for this model on this engine.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// Context window in tokens the app should assume for this model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<u64>,
+    /// Drop the model from the picker (it stays selectable if a session is
+    /// already running it, so hiding can never strand a live conversation).
+    #[serde(default)]
+    pub hidden: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -56,6 +80,11 @@ pub struct AppSettings {
     pub custom_models: HashMap<String, Vec<String>>,
     #[serde(default)]
     pub default_efforts: HashMap<String, String>,
+    /// Per-model overrides set in 模型设置 (effort / context window / hidden),
+    /// keyed `<engine>::<picker model id>`. Empty entries are removed by the
+    /// client rather than stored, so a row that was reset disappears.
+    #[serde(default)]
+    pub model_settings: HashMap<String, ModelSetting>,
     /// Per-app OMP OpenAI tier override; None preserves native CLI settings.
     #[serde(default)]
     pub omp_openai_service_tier: Option<String>,
@@ -366,6 +395,7 @@ impl Default for AppSettings {
             default_models: HashMap::new(),
             custom_models: HashMap::new(),
             default_efforts,
+            model_settings: HashMap::new(),
             omp_openai_service_tier: None,
             codex_service_tier: None,
             codex_home: None,
@@ -954,6 +984,30 @@ fn announce_settings(app: &tauri::AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 模型设置 rows survive a round-trip with their camelCase field names, and
+    /// a settings file written before the key existed still loads.
+    #[test]
+    fn model_settings_round_trip_and_default_when_absent() {
+        let mut settings = AppSettings::default();
+        settings.model_settings.insert(
+            "mireai::llm/MiniMax-M3".into(),
+            ModelSetting {
+                effort: Some("high".into()),
+                context_window: Some(400_000),
+                hidden: false,
+            },
+        );
+        let json = serde_json::to_value(&settings).unwrap();
+        assert_eq!(
+            json["modelSettings"]["mireai::llm/MiniMax-M3"]["contextWindow"],
+            400_000
+        );
+        let restored: AppSettings = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.model_settings, settings.model_settings);
+        let legacy: AppSettings = serde_json::from_str("{}").unwrap();
+        assert!(legacy.model_settings.is_empty());
+    }
 
     /// The per-engine picks a user made "for MR CLI" describe the bundled
     /// runtime, which is now engine `mireai`; an entry already set for the new

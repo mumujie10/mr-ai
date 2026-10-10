@@ -359,6 +359,19 @@ export interface EngineModel {
   contextWindow?: number | null;
 }
 
+/** One model's user-set overrides (输入框 → 引擎 → 模型设置). Every field is
+ *  optional: an unset one keeps whatever the engine reports or the app
+ *  defaults to. Resolution lives in
+ *  `src/features/chat/model-settings.ts`. */
+export interface ModelSetting {
+  /** Default reasoning level, spelled as the picker spells it. */
+  effort?: string;
+  /** Context window in tokens. */
+  contextWindow?: number;
+  /** Drop the model from the picker. */
+  hidden?: boolean;
+}
+
 /** An engine's model catalog plus how much trust the list deserves. */
 export interface EngineCatalog {
   models: EngineModel[];
@@ -476,6 +489,9 @@ export interface AppSettings {
   /** Per-engine user-added custom model ids (设置 → CLI → 自定义模型). */
   customModels: Record<string, string[]>;
   defaultEfforts: Record<string, string>;
+  /** Per-model overrides set in 输入框 → 引擎 → 模型设置, keyed
+   *  `<engine>::<picker model id>`. Absent/empty means "follow the engine". */
+  modelSettings?: Record<string, ModelSetting>;
   ompOpenaiServiceTier?: "default" | "priority" | null;
   /** Codex Fast override; null preserves ~/.codex/config.toml. */
   codexServiceTier?: "default" | "priority" | null;

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { EFFORT_LEVELS, type EffortLevel } from "@/components/application/ai-chat/effort-levels";
 import { useChatStore, type ActiveSession } from "../store";
+import { modelSettingFor, useModelSettings } from "../model-settings";
 import { memoizeMessageHistory } from "./memoize-message-history";
 
 /** Session records and history rows carry plain strings; anything that is not
@@ -40,6 +41,7 @@ export function useTabModelDisplay({
   const sessionActiveModel = useChatStore((s) =>
     sessionKey ? (s.bySession[sessionKey]?.activeModel ?? null) : null,
   );
+  const modelSettings = useModelSettings((s) => s.byKey);
   const historyModel = useMemo(() => memoizeMessageHistory((messages) => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const model = messages[i].model;
@@ -80,6 +82,9 @@ export function useTabModelDisplay({
       (active.sessionId === null ? active.effort : undefined) ||
       asEffortLevel(sessionActiveEffort) ||
       asEffortLevel(sessionHistoryEffort) ||
+      // 模型设置's level for the model this tab runs is more specific than the
+      // engine default; the session's own pick still outranks both.
+      asEffortLevel(modelSettingFor(modelSettings, activeEngine, tabModel)?.effort) ||
       efforts[activeEngine]
     );
   }, [
@@ -87,6 +92,8 @@ export function useTabModelDisplay({
     activeEngine,
     sessionActiveEffort,
     sessionHistoryEffort,
+    modelSettings,
+    tabModel,
     efforts,
   ]);
   const displayModels = useMemo(

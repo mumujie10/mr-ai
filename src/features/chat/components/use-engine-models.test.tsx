@@ -6,6 +6,7 @@ import { ipc } from "@/lib/ipc";
 import "@/lib/i18n";
 import i18n from "@/lib/i18n";
 import { useEngineModels, type EngineModelsState } from "./use-engine-models";
+import { useModelSettings } from "../model-settings";
 
 vi.mock("@/lib/ipc", () => ({
   ipc: {
@@ -290,5 +291,36 @@ describe("useEngineModels refresh scope", () => {
     // 回到本地工作区:本地目录同样刷新过,且没有被发行版目录污染。
     await show(null, "/ws-other");
     expect(latest.catalogs.omp?.models[0]?.id).toBe("local-new");
+  });
+});
+
+describe("模型设置隐藏的行", () => {
+  afterEach(() => {
+    useModelSettings.setState({ byKey: {}, loaded: false });
+  });
+
+  it("藏掉的行不进选择器，但当前选中的那一行永远留着", async () => {
+    useModelSettings.setState({
+      byKey: {
+        "omp::pi/m-hidden": { hidden: true },
+        "omp::pi/m-picked": { hidden: true },
+      },
+      loaded: true,
+    });
+    vi.mocked(ipc.listEngineModels).mockResolvedValue({
+      models: [
+        { id: "pi/m-shown", name: "Shown" },
+        { id: "pi/m-hidden", name: "Hidden" },
+        { id: "pi/m-picked", name: "Picked" },
+      ],
+      authoritative: true,
+    } as unknown as EngineCatalog);
+    await render({ models: { omp: "pi/m-picked" }, pinModels: async () => {} });
+    const ids = (latest.modelsByEngine.omp ?? []).map((m) => m.id);
+    expect(ids).toContain("pi/m-shown");
+    expect(ids).not.toContain("pi/m-hidden");
+    // 会话正在跑的那一行即使被藏也留在列表里:把它从选择器上抹掉会让胶囊变空，
+    // 用户也再没法切回来。
+    expect(ids).toContain("pi/m-picked");
   });
 });

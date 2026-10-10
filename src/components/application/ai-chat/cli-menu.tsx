@@ -338,6 +338,7 @@ function EngineModelDialog({
   codexServiceTier,
   onCodexServiceTierChange,
   onRefreshModels,
+  onOpenModelSettings,
   onClose,
 }: {
   /** Engine being configured; undefined when the dialog is closed. */
@@ -361,6 +362,8 @@ function EngineModelDialog({
   codexServiceTier: OmpServiceTier;
   onCodexServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
   onRefreshModels?: () => void | Promise<void>;
+  /** Open 模型设置 for this engine (per-model effort / context / visibility). */
+  onOpenModelSettings?: (engine: string) => void;
   onClose: () => void;
 }) {
   if (!option) return null;
@@ -387,6 +390,9 @@ function EngineModelDialog({
         codexServiceTier={codexServiceTier}
         onCodexServiceTierChange={onCodexServiceTierChange}
         onRefresh={onRefreshModels}
+        onOpenModelSettings={
+          onOpenModelSettings ? () => onOpenModelSettings(option.id) : undefined
+        }
         onClose={onClose}
       />
     </ModalShell>
@@ -419,6 +425,7 @@ export function CliMenu({
   codexServiceTier,
   onCodexServiceTierChange,
   onRefreshModels,
+  onOpenModelSettings,
   loadingEngines,
 }: {
   options: MenuOption[];
@@ -445,6 +452,8 @@ export function CliMenu({
   onCodexServiceTierChange: (tier: OmpServiceTier) => Promise<void>;
   /** Re-probe provider configs and model catalogs (flyout refresh button). */
   onRefreshModels?: () => void | Promise<void>;
+  /** Open 模型设置 for one engine (per-model effort / context / visibility). */
+  onOpenModelSettings?: (engine: string) => void;
   /** Engine ids whose catalog probe has not returned yet (loading hint). */
   loadingEngines?: readonly string[];
 }) {
@@ -628,6 +637,17 @@ export function CliMenu({
               codexServiceTier={codexServiceTier}
               onCodexServiceTierChange={onCodexServiceTierChange}
               onRefresh={onRefreshModels}
+              onOpenModelSettings={
+                onOpenModelSettings
+                  ? () => {
+                      // Dismiss the picker: the dialog is a modal, and leaving
+                      // a non-modal popover open under it means the first
+                      // outside press closes the wrong layer.
+                      close();
+                      onOpenModelSettings(flyoutOption.id);
+                    }
+                  : undefined
+              }
               loading={loadingEngines?.includes(flyoutOption.id)}
             />
           )}
@@ -666,6 +686,7 @@ export function CliMenu({
       codexServiceTier={codexServiceTier}
       onCodexServiceTierChange={onCodexServiceTierChange}
       onRefreshModels={onRefreshModels}
+      onOpenModelSettings={onOpenModelSettings}
       onClose={() => setDialogEngine(null)}
     />
     </>

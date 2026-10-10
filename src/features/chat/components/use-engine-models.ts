@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { ModelOption } from "@/components/application/ai-chat/cli-menu";
 import type { ChannelOption } from "@/components/application/ai-chat/engine-model-panel";
 import { ipc, type CliConfig, type EngineCatalog, type EngineInfo } from "@/lib/ipc";
+import { modelSettingFor, useModelSettings } from "../model-settings";
 import {
   CLI_CONFIG_CHANGED_EVENT,
   isPseudoProvider,
@@ -114,6 +115,9 @@ export function useEngineModels(
     window.addEventListener(CLI_CONFIG_CHANGED_EVENT, reload);
     return () => window.removeEventListener(CLI_CONFIG_CHANGED_EVENT, reload);
   }, []);
+  // 模型设置 rows (hidden / effort / context window) live in their own store so
+  // the dialog and the picker read one source; writes update both at once.
+  const modelSettings = useModelSettings((s) => s.byKey);
   // Catalog for the active workspace. Until the workspace's context is known
   // the shared local catalog proves nothing about it (it may be a remote one),
   // so the picker starts empty there and fills as the workspace's probes land.
@@ -202,6 +206,14 @@ export function useEngineModels(
   // plus the session (or engine-default) channel's configured model — spawn
   // injects that channel's env, including claude; native files stay official.
   const modelsByEngine = useMemo(() => {
+    // 模型设置 can hide a row, but never the one the engine is currently
+    // running: a hidden selection would blank the pill and strand the session.
+    const visible = (engineId: string, rows: ModelOption[], currentId: string) =>
+      rows.filter(
+        (row) =>
+          row.id === currentId ||
+          !modelSettingFor(modelSettings, engineId, row.id)?.hidden,
+      );
     const result: Record<string, ModelOption[]> = {};
     for (const engine of engines) {
       const configured = configuredModel(engine.id, cliConfig, providers[engine.id]);
@@ -215,12 +227,16 @@ export function useEngineModels(
       // Remote workspace (WSL distro): local channel/custom models cannot
       // run there — the distro CLI's own list is the entire menu.
       if (catalogs[engine.id]?.remote) {
-        result[engine.id] = catalog.map((m) => ({
-          id: m.id,
-          label: m.name || m.id,
-          description: m.description ?? undefined,
-          provider: m.provider,
-        }));
+        result[engine.id] = visible(
+          engine.id,
+          catalog.map((m) => ({
+            id: m.id,
+            label: m.name || m.id,
+            description: m.description ?? undefined,
+            provider: m.provider,
+          })),
+          current,
+        );
         continue;
       }
       // Channel model leads (it is what the CLI would run unprompted), the
@@ -235,7 +251,9 @@ export function useEngineModels(
         ]),
       ];
       const byId = new Map(catalog.map((m) => [m.id, m]));
-      result[engine.id] = known.map((m) => {
+      result[engine.id] = visible(
+        engine.id,
+        known.map((m) => {
         const entry = byId.get(m);
         // The CLI's alias rows (Default/Opus/…) describe the CLI's OWN
         // settings — the official channel's. Under another channel the alias
@@ -257,10 +275,12 @@ export function useEngineModels(
           // prefix stands in when the catalog doesn't name the provider.
           provider: entry?.provider ?? (m.includes("/") ? m.slice(0, m.indexOf("/")) : undefined),
         };
-      });
+        }),
+        current,
+      );
     }
     return result;
-  }, [engines, cliConfig, catalogs, wsKey, models, customModels, providers, t]);
+  }, [engines, cliConfig, catalogs, wsKey, models, customModels, providers, modelSettings, t]);
   // Selectable ids WITHOUT the current-override append: what the channel,
   // the backend catalog, and the custom model list can actually serve.
   const knownIdsByEngine = useMemo(() => {

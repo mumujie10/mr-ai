@@ -56,14 +56,19 @@ export function recallContextWindow(
 }
 
 /** The gauge's denominator: a live report wins, then the remembered window,
- *  then the model catalog, then the shared last-resort guess. */
+ *  then the model catalog, then the shared last-resort guess. A window the
+ *  user set in 模型配置 is passed in as `modelWindow` and outranks all of them
+ *  — see `resolveContextMax`. */
 export function resolveContextMax(opts: {
   usage: unknown;
   engine: string;
   model?: string | null;
   catalogWindow?: number | null;
+  /** The user's own value for this engine+model, if they set one. */
+  modelWindow?: number | null;
 }): number {
   return (
+    opts.modelWindow ||
     parseUsage(opts.usage)?.contextWindow ||
     recallContextWindow(opts.engine, opts.model) ||
     opts.catalogWindow ||

@@ -26,6 +26,7 @@ import {
   untrackRun,
 } from "./stream";
 import { mergeUsage, parseUsage } from "../usage";
+import { modelSettingFor, useModelSettings } from "../model-settings";
 import {
   bindRunLifecycle,
   finishRunLifecycle,
@@ -256,8 +257,17 @@ export function createMessagingActions(
       }
     }
     const effort =
-      resolveSessionEffort(tab, get().bySession[key], get().efforts[engine]) ??
-      null;
+      resolveSessionEffort(
+        tab,
+        get().bySession[key],
+        // 模型设置's level for the model this run uses is more specific than
+        // the engine default; the session's own pick still outranks both.
+        (modelSettingFor(
+          useModelSettings.getState().byKey,
+          engine,
+          model,
+        )?.effort ?? get().efforts[engine]),
+      ) ?? null;
     // Remember the level the way the model is remembered: the picker follows
     // the session, so a reopened session — here, in another window, or on the
     // phone — keeps running the level it ran instead of the engine default.

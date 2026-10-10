@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useShallow } from "zustand/react/shallow";
@@ -36,6 +36,8 @@ import type { OmpServiceTier } from "@/lib/omp-service-tier";
 import { EmptyState } from "@/components/base/empty-state";
 import { parseUsage } from "../usage";
 import { rememberContextWindow, resolveContextMax } from "../context-window-memory";
+import { modelSettingFor, useModelSettings } from "../model-settings";
+import { ModelSettingsDialog } from "./ModelSettingsDialog";
 import { useWorkspaceUIHooks, workspaceAllowedEngines } from "../workspace-ui-bridge";
 import { ConversationModePane, ConversationModePicker } from "@/features/plugins/conversation/ConversationModeHost";
 import { SessionScope } from "../split/session-scope";
@@ -132,6 +134,7 @@ function useConversationMenus({
   setCodexServiceTier,
   refreshModels,
   loadingEngines,
+  onOpenModelSettings,
   allowedEngines,
 }: {
   engines: EngineInfo[];
@@ -159,6 +162,8 @@ function useConversationMenus({
   setCodexServiceTier: (tier: OmpServiceTier) => Promise<void>;
   refreshModels: () => Promise<void>;
   loadingEngines: readonly string[];
+  /** Open 模型设置 for one engine (per-model effort / context / visibility). */
+  onOpenModelSettings: (engine: string) => void;
   /** 接管工作区(桥返回非 null):仅列允许表内引擎(null = 不过滤)。 */
   allowedEngines: string[] | null;
 }) {
@@ -231,6 +236,7 @@ function useConversationMenus({
           codexServiceTier={codexServiceTier}
           onCodexServiceTierChange={setCodexServiceTier}
           onRefreshModels={refreshModels}
+          onOpenModelSettings={onOpenModelSettings}
           loadingEngines={loadingEngines}
         />
       ),
@@ -256,6 +262,7 @@ function useConversationMenus({
       setCodexServiceTier,
       refreshModels,
       loadingEngines,
+      onOpenModelSettings,
     ],
   );
   const permissionMenu = useMemo(
@@ -315,6 +322,13 @@ export const ChatConversation = memo(function ChatConversation({
     key ? s.bySession[key]?.usage : undefined,
   );
   const hasSession = useChatStore((s) => key in s.bySession);
+  // 模型设置 overrides (per engine+model effort / context window / visibility).
+  // One read per conversation: the store is idempotent, and every writer goes
+  // through it, so the picker and the gauge can never disagree.
+  const modelSettings = useModelSettings((s) => s.byKey);
+  useEffect(() => {
+    void useModelSettings.getState().load();
+  }, []);
   const draft = useChatStore((s) => s.drafts[key] ?? "");
   const sendShortcut = useChatStore((s) => s.sendShortcut);
   // Engine/effort/model prefs: low-frequency, grouped into one shallow watch.
@@ -404,14 +418,18 @@ export const ChatConversation = memo(function ChatConversation({
   );
 
   const displayModel = displayModels[activeEngine];
+  // What the user set for this engine+model in 模型设置, if anything.
+  const modelOverride = modelSettingFor(modelSettings, activeEngine, displayModel);
   // Conversation-reported window (Codex token_count, Claude's modelUsage)
   // wins; a fresh session starts from the last window this engine+model was
   // seen reporting; the model catalog is the fallback for engines that never
-  // report one, and the shared constant is the last resort.
+  // report one, and the shared constant is the last resort. A manually set
+  // window outranks all of them (模型设置 exists because engines under-report).
   const contextMax = resolveContextMax({
     usage: sessionUsage,
     engine: activeEngine,
     model: displayModel,
+    modelWindow: modelOverride?.contextWindow,
     catalogWindow: (catalogs[activeEngine]?.models ?? []).find(
       (m) => m.id === displayModel,
     )?.contextWindow,
@@ -469,6 +487,12 @@ export const ChatConversation = memo(function ChatConversation({
   // 插件桥给出该工作区的引擎允许表(meta 形状留在插件侧,宿主不解释);
   // null = 非接管工作区,按本机探针展示。
   const uiHooks = useWorkspaceUIHooks();
+  // 模型设置 dialog target engine (null = closed). Lives here rather than in the
+  // menus hook so the dialog is mounted outside the popover that opens it.
+  const [settingsEngine, setSettingsEngine] = useState<string | null>(null);
+  const openModelSettings = useCallback((engine: string) => {
+    setSettingsEngine(engine);
+  }, []);
   const allowedEngines = useMemo(
     // uiHooks 进依赖:插件 activate/热重载换 hooks 后允许表及时重算。
     () => workspaceAllowedEngines(active?.workspacePath),
@@ -480,6 +504,7 @@ export const ChatConversation = memo(function ChatConversation({
       engineInfo,
       activeEngine,
       allowedEngines,
+      onOpenModelSettings: openModelSettings,
       modelsByEngine,
       onPickFiles: handleAddAttachments,
       onPickSkills: handlePickSkills,
@@ -566,6 +591,14 @@ export const ChatConversation = memo(function ChatConversation({
         startNewChat={startNewChat}
       />
 
+      {settingsEngine && (
+        <ModelSettingsDialog
+          engineId={settingsEngine}
+          models={modelsByEngine[settingsEngine] ?? []}
+          effortLevels={displayEffortLevels?.[settingsEngine]}
+          onClose={() => setSettingsEngine(null)}
+        />
+      )}
     </SessionScope>
   );
 });
