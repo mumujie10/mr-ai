@@ -40,11 +40,12 @@ export type { EffortLevel } from "./effort-levels";
  *   (search field over a "Models" radio group over the effort slider,
  *   Board UI node 4035:6925). */
 
-/** CLI picker: two cards side by side — the engine list and, to its right,
- *  the hovered engine's model flyout. The overlay itself is a transparent,
- *  bottom-aligned row so the submenu reads left-to-right; it stays
- *  right-aligned on the pill, so opening a flyout grows the row to the LEFT
- *  instead of pushing the panel out of the window.
+/** CLI picker: two cards side by side — the engine list and, to its LEFT, the
+ *  hovered engine's model flyout. The overlay itself is a transparent,
+ *  bottom-aligned row. The pill sits on the composer's right and the overlay
+ *  is right-aligned to it, so the FIRST-LEVEL list is the right-hand card (it
+ *  is what the pill opens) and the second-level panel reaches further into the
+ *  window; opening it grows the row leftward instead of pushing anything out.
  *  The list is deliberately narrow: a row is icon + CLI name + status dot +
  *  chevron, and 208px already fits the longest name. */
 const CLI_POPOVER_CLASSES = [
@@ -603,23 +604,12 @@ export function CliMenu({
           aria-label={t("chat.cliPicker")}
           className="flex max-w-[calc(100vw-32px)] items-end gap-2 outline-none"
         >
-          <div className={CLI_LIST_CARD_CLASSES}>
-            <EngineMenuBody
-              options={options}
-              value={value}
-              openEngine={openEngine}
-              isMobile={isMobile}
-              onSelectEngine={selectEngine}
-              onHoverEngine={hoverEngine}
-              onHoverEngineEnd={clearHoverTimer}
-              onFocusEngine={focusEngine}
-            />
-          </div>
-
+          {/* Second-level panel first: the row is right-aligned on the pill, so
+              this card is the one that reaches further into the window.
+              Remount per engine: the panel's channel filter is local state and
+              must not leak into the next engine's flyout. */}
           {!isMobile && flyoutOption && (
             <EngineFlyout
-              // Remount per engine: the panel's channel filter is local state
-              // and must not leak into the next engine's flyout.
               key={flyoutOption.id}
               option={flyoutOption}
               models={modelsByEngine[flyoutOption.id] ?? []}
@@ -641,6 +631,19 @@ export function CliMenu({
               loading={loadingEngines?.includes(flyoutOption.id)}
             />
           )}
+
+          <div className={CLI_LIST_CARD_CLASSES}>
+            <EngineMenuBody
+              options={options}
+              value={value}
+              openEngine={openEngine}
+              isMobile={isMobile}
+              onSelectEngine={selectEngine}
+              onHoverEngine={hoverEngine}
+              onHoverEngineEnd={clearHoverTimer}
+              onFocusEngine={focusEngine}
+            />
+          </div>
         </AriaDialog>
       </AriaPopover>
     </AriaDialogTrigger>

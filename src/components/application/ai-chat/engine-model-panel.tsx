@@ -26,10 +26,11 @@ export interface ChannelOption {
 }
 
 /** Per-engine model flyout: the second card of the CLI popover row, sitting to
- *  the RIGHT of the engine list and bottom-aligned with it (the popover is
- *  right-aligned on the composer pill, so the pair grows leftward and stays in
- *  the window). In flow, not absolutely positioned — the overlay has to know
- *  this card's width to keep its own right edge on the pill. */
+ *  the LEFT of the engine list and bottom-aligned with it (the popover is
+ *  right-aligned on the composer pill, so the first-level list stays nearest
+ *  the pill and this panel reaches further into the window). In flow, not
+ *  absolutely positioned — the overlay has to know this card's width to keep
+ *  its own right edge on the pill. */
 const FLYOUT_CLASSES = cx(
   "w-80 min-w-0",
   "rounded-lg border border-border-button-default bg-background-primary-default p-1 shadow-dropdown",

@@ -228,16 +228,16 @@ must leave the Codex panel mounted and return focus to its channel trigger.
 The fixture drives the real CliMenu with controlled selection state and reports
 PASS/FAIL with measured heights and focus. The trigger is anchored to the
 window's right edge, the way the composer's pill is: the popover is
-right-aligned to the pill and grows LEFTWARD as the model flyout opens beside
-the engine list, so a narrow window must push nothing off-screen. No app, no
-backend.
+right-aligned to the pill, with the engine list nearest it and the model flyout
+to that list's left, so opening the flyout grows the row leftward and a narrow
+window must push nothing off-screen. No app, no backend.
 
 Open `/tests/browser/composer-footer-repro.html` for the same pill inside the
 real `ComposerToolbar` row: it must sit left of the send button, show only the
 engine mark, the model name and the effort at caption size (the engine name
 stays in the pill's `aria-label`), and the popover must be two cards side by
-side — engine list, then the model flyout to its right — with nothing past the
-window edge. Its HTML reports `(max-width: 767px)` as unmatched, because below
+side — model flyout, then the engine list nearest the pill — with nothing past
+the window edge. Its HTML reports `(max-width: 767px)` as unmatched, because below
 that breakpoint the product uses the mobile dialog and the desktop row would
 never render; the measured viewport is still the real window width, so the
 pair genuinely has to fit in it. No app, no backend.

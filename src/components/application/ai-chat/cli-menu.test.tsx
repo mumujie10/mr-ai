@@ -214,6 +214,22 @@ describe("CliMenu flyout switching", () => {
     await click(engineRow("Claude")!);
     expect(flyoutTitle()).toBe("Claude Code 引擎");
   });
+
+  it("模型面板排在引擎列表之前:列表才是紧贴胶囊的那一层", async () => {
+    render();
+    await openMenu();
+    await click(engineRow("Codex")!);
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const flyout = dialog.querySelector("[data-engine-flyout]")!;
+    const listCard = [...dialog.children].find(
+      (child) => child !== flyout,
+    )!;
+    // The overlay is right-aligned on the pill, so flex order IS visual
+    // left-to-right: the second-level panel goes first (further into the
+    // window) and the first-level list last, nearest the pill it opened from.
+    const order = [...dialog.children];
+    expect(order.indexOf(flyout)).toBeLessThan(order.indexOf(listCard));
+  });
 });
 
 describe("CliMenu trigger pill", () => {
