@@ -537,13 +537,22 @@ fn permission_config_value(requested: &str) -> &'static str {
 
 /// One model option value `m:<provider>:<model>:v:<variant>` split into
 /// (`provider/model`, variant). Non-conforming values are skipped.
+///
+/// Each segment is `encodeURIComponent`-ed by the CLI (`control-state.ts`
+/// `modelConfigValue`) because `:` is the value separator — the CLI's own
+/// reader decodes them again, so this adapter has to as well. A BYOK channel
+/// therefore arrives as `custom_provider%3Allm`, and its provider id is what
+/// the picker groups by: leaving the encoding in put a section header reading
+/// `custom_provider%3Allm` in front of every user-added channel.
 fn parse_model_option_value(value: &str) -> Option<(String, String)> {
     let mut parts = value.split(':');
     if parts.next()? != "m" {
         return None;
     }
-    let provider = parts.next()?.trim();
-    let model = parts.next()?.trim();
+    let decoded_provider = percent_decode(parts.next()?);
+    let provider = channel_label(&decoded_provider).trim();
+    let decoded_model = percent_decode(parts.next()?);
+    let model = decoded_model.trim();
     let variant = match (parts.next(), parts.next()) {
         (Some("v"), Some(v)) => v.trim(),
         _ => "",
@@ -552,6 +561,46 @@ fn parse_model_option_value(value: &str) -> Option<(String, String)> {
         return None;
     }
     Some((format!("{provider}/{model}"), variant.to_string()))
+}
+
+/// The CLI files user-added channels under the `custom_provider:<name>`
+/// namespace and leaves official ones bare (`minimax`). The `<name>` is the
+/// channel the user typed, so that is the label — the namespace is the CLI's
+/// internal bucket and says nothing to the picker.
+fn channel_label(provider: &str) -> &str {
+    provider
+        .strip_prefix("custom_provider:")
+        .unwrap_or(provider)
+}
+
+/// Undo `encodeURIComponent` on one option-value segment. Bytes are collected
+/// and decoded as UTF-8 because a channel name can be non-ASCII; a stray `%`
+/// without a valid escape stays literal.
+fn percent_decode(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let (Some(hi), Some(lo)) = (hex_digit(bytes[i + 1]), hex_digit(bytes[i + 2])) {
+                out.push((hi << 4) | lo);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn hex_digit(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
 }
 
 /// Pick the model option value matching the requested `provider/model` id,
@@ -1222,27 +1271,46 @@ mod tests {
         assert_eq!(parse_model_option_value("m:::v:"), None);
     }
 
-    /// The live session/new menu (mcode 0.5.1): variant entries collapse to
+    /// A BYOK channel's option value as the CLI really sends it (measured on
+    /// `mr acp` 0.0.1): the provider id `custom_provider:llm` is percent-encoded
+    /// so the `:` survives the separator. The picker groups by this segment, so
+    /// it has to read as the channel name — encoded, the model list grew a
+    /// `custom_provider%3Allm` section header.
+    #[test]
+    fn parse_model_option_decodes_a_byok_channel_id() {
+        assert_eq!(
+            parse_model_option_value("m:custom_provider%3Allm:MiniMax-M3:v:thinking"),
+            Some(("llm/MiniMax-M3".to_string(), "thinking".to_string()))
+        );
+        // Non-ASCII channel names and encoded slashes decode back to what the
+        // user typed.
+        assert_eq!(
+            parse_model_option_value("m:custom_provider%3A%E9%A2%84%E5%8F%91:x%2Fv1:v:"),
+            Some(("预发/x/v1".to_string(), String::new()))
+        );
+    }
+
+    /// The live session/new menu (mr-cli 0.0.1): variant entries collapse to
     /// one row per model, labels lose their variant suffix, and the CLI's
     /// configured default leads — including providers the user added
-    /// themselves (a GLM channel lists as glm/…).
+    /// themselves, which list under their channel name.
     #[test]
     fn probe_menu_collapses_variants_and_leads_with_the_default() {
         let rows = models_from_config_options(&json!({
             "sessionId": "mvs_a",
             "configOptions": [
                 { "id": "permissionMode", "options": [] },
-                { "id": "model", "currentValue": "m:minimax:MiniMax-M2.7:v:thinking", "options": [
+                { "id": "model", "currentValue": "m:custom_provider%3Allm:MiniMax-M2.7:v:thinking", "options": [
                     { "value": "m:minimax:MiniMax-M3:v:", "name": "MiniMax-M3" },
                     { "value": "m:minimax:MiniMax-M3:v:thinking", "name": "MiniMax-M3 · thinking" },
-                    { "value": "m:glm:glm-4.7:v:thinking", "name": "glm-4.7 · thinking" },
-                    { "value": "m:minimax:MiniMax-M2.7:v:thinking", "name": "MiniMax-M2.7 · thinking" },
+                    { "value": "m:custom_provider%3Aglm:glm-4.7:v:thinking", "name": "glm-4.7 · thinking" },
+                    { "value": "m:custom_provider%3Allm:MiniMax-M2.7:v:thinking", "name": "MiniMax-M2.7 · thinking" },
                 ]},
             ],
         }));
         assert_eq!(
             rows.iter().map(|row| row.id.as_str()).collect::<Vec<_>>(),
-            ["minimax/MiniMax-M2.7", "minimax/MiniMax-M3", "glm/glm-4.7"]
+            ["llm/MiniMax-M2.7", "minimax/MiniMax-M3", "glm/glm-4.7"]
         );
         assert!(rows[0].is_default);
         assert!(!rows[1].is_default);
