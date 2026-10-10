@@ -38,6 +38,7 @@
       "packages/local-runtime-v2/src/service/model-system/codex-oauth.test.ts",
       "packages/local-runtime-v2/src/service/mcp/project-config.test.ts",
       "packages/local-runtime-v2/test/integration/mcp/local-mcp-public-facade.integration.test.ts",
+      "packages/agent-core/test/unit/event-bridge/inline-think.test.ts",
       "packages/agent-core/test/unit/event-bridge/converters.test.ts",
       "packages/agent-core/test/unit/image-dimensions.test.ts",
       "packages/agent-modules/mcp/test/connection-pool-abort.test.ts",

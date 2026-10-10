@@ -81,7 +81,9 @@ import {
   isAssistantError,
   type ToolCallStreamUpdate,
 } from './converters.js';
+import { InlineThinkSplitter, type InlineThinkPiece } from './inline-think.js';
 import type { BridgedEvents, EventBridgeContext, TurnTerminationReason } from './types.js';
+import type { StreamRespEvent } from '../protocol/runtime-event.js';
 
 const defaultNowMs = () => Date.now();
 
@@ -170,6 +172,10 @@ export class EventBridge {
   private thinkingEndMs: number | undefined;
   /** Whether the current message has already produced a non-thinking delta. */
   private thinkingClosed: boolean = false;
+  /** Models that emit reasoning inline in content (measured: MiniMax-M3)
+   *  have their leading <think> block re-laned here, so the answer bubble
+   *  does not open with raw reasoning text. */
+  private inlineThink = new InlineThinkSplitter();
   /** Most recent assistant message cached for diagnostics on terminal frames. */
   private lastAssistantErrorMessage: string | undefined;
 
@@ -449,25 +455,50 @@ export class EventBridge {
         ],
       };
     }
-    // text delta — closes thinking window if we were tracking one.
-    if (this.thinkingStartMs !== undefined && !this.thinkingClosed) {
-      this.thinkingEndMs = this.now();
-      this.thinkingClosed = true;
-    }
-    return {
-      events: [
+    // Text delta — unless it carries the model's inline reasoning block, in
+    // which case the leading pieces go out on the thinking lane first.
+    const msgId = this.activeAssistantMessageId;
+    const events: StreamRespEvent[] = [];
+    const emitText = (delta: string) => {
+      // text closes the thinking window if we were tracking one.
+      if (this.thinkingStartMs !== undefined && !this.thinkingClosed) {
+        this.thinkingEndMs = this.now();
+        this.thinkingClosed = true;
+      }
+      events.push(
         buildTextDeltaChunk({
           sessionId: this.ctx.sessionId,
           turnId: this.ctx.turnId,
           eventId: this.ctx.eventIdGenerator('coding_text'),
           runtimeSeq: this.ctx.runtimeSeqGenerator(),
-          msgId: this.activeAssistantMessageId,
+          msgId,
           chunkIndex: this.nextChunkIndex(),
-          delta: update.delta,
+          delta,
           nowMs: this.now(),
         }),
-      ],
+      );
     };
+    const emitThinking = (delta: string) => {
+      if (this.thinkingStartMs === undefined) this.thinkingStartMs = this.now();
+      events.push(
+        buildThinkingDeltaChunk({
+          sessionId: this.ctx.sessionId,
+          turnId: this.ctx.turnId,
+          eventId: this.ctx.eventIdGenerator('coding_thinking'),
+          runtimeSeq: this.ctx.runtimeSeqGenerator(),
+          msgId,
+          chunkIndex: this.nextChunkIndex(),
+          delta,
+          nowMs: this.now(),
+        }),
+      );
+    };
+    for (const piece of this.inlineThink.feed(update.delta) as InlineThinkPiece[]) {
+      if (piece.delta === '') continue;
+      if (piece.kind === 'thinking') emitThinking(piece.delta);
+      else emitText(piece.delta);
+    }
+    return { events };
   }
 
   /**
