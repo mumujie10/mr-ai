@@ -120,7 +120,7 @@ export function ChatSidebarFrame({
         onReorderWorkspaces={onReorderWorkspaces}
         onDropWorkspaceToSection={onDropWorkspaceToSection}
         onCreateGroup={onCreateGroup}
-        onOpenSettings={() => navigate("/settings")}
+        onOpenSettings={(page) => navigate(page ? `/settings?page=${page}` : "/settings")}
         onClose={onClose}
       />
       {/* Sidebar resize strip: full height, straddling the border. */}

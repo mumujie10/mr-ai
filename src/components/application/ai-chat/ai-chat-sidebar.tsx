@@ -106,7 +106,7 @@ export function AiChatSidebar({
   onOpenPlugins?: () => void;
   /** 任务工作台入口（原生中心页签；替换原「自动化」占位项）。 */
   onOpenMission?: () => void;
-  onOpenSettings?: () => void;
+  onOpenSettings?: (page?: string) => void;
   onClose?: () => void;
   flat?: boolean;
 } = {}) {

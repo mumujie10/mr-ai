@@ -718,6 +718,7 @@ export const en: Messages = {
     fontErrUnsupported:
       "Unsupported file format. Choose a TTF / OTF / TTC / WOFF / WOFF2 font file.",
     pet: "Desktop pet",
+    footerMenu: "Quick menu",
     petEnabled: "Show desktop pet",
     petEnabledDesc: "Only Codex v2 pets are supported. Put pet.json and spritesheet.webp in the same folder and import that folder; ZIP archives are not supported.",
     petCharacter: "Character",
@@ -1742,6 +1743,13 @@ export const en: Messages = {
   },
   usage: {
     title: "Usage",
+    popupTitle: "My usage",
+    popupLoading: "Crunching…",
+    popupRequests: "Requests",
+    popupInput: "Input tokens",
+    popupOutput: "Output tokens",
+    popupEmpty: "Nothing in the last 7 days: only turns after tracking was enabled count.",
+    popupFootnote: "Local stats (last 7 days): only turns after tracking was enabled; nothing leaves this machine.",
     trackingDesc:
       "Counts turns that run while tracking is on; the ledger stays in the local database",
     trackingEnable: "Start tracking",

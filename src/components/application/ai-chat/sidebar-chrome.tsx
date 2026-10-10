@@ -7,6 +7,7 @@ import LayoutGrid from "lucide-react/dist/esm/icons/layout-grid";
 import MessageSquarePlus from "lucide-react/dist/esm/icons/message-square-plus";
 import PanelLeft from "lucide-react/dist/esm/icons/panel-left";
 import ScanSearch from "lucide-react/dist/esm/icons/scan-search";
+import Gauge from "lucide-react/dist/esm/icons/gauge";
 import Settings from "lucide-react/dist/esm/icons/settings";
 import Workflow from "lucide-react/dist/esm/icons/workflow";
 import { Focusable } from "react-aria-components";
@@ -26,6 +27,13 @@ import { cx } from "@/utils/cx";
 import { needsWindowControls, useTitlebarStyle } from "@/features/settings/titlebar";
 import { WindowControls } from "@/components/application/window-controls";
 import { useRemoteControl } from "@/hooks/use-remote-control";
+import {
+  Dropdown,
+  DropdownPopover,
+  DropdownTrigger,
+  DropdownItem,
+} from "@/components/base/dropdown/dropdown";
+import { UsagePopupDialog } from "@/components/application/ai-chat/usage-popup-dialog";
 import { compareByOrder, sidebarNavRegistry, useRegistry } from "@ccgui/plugin-sdk";
 
 type IconComponent = ComponentType<{
@@ -227,22 +235,44 @@ export function SidebarPrimaryNav({
   );
 }
 
-/** Secondary nav (设置) with the floating web-remote badge. The badge is
- *  floating, not laid out: it covers the empty half of the row (设置 keeps
- *  its full width and hover) and lets clicks through. */
-export function SidebarFooter({ onOpenSettings }: { onOpenSettings?: () => void }) {
+/**
+ * Placeholder identity for the footer's account block. The desktop app has no
+ * account system (BYOK, everything local), so there is nothing real to read —
+ * the user asked for a stand-in so the cluster matches the reference design.
+ * Swap these two constants for a real profile read when an account layer
+ * lands; nothing else in the footer needs to change.
+ */
+const ACCOUNT_NAME = "徐磊";
+const ACCOUNT_AVATAR_CHAR = "徐";
+
+/** Secondary footer: account stand-in on the left, usage popup and the
+ *  settings dropdown on the right. The floating web-remote badge overlays the
+ *  gap between them (floating, not laid out: it never steals width from the
+ *  account block). */
+export function SidebarFooter({ onOpenSettings }: { onOpenSettings?: (page?: string) => void }) {
   const { t } = useTranslation();
   const remoteActive = useRemoteControl();
+  const [usageOpen, setUsageOpen] = useState(false);
   return (
-    <div className="flex w-full shrink-0 flex-col gap-3 px-3 pb-3">
-      <div className="relative flex w-full items-center">
-        <nav className="flex w-full flex-col gap-1">
-          <NavItem icon={Settings} label={t("settings.title")} onClick={onOpenSettings} />
-        </nav>
+    <div className="flex w-full shrink-0 flex-col gap-2 px-3 pb-3">
+      <div className="relative flex w-full items-center gap-1">
+        {/* Account stand-in: avatar tile + name, mirroring the reference
+            layout. It is not a button — there is no account page to open. */}
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2lg p-1.5">
+          <span
+            aria-hidden
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-background-tertiary-default text-body-2-medium text-text-secondary"
+          >
+            {ACCOUNT_AVATAR_CHAR}
+          </span>
+          <span className="min-w-0 truncate text-body-2-medium text-text-secondary">
+            {ACCOUNT_NAME}
+          </span>
+        </div>
         {remoteActive && (
           <div
             title={t("settings.webRemoteActive")}
-            className="pointer-events-none absolute right-0 top-1/2 flex -translate-y-1/2 items-center gap-1.5 rounded-full bg-button-primary px-2.5 py-1 shadow-xs"
+            className="pointer-events-none absolute right-16 top-0 flex -translate-y-full items-center gap-1.5 rounded-full bg-button-primary px-2.5 py-1 shadow-xs"
           >
             <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-text-white" />
             <span className="text-body-2-medium whitespace-nowrap text-text-white">
@@ -250,7 +280,39 @@ export function SidebarFooter({ onOpenSettings }: { onOpenSettings?: () => void 
             </span>
           </div>
         )}
+        <button
+          type="button"
+          aria-label={t("usage.popupTitle")}
+          title={t("usage.popupTitle")}
+          onClick={() => setUsageOpen(true)}
+          className="flex cursor-pointer items-center rounded-lg p-2 transition-colors duration-150 ease hover:bg-background-secondary-hover"
+        >
+          <Gauge className="size-4 shrink-0 text-foreground-icon-secondary" aria-hidden />
+        </button>
+        <Dropdown>
+          <DropdownTrigger
+            aria-label={t("settings.title")}
+            className="flex cursor-pointer items-center rounded-lg p-2 outline-none transition-colors duration-150 ease hover:bg-background-secondary-hover focus-visible:ring-2 focus-visible:ring-border-focus-ring"
+          >
+            <Settings className="size-4 shrink-0 text-foreground-icon-secondary" aria-hidden />
+          </DropdownTrigger>
+          <DropdownPopover aria-label={t("settings.footerMenu")} placement="top end">
+            <DropdownItem onSelect={() => onOpenSettings?.()}>
+              {t("settings.title")}
+            </DropdownItem>
+            <DropdownItem onSelect={() => onOpenSettings?.("usage")}>
+              {t("usage.title")}
+            </DropdownItem>
+            <DropdownItem onSelect={() => onOpenSettings?.("pet")}>
+              {t("settings.pet")}
+            </DropdownItem>
+            <DropdownItem onSelect={() => onOpenSettings?.("update")}>
+              {t("settings.checkUpdates")}
+            </DropdownItem>
+          </DropdownPopover>
+        </Dropdown>
       </div>
+      {usageOpen && <UsagePopupDialog onClose={() => setUsageOpen(false)} />}
     </div>
   );
 }
