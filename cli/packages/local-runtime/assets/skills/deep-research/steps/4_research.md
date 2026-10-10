@@ -56,15 +56,15 @@ A search query returning results is not enough. A Todo item is complete only aft
 ## Tool-use principles
 
 Choose tools by capability, not by name. The defaults below are for the
-Mavis runtime; if a tool is unavailable, fall back to a `Bash`/shell
+MireAI runtime; if a tool is unavailable, fall back to a `Bash`/shell
 equivalent.
 
 **Search-class tools:**
-1. Use search-class tools to search multiple keywords, exact phrases, or site-restricted queries in parallel. Mavis default: `web_search`. Fallback: `Bash` with `curl` against a public search API.
+1. Use search-class tools to search multiple keywords, exact phrases, or site-restricted queries in parallel. MireAI default: `web_search`. Fallback: `Bash` with `curl` against a public search API.
 2. Aim each search round at different subquestions, and avoid repeating the same query.
 
 **Browsing-class tools:**
-3. Use browsing-class tools to inspect candidate webpages. Mavis default: `webfetch` or the matrix MCP tools; for sites that need login state, prefer the user's real browser when authorized.
+3. Use browsing-class tools to inspect candidate webpages. MireAI default: `webfetch` or the matrix MCP tools; for sites that need login state, prefer the user's real browser when authorized.
 4. Do not use a browsing-class tool as a substitute for broad search. If you do
    not already have a specific candidate page, source, or narrow source target,
    use a search-class tool first.

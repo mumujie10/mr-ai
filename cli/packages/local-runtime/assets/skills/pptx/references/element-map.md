@@ -1,4 +1,4 @@
-# Mavis PPT Element Map
+# MireAI PPT Element Map
 
 ## Purpose
 
@@ -14,7 +14,7 @@ slides/slide-XX.js
 sidecar:
 slides/slide-XX.js
   -> mapped helper records elementId/text/rect/style
-  -> output/name.mavis-ppt-map.json
+  -> output/name.mireai-ppt-map.json
 ```
 
 If map generation fails, fix the map or fall back to ordinary PPTX delivery. Do not change the deck
@@ -106,7 +106,7 @@ pres.__mavisElementMap = elementMap;
 require('./slide-01.js').createSlide(pres, theme);
 
 pres.writeFile({ fileName: outputPptx }).then(() => {
-  elementMap.writeFile('./output/restaurant-deck.mavis-ppt-map.json');
+  elementMap.writeFile('./output/restaurant-deck.mireai-ppt-map.json');
 });
 ```
 
@@ -212,7 +212,7 @@ source of truth.
 The desktop preview runtime looks for the sidecar by replacing the selected PPTX path suffix:
 
 ```text
-deck.pptx -> deck.mavis-ppt-map.json
+deck.pptx -> deck.mireai-ppt-map.json
 ```
 
 When a preview selection is submitted, the runtime:

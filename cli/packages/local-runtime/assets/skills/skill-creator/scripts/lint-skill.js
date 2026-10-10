@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// lint-skill.js — Mavis SKILL.md validator
+// lint-skill.js — MireAI SKILL.md validator
 //
 // Usage: node lint-skill.js <path/to/skill-directory>
 // Exit codes: 0 = pass, 1 = errors found.
@@ -150,7 +150,7 @@ function lintSkill(skillDir) {
   // 4. Forbidden frontmatter fields.
   for (const key of FORBIDDEN_FRONTMATTER_KEYS) {
     if (key in frontmatter) {
-      allOk = fail(`frontmatter contains forbidden key "${key}" (Mavis does not recognize this; remove it)`) && allOk;
+      allOk = fail(`frontmatter contains forbidden key "${key}" (MireAI does not recognize this; remove it)`) && allOk;
     }
   }
   if (FORBIDDEN_FRONTMATTER_KEYS.every((k) => !(k in frontmatter))) {

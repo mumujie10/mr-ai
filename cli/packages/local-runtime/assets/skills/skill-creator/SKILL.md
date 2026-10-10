@@ -1,12 +1,12 @@
 ---
 name: skill-creator
 description: |
-  Create a new Mavis skill with a short eval-driven loop. Use when the user asks to
+  Create a new MireAI skill with a short eval-driven loop. Use when the user asks to
   create a skill, turn a repeated workflow into a skill, or build a new reusable procedure.
   Do not use for improving or fixing an existing skill (use skill-refiner instead),
   or when the user only wants to run a skill or learn what skills exist.
 descriptions:
-  zh-Hans: "创建新的 Mavis skill，用短 eval 循环把重复工作流沉淀为可复用流程。"
+  zh-Hans: "创建新的 MireAI skill，用短 eval 循环把重复工作流沉淀为可复用流程。"
 displayNames:
   zh-Hans: "创建 Skill"
 ---

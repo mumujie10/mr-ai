@@ -859,7 +859,7 @@ describe("BuiltinAgentCatalog session surfaces", () => {
     expect(codingZh.persona).toBe(coding.persona);
     expect(codingZh.corePrompt).toBe(coding.corePrompt);
     expect(cli.corePrompt).toContain(
-      "user's active MR CLI terminal conversation",
+      "user's active MireAI CLI terminal conversation",
     );
     expect(coding.corePrompt).toContain("this agent's root session");
     expect(cli.corePrompt).toContain("# Core Judgment");
@@ -1088,7 +1088,7 @@ describe("BuiltinAgentCatalog TUI prompt profile", () => {
       const enabled = await catalog.render(input);
       const child = await catalog.render({ ...input, surface: "task-child" });
       expect(enabled.corePrompt).toContain(
-        "You are a coding agent running in the MR CLI terminal",
+        "You are a coding agent running in the MireAI CLI terminal",
       );
       expect(enabled.corePrompt).toContain("markdown in a terminal");
       expect(enabled.corePrompt).toContain("## Deliverable Files");
@@ -1189,10 +1189,11 @@ describe("BuiltinAgentCatalog persona assets", () => {
     expect(corePrompt).toContain(
       "Report results faithfully: say what succeeded, what failed, what was skipped, and what remains unverified.",
     );
-    expect(persona).toContain("display_name: Mavis");
-    expect(persona).toContain("MR CLI");
+    expect(persona).toContain("display_name: MireAI");
+    expect(persona).toContain("MireAI CLI");
+    expect(persona).not.toContain("MR CLI");
     expect(persona).not.toContain("MiniMax");
-    expect(persona).not.toContain("You are Mavis");
+    expect(persona).not.toContain("Mavis");
     expect(persona).not.toContain("Core Judgment");
     expect(persona).not.toContain("customer service");
     expect(persona).not.toContain("Warm But Not Soft");
@@ -1390,7 +1391,7 @@ describe("BuiltinAgentCatalog prompt modes", () => {
       rendered.push(enabled);
     }
     expect(rendered[0]?.corePrompt).toContain(
-      "You are a coding agent running in the MR CLI terminal",
+      "You are a coding agent running in the MireAI CLI terminal",
     );
     expect(rendered[1]?.corePrompt).toContain(
       "You help users with software engineering tasks.",

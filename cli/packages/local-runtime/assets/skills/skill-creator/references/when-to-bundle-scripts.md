@@ -1,6 +1,6 @@
 # When to Bundle Scripts — 何时建脚本 vs 用其他机制
 
-> 一个常见错误是"看到能写脚本就写脚本"。Mavis 已经有多种机制处理不同类型的工作；先判断**这件事本质上是什么**，再决定用什么。
+> 一个常见错误是"看到能写脚本就写脚本"。MireAI 已经有多种机制处理不同类型的工作；先判断**这件事本质上是什么**，再决定用什么。
 
 ## 决策树
 
@@ -11,7 +11,7 @@
 │   ├─ 是 → 写 Node.js 脚本（放 scripts/）
 │   └─ 否 → 继续往下
 │
-├─ Mavis 原生 tool 已经支持了？
+├─ MireAI 原生 tool 已经支持了？
 │   ├─ 是 → 直接调用对应 tool（`mavis` / `skill` 等），不写脚本
 │   └─ 否 → 继续往下
 │
@@ -41,16 +41,16 @@
 
 **约束**：用 Node.js + 内置 fs，禁止依赖第三方 npm 包。
 
-### 用 Mavis 原生 tool
+### 用 MireAI 原生 tool
 
-适合：**Mavis 已封装的能力**
+适合：**MireAI 已封装的能力**
 
 例：
 - 列已有 skill → 看 context 里的 `<available_skills>` 块
 - 看 session 状态 → `mavis({ command: "session list" })`
 - 管理定时任务 → `mavis({ command: "cron list" })`
 
-**判断标准**：动作是否已经是 Mavis 的标准 API。是的话直接调用，不要包脚本。
+**判断标准**：动作是否已经是 MireAI 的标准 API。是的话直接调用，不要包脚本。
 
 ### 用后台 Task 子代理
 
@@ -130,7 +130,7 @@ fs.writeFileSync('summary.md', summary);
 ## 总结：奥卡姆剃刀清单
 
 写脚本前问：
-- [ ] Mavis 原生 tool 已经支持了吗？
+- [ ] MireAI 原生 tool 已经支持了吗？
 - [ ] 涉及多 agent 吗（→ 后台 Task 子代理）？
 - [ ] 涉及跨 session 吗（→ scratchpad）？
 - [ ] LLM 自己做就行吗（→ procedure 里直接写）？

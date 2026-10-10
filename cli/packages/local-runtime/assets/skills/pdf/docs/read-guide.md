@@ -350,7 +350,7 @@ brew install poppler                            # pdftoppm + pdftotext + pdfimag
 ```
 
 `read_pdf_vision.py` additionally requires local-runtime to be running with authenticated native
-Matrix tools. Managed Matrix hosts use the Mavis login token; custom `MATRIX_BASE_URL` hosts
+Matrix tools. Managed Matrix hosts use the app login token; custom `MATRIX_BASE_URL` hosts
 require `MATRIX_TOKEN` in the runtime environment.
 Details: [`vision-guide.md`](vision-guide.md).
 

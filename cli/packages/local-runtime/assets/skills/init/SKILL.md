@@ -60,7 +60,7 @@ Path: `<repo-root>/AGENTS.md`. **No subdirectory, no symlinks.** First-class for
 
   **Pause and do not write or modify any file until the user explicitly picks 1, 2, or 3** (or any phrasing you can confidently map to one of the three). "Default if silent = skip" is a fallback only after the user has actually been asked and remains silent across the same turn — never a license to decide for them up-front.
 
-Do not invent a fourth path. Do not write a "Mavis-managed" block — the file belongs to the user.
+Do not invent a fourth path. Do not write a "MireAI-managed" block — the file belongs to the user.
 
 #### 3b. Template
 
@@ -134,4 +134,4 @@ If the workspace is a parent directory containing multiple independent git repos
 
 - Base the AGENTS.md content on what the repo actually needs, not on a generic template.
 - Do NOT hardcode a `git commit` step into the bootstrap itself — let the user commit when they're ready.
-- Do NOT inject Mavis-branded sections into `AGENTS.md`. The file is for every agent; Mavis is just one of them.
+- Do NOT inject MireAI-branded sections into `AGENTS.md`. The file is for every agent; MireAI is just one of them.

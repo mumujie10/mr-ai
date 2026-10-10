@@ -1,6 +1,6 @@
 # Description Rubric — 写好 description 的 4 要素
 
-> `description` 是 LLM 决定打不打开 skill 的唯一依据。写不好 → 该用没用（漏触发），或不该用却用了（误触发）。本文档列 4 要素 + 用 Mavis 现有 skill 做正反例。
+> `description` 是 LLM 决定打不打开 skill 的唯一依据。写不好 → 该用没用（漏触发），或不该用却用了（误触发）。本文档列 4 要素 + 用 MireAI 现有 skill 做正反例。
 
 ## 4 要素
 

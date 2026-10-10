@@ -87,7 +87,7 @@ hand-concatenate strings.
   "meta": {
     "title": "2024 Annual Report Digest",
     "subtitle": "Financial highlights and segment revenue",
-    "author": "Mavis",
+    "author": "MireAI",
     "date": "2026-04-26",
     "locale": "zh-CN",
     "page_format": "A4",

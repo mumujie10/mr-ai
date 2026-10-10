@@ -250,7 +250,7 @@ blindly.
 | `qpdf`                                        | MUTATE / decryption            | `brew install qpdf` (optional)                                 |
 
 `read_pdf_vision.py` additionally requires local-runtime to be running with authenticated native
-Matrix tools. Managed Matrix hosts use the Mavis login token; custom `MATRIX_BASE_URL` hosts
+Matrix tools. Managed Matrix hosts use the app login token; custom `MATRIX_BASE_URL` hosts
 require `MATRIX_TOKEN` in the runtime environment.
 Details: [`docs/vision-guide.md`](docs/vision-guide.md).
 

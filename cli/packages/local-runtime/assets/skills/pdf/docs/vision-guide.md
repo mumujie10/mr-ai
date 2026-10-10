@@ -100,7 +100,7 @@ pip3 install --user pdf2image pillow
 brew install poppler        # pdftoppm (pdf2image backend) + pdfinfo
 ```
 
-Runtime side: managed Matrix hosts use the Mavis login token. For a custom `MATRIX_BASE_URL`, set
+Runtime side: managed Matrix hosts use the app login token. For a custom `MATRIX_BASE_URL`, set
 `MATRIX_TOKEN` in the runtime environment, then restart the MiniMax Code app so local-runtime picks it up.
 
 ## Output spill (preventing context blow-up)

@@ -1,6 +1,6 @@
 ---
 name: llm-call
-description: Call a configured LLM model directly through the local script using provider settings from config.yaml. Use this skill when the user wants a raw model call, prompt test, provider/model comparison, or asks to send text to a specific GPT/Gemini model. Do not use it for normal Mavis agent execution.
+description: Call a configured LLM model directly through the local script using provider settings from config.yaml. Use this skill when the user wants a raw model call, prompt test, provider/model comparison, or asks to send text to a specific GPT/Gemini model. Do not use it for normal MireAI agent execution.
 descriptions:
   zh-Hans: "直接调用配置好的 LLM 模型，用于原始模型调用、prompt 测试和 provider/model 对比。"
 ---

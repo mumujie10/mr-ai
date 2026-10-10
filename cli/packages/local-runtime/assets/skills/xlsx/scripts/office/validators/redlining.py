@@ -10,7 +10,7 @@ from pathlib import Path
 
 class RedliningValidator:
 
-    def __init__(self, unpacked_dir, original_docx, verbose=False, author="Mavis"):
+    def __init__(self, unpacked_dir, original_docx, verbose=False, author="MireAI"):
         self.unpacked_dir = Path(unpacked_dir)
         self.original_docx = Path(original_docx)
         self.verbose = verbose

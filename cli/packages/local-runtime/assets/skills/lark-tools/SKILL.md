@@ -123,7 +123,7 @@ Notes:
   Administrator on Windows) or a per-user prefix. **Never run `sudo` without telling the user
   first.**
 - After install, do **not** run `lark-cli config init` unless you explicitly need to initialize the
-  official CLI store outside Mavis. Bot binding in Mavis is handled by local-runtime channel config.
+  official CLI store outside MireAI. Bot binding in MireAI is handled by local-runtime channel config.
 - For upgrades after first install, see the update notice handling in
   `cli-skills/lark-shared/SKILL.md` (`npm update -g @larksuite/cli`).
 

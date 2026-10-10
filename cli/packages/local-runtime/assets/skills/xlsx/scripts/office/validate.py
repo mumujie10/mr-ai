@@ -47,8 +47,8 @@ def main():
     )
     parser.add_argument(
         "--author",
-        default="Mavis",
-        help="Author name for redlining validation (default: Mavis)",
+        default="MireAI",
+        help="Author name for redlining validation (default: MireAI)",
     )
     args = parser.parse_args()
 

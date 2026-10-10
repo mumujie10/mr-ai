@@ -93,10 +93,10 @@ When a template PPTX is provided for imitation, the template's actual colors and
 
 ## Editable Sidecar Metadata
 
-When creating a new PPTX from scratch for Mavis, also write an optional sidecar element map:
+When creating a new PPTX from scratch for MireAI, also write an optional sidecar element map:
 
 ```text
-slides/output/<descriptive-name>.mavis-ppt-map.json
+slides/output/<descriptive-name>.mireai-ppt-map.json
 ```
 
 This sidecar is editing metadata only. It must not replace the standard `.pptx` output, change
@@ -138,7 +138,7 @@ Use this when no source PPTX must be preserved.
 4. Create `slides/slide-XX.js` modules and keep layout variety where the outline calls for it.
 5. Run the pre-compile lint in `references/pitfalls.md#pre-compile-lint` before compiling.
 6. Create `slides/compile.js`, load slide modules in final order, and write `slides/output/<descriptive-name>.pptx`.
-7. For Mavis-generated decks, write `slides/output/<descriptive-name>.mavis-ppt-map.json` as a sidecar using `references/element-map.md`.
+7. For MireAI-generated decks, write `slides/output/<descriptive-name>.mireai-ppt-map.json` as a sidecar using `references/element-map.md`.
 8. Run the QA process in `references/pitfalls.md#qa-process`, fix issues, and re-verify.
 
 Minimal compile shape:
@@ -207,7 +207,7 @@ Do all of the following (these are the From-Scratch Workflow steps, adapted — 
 3. Create `slides/slide-XX.js` modules and keep layout variety where the outline calls for it.
 4. Run the pre-compile lint in `references/pitfalls.md#pre-compile-lint` before compiling.
 5. Create `slides/compile.js`, load slide modules in final order, and write `slides/output/<descriptive-name>.pptx`.
-6. For Mavis-generated decks, write `slides/output/<descriptive-name>.mavis-ppt-map.json` as a sidecar using `references/element-map.md`.
+6. For MireAI-generated decks, write `slides/output/<descriptive-name>.mireai-ppt-map.json` as a sidecar using `references/element-map.md`.
 7. Run the QA process in `references/pitfalls.md#qa-process`, fix issues, and re-verify. **Do NOT return the deck until QA passes.**
 
 Skip palette/font selection (step 2 of From-Scratch) because palette and fonts come from the template.
@@ -276,7 +276,7 @@ Read these **before writing any slide code**. Do not skip them even if you think
 - `references/pitfalls.md`: pre-compile lint, QA process, common PptxGenJS failures — **must run lint and QA**
 - `references/pptxgenjs.md`: PptxGenJS API, layout dimensions, text/shape/table options — **must verify canvas dimensions**
 - `references/slide-types.md`: page type classification and layout patterns — **must assign a type to each slide**
-- `references/element-map.md`: optional sidecar metadata for Mavis-generated decks — **must not replace the PPTX output contract**
+- `references/element-map.md`: optional sidecar metadata for MireAI-generated decks — **must not replace the PPTX output contract**
 
 ### Load On Demand
 

@@ -132,7 +132,7 @@ LibreOffice opens an internal AF_UNIX socket pair to coordinate the
 headless backend with the Basic interpreter. Some sandboxed
 environments deny AF_UNIX entirely:
 
-- macOS App Sandbox (Mavis daemon spawned from a sandboxed parent)
+- macOS App Sandbox (app-spawned helper process)
 - Linux containers with seccomp filters that block `socket(AF_UNIX,...)`
 
 `office/soffice.py::get_soffice_env()` probes for the restriction (one

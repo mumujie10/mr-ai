@@ -38,7 +38,7 @@ Do not create the research Todo list in Step 1, and do not decide that the task
 is ready to answer from Step 1 facts alone. Step 1 should leave clear open gaps
 for Step 2 direction judgment, Step 3 planning, and Step 4 plan-driven research.
 
-Use search-class tools for discovery. In the Mavis runtime, use `web_search`
+Use search-class tools for discovery. In the MireAI runtime, use `web_search`
 for search when available. Use browsing/opening tools such as `web_fetch`,
 `WebFetch`, or the matrix MCP tools only to inspect specific candidate pages or
 sources found through search; do not use a browsing-class tool as the first

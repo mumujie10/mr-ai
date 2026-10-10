@@ -1,6 +1,6 @@
-# Anti-Patterns — Mavis 实际见过的 skill 反例
+# Anti-Patterns — MireAI 实际见过的 skill 反例
 
-> 这份清单不是从外部抄的，是从 Mavis 项目里见过的真实 skill 失败案例提炼的。每条都标注"为什么是反模式 + 该怎么改"。
+> 这份清单不是从外部抄的，是从 MireAI 项目里见过的真实 skill 失败案例提炼的。每条都标注"为什么是反模式 + 该怎么改"。
 
 ## 1. 默认建 `.env` / `.env.example` / `.gitignore`
 
@@ -66,7 +66,7 @@ description: PDF, text, extract, OCR, parse, document, file, read
 **为什么是反模式**：
 - skill 是单一能力包，不是 mini-platform
 - 多 sub-skill 增加触发歧义，LLM 不知道该激活哪个
-- Mavis 已经有 Team Engine 处理多 agent 协作，skill 内部不需要再造一套
+- MireAI 已经有 Team Engine 处理多 agent 协作，skill 内部不需要再造一套
 
 **怎么改**：一个 skill 一个明确能力。需要协作多 agent 用 Team Engine plan，不要塞进 skill 内部。
 
@@ -94,27 +94,27 @@ description: PDF, text, extract, OCR, parse, document, file, read
 - 正文只保留 procedure / output contract / failure handling / 极少量 canonical examples
 - 需要细节时，优先让模型读脚本、`--help` 或 `references/`
 
-## 7. 用 Python 工具链（与 Mavis 生态不一致）
+## 7. 用 Python 工具链（与 MireAI 生态不一致）
 
 **反例**：从外部抄来的 skill 自带 `requirements.txt`、Python 脚本、需要 `pip install` 的依赖。
 
 **为什么是反模式**：
-- Mavis daemon / CLI 是 Node.js / TypeScript ESM
+- MireAI runtime 是 Node.js / TypeScript ESM
 - 引入 Python 依赖增加用户环境复杂度
 - 大多数 skill 需要的脚本（校验、聚合）用 Node.js + 内置 fs 就够
 
-**怎么改**：脚本用 Node.js 写，不依赖第三方 npm 包（除非是 Mavis 本来就装了的）。
+**怎么改**：脚本用 Node.js 写，不依赖第三方 npm 包（除非是 MireAI 本来就装了的）。
 
-## 8. 抄外部 skill 的脚本/模板/schema 直接放进 Mavis
+## 8. 抄外部 skill 的脚本/模板/schema 直接放进 MireAI
 
 **反例**：把上游 skill-creator 的 `quick_validate.py` / `evals.json` schema 复制改名直接用。
 
 **为什么是反模式**：
-- 外部 schema 是按外部生态设计的（Python/外部 coding agent），可能与 Mavis 不兼容
+- 外部 schema 是按外部生态设计的（Python/外部 coding agent），可能与 MireAI 不兼容
 - 抄过来即使能跑也是"陌生外科器官"——后续维护不知道为什么这么写
-- Mavis 自己的语境（Team Engine、scratchpad、agent system）需要不同的设计
+- MireAI 自己的语境（Team Engine、scratchpad、agent system）需要不同的设计
 
-**怎么改**：思想可以借鉴，但每个文件都按 Mavis 实际需要原创实现。详见 `when-to-bundle-scripts.md`。
+**怎么改**：思想可以借鉴，但每个文件都按 MireAI 实际需要原创实现。详见 `when-to-bundle-scripts.md`。
 
 ## 9. 不解释"为什么这个 skill 存在"
 
@@ -133,7 +133,7 @@ description: PDF, text, extract, OCR, parse, document, file, read
 **为什么是反模式**：
 - skill 是协议产物，不该有副作用
 - 用户对修改 shell config 极度敏感
-- Mavis 自己会发现并加载 skill，不需要 install 脚本
+- MireAI 自己会发现并加载 skill，不需要 install 脚本
 
 **怎么改**：skill 包里不放 install.sh。如果真需要外部依赖，在 SKILL.md 的 `## Setup`（仅本次需要时才有这一节）里明确写"请手动 X"。
 
@@ -142,7 +142,7 @@ description: PDF, text, extract, OCR, parse, document, file, read
 **反例来源**：早期 skill 只写 `python3 scripts/xxx.sh | grep "Page size"` 这类 bash 命令，Windows 用户跑不起来。
 
 **为什么是反模式**：
-- Mavis 在 Windows 上直接用 PowerShell 执行命令，没有 Unix 兜底层
+- MireAI 在 Windows 上直接用 PowerShell 执行命令，没有 Unix 兜底层
 - `python3`（Windows 上通常是 `python`）、`grep`、`sed`、`/tmp/` 等在 PowerShell 里不存在或行为不同
 - 用户不应该为了跑一个 skill 还要自己翻译命令
 

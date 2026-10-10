@@ -244,7 +244,7 @@ if [ "$STATUS" = "READY" ]; then
     echo "[locale] Self-healed to '$LOCALE_HEALED_TO' for this run (was LANG='$LOCALE_HEALED_FROM_LANG', charmap='$LOCALE_HEALED_FROM_CHARMAP')."
     echo "  Skill scripts in THIS shell will keep working — no further action needed."
     echo "  But every NEW subprocess starts from scratch and must self-heal again."
-    echo "  To make UTF-8 sticky for the Mavis daemon and its workers:"
+    echo "  To make UTF-8 sticky for the MireAI daemon and its workers:"
     if [ "$OS" = "macos" ]; then
       echo "    launchctl setenv LANG en_US.UTF-8"
       echo "    launchctl setenv LC_ALL en_US.UTF-8"
@@ -256,7 +256,7 @@ if [ "$STATUS" = "READY" ]; then
       echo "    # daemon launched from shell: export the two vars in the parent shell"
       echo "    # before starting the daemon (NOT in ~/.zshrc — see below)."
     fi
-    echo "  Note: editing ~/.zshrc does NOT help — Mavis subprocesses are non-interactive"
+    echo "  Note: editing ~/.zshrc does NOT help — MireAI subprocesses are non-interactive"
     echo "  and never source it. Use the launchctl / systemd / parent-shell paths above."
   fi
 else
@@ -271,7 +271,7 @@ else
     echo "  Caller (one-shot, no system changes):"
     echo "    LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 bash $0 --level $LEVEL"
     if [ "$OS" = "macos" ]; then
-      echo "  macOS (persist for GUI apps + Mavis daemon; survives reboot once set in launchd):"
+      echo "  macOS (persist for GUI apps + MireAI daemon; survives reboot once set in launchd):"
       echo "    launchctl setenv LANG en_US.UTF-8"
       echo "    launchctl setenv LC_ALL en_US.UTF-8"
       echo "  Then restart the daemon so it inherits the new env."
@@ -282,7 +282,7 @@ else
       echo "  If your distro has no en_US.UTF-8, install glibc-locale-source / glibc-langpack-en"
       echo "  or add 'en_US.UTF-8 UTF-8' to /etc/locale.gen and run 'sudo locale-gen'."
     fi
-    echo "  Note: editing ~/.zshrc does NOT help — Mavis subprocesses are non-interactive"
+    echo "  Note: editing ~/.zshrc does NOT help — MireAI subprocesses are non-interactive"
     echo "  and never source it. Use launchctl (macOS) or the caller-prefix approach."
   fi
 

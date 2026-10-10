@@ -1,12 +1,12 @@
 ---
 name: skill-refiner
 description: |
-  Refine an existing Mavis skill with evidence-driven minimal patches.
+  Refine an existing MireAI skill with evidence-driven minimal patches.
   Use when a skill has a concrete problem (wrong instructions, outdated steps,
   missing edge case) backed by evidence. Do not use for creating new skills
   (use skill-creator), or for stylistic preferences without evidence.
 descriptions:
-  zh-Hans: '基于证据对已有 Mavis skill 做最小修补，修正错误说明、过期步骤或缺失边界。'
+  zh-Hans: '基于证据对已有 MireAI skill 做最小修补，修正错误说明、过期步骤或缺失边界。'
 ---
 
 # Skill Refiner

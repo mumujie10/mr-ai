@@ -1,4 +1,4 @@
-# Skill Template — Mavis 自己的 SKILL.md 骨架
+# Skill Template — MireAI 自己的 SKILL.md 骨架
 
 > 这是一个用于参考的填空模板，不是一份"应当死板套用"的格式。先理解每个章节存在的理由，然后再决定本次 skill 是否需要它。
 

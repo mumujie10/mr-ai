@@ -1032,8 +1032,8 @@ function registerBuiltinCanonicalPublicationTests(): void {
       });
       expect(profile.corePrompt).toContain(
         promptMode === "tui"
-          ? "You are a coding agent running in the MR CLI terminal"
-          : "You run inside MR CLI",
+          ? "You are a coding agent running in the MireAI CLI terminal"
+          : "You run inside MireAI CLI",
       );
       expect(profile.corePrompt).toContain("# Harness");
       expect(profile.corePrompt.includes("## Media Output")).toBe(
