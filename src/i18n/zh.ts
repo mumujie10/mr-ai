@@ -930,6 +930,7 @@ export const zh = {
       minimax: "MiniMax Code",
       mireai: "MireAI CLI",
     },
+    cliBuiltinGroup: "内置引擎",
     cliManage: "CLI 管理",
     groupSystem: "系统",
     groupPlugins: "插件",

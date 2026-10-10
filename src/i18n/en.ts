@@ -968,6 +968,7 @@ export const en: Messages = {
       minimax: "MiniMax Code",
       mireai: "MireAI CLI",
     },
+    cliBuiltinGroup: "Built-in engine",
     cliManage: "CLI Management",
     groupSystem: "System",
     groupPlugins: "Plugins",

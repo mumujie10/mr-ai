@@ -257,12 +257,7 @@ describe("SettingsPage CLI rail", () => {
     await render([
       engine("claude", true, true),
       engine("codex", true, false),
-      // Uninstalled WITH an install channel: the bucket's promise ("click to
-      // fix") is one click away.
       engine("minimax", false, true, "native"),
-      // Uninstalled WITHOUT a channel: nothing to click, so it stays in the
-      // main rail instead of being folded away as if coming soon. enabled
-      // mirrors the backend default (a section with no current is enabled).
       engine("qoder", false, true),
       engine("agy", false, true),
     ]);
@@ -274,29 +269,31 @@ describe("SettingsPage CLI rail", () => {
     expect(labels).toContain("Qoder CLI");
     expect(labels).toContain("Antigravity CLI");
     expect(labels).toContain("MiniMax Code");
+    expect(labels).toContain(i18n.t("settings.cliBuiltinGroup"));
 
     // Main rail holds the installed+enabled CLI plus the channel-less
     // uninstalled ones — visible, not hidden. (Rows also carry textless drag
     // handles, so assert membership rather than exact sequence.)
-    const mainRail = itemsUnder("settings.cliManage");
-    expect(mainRail).toEqual(
-      expect.arrayContaining(["Claude Code", "Qoder CLI", "Antigravity CLI"]),
-    );
-    expect(mainRail).not.toContain("MiniMax Code");
-
-    // 未安装 holds only the uninstalled engine that has an install channel.
+    // The bundled runtime leads as its own group regardless of probe state.
+    expect(itemsUnder("settings.cliBuiltinGroup")).toEqual(["MireAI CLI"]);
+    // CLI 管理 holds installed external CLIs only.
+    expect(itemsUnder("settings.cliManage")).toEqual(["Claude Code"]);
+    // 未安装 holds EVERY uninstalled external CLI — channel or not (the
+    // vendor channel only decides whether the page offers an install button).
     const missingItems = itemsUnder("settings.cliNotInstalledGroup");
-    expect(missingItems).toEqual(["MiniMax Code"]);
-    expect(missingItems).not.toContain("Claude Code");
-    expect(missingItems).not.toContain("Qoder CLI");
-    // 未启用 stays "installed but off": codex. (Engines the fixture says
-    // nothing about are the registry's own concern here — the rule under test
-    // is only about where an uninstalled engine lands.)
-    expect(itemsUnder("settings.cliDisabledGroup")).toEqual(
-      expect.arrayContaining(["Codex CLI"]),
+    expect(missingItems).toEqual(
+      expect.arrayContaining([
+        "Kimi CLI",
+        "Grok CLI",
+        "Antigravity CLI",
+        "Qoder CLI",
+        "MiniMax Code",
+      ]),
     );
-    expect(itemsUnder("settings.cliDisabledGroup")).not.toContain("MiniMax Code");
-    expect(itemsUnder("settings.cliDisabledGroup")).not.toContain("Qoder CLI");
+    expect(missingItems).not.toContain("MireAI CLI");
+    expect(missingItems).not.toContain("Claude Code");
+    // 未启用 stays "installed but switched off".
+    expect(itemsUnder("settings.cliDisabledGroup")).toEqual(["Codex CLI"]);
 
     // 未安装 sorts before 未启用 in the rail.
     const missingAt = labels.indexOf(i18n.t("settings.cliNotInstalledGroup"));

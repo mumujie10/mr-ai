@@ -13,7 +13,7 @@ import {
 import { PluginBoundary } from "@/features/plugins/boundary/PluginBoundary";
 import { pluginSettingsNavIcon } from "@/features/plugins/hub/PluginSettingsNavIcon";
 import { useChatStore } from "@/features/chat/store";
-import { ENGINE_IDS, type EngineId } from "./providers";
+import { BUNDLED_ENGINE_ID, ENGINE_IDS, type EngineId } from "./providers";
 import { CliHeaderActions } from "./CliHeaderActions";
 import {
   orderByStoredKeys,
@@ -158,37 +158,34 @@ export default function SettingsPage() {
           ];
         }
         const ordered = orderByStoredKeys(items, orderedCliKeys);
-        // CLIs whose binary isn't installed drop into a 未安装 bucket with
-        // grayed icons, CLIs the user turned off into the 未启用 bucket.
-        // Both buckets only exist once the engine
-        // probe has landed and at least one CLI qualifies.
-        // Plugin sections in this rail have no `cli:` key — no engine state,
-        // they always stay in the main group.
-        // Only engines with an install channel belong in the 未安装 bucket:
-        // the bucket's promise is "you can fix this by clicking". An engine
-        // whose vendor ships no channel has no such click, so it stays inline
-        // in the main rail instead of being folded away.
-        const installChannelEngines = new Set(
-          engines.flatMap((engine) =>
-            engine.updateKind ? [engine.id] : [],
-          ),
-        );
+        // The rail reads as three answers to three different questions:
+        //   内置引擎 — the runtime the app ships (always its own group; it is
+        //     not a CLI the user would install, it is already here);
+        //   CLI 管理 — external CLIs the probe found installed;
+        //   CLI未安装 — every uninstalled external CLI, grayed, one per vendor
+        //     channel when the vendor ships one (安装 button on the page) and
+        //     docs-only otherwise. Nothing is hidden for lacking a channel.
+        //   未启用 — installed but switched off.
+        // Buckets exist only once the probe has landed; until then every row
+        // stays where the registry put it.
+        const isBuiltin = (key: string) => key === `cli:${BUNDLED_ENGINE_ID}`;
+        const builtinItems = ordered.filter((item) => isBuiltin(item.key));
+        const externalItems = ordered.filter((item) => !isBuiltin(item.key));
         const uninstalledItems =
           engines.length > 0
-            ? ordered.flatMap((item) =>
+            ? externalItems.flatMap((item) =>
                 item.key.startsWith("cli:") &&
-                !availableEngines.has(item.key.slice("cli:".length)) &&
-                installChannelEngines.has(item.key.slice("cli:".length))
+                !availableEngines.has(item.key.slice("cli:".length))
                   ? [{ ...item, disabled: true }]
                   : [],
               )
             : [];
         const installedItems =
           uninstalledItems.length > 0
-            ? ordered.filter(
+            ? externalItems.filter(
                 (item) => !uninstalledItems.some((u) => u.key === item.key),
               )
-            : ordered;
+            : externalItems;
         const disabledItems =
           engines.length > 0
             ? installedItems.flatMap((item) =>
@@ -204,12 +201,22 @@ export default function SettingsPage() {
                 (item) => !disabledItems.some((d) => d.key === item.key),
               )
             : installedItems;
-        const rail: RailGroup[] = [
-          {
-            id: "cli",
-            label: meta ? t(meta.labelKey) : group,
-            order,
-            items: enabledItems,
+        const rail: RailGroup[] = [];
+        if (builtinItems.length > 0) {
+          // The bundled runtime leads the rail as its own static group: it is
+          // the product's own engine, not one of the CLIs a user installs.
+          rail.push({
+            id: "cli-builtin",
+            label: t("settings.cliBuiltinGroup"),
+            order: order - 0.5,
+            items: builtinItems,
+          });
+        }
+        rail.push({
+          id: "cli",
+          label: meta ? t(meta.labelKey) : group,
+          order,
+          items: enabledItems,
             // The rail, the 未安装 bucket and the 未启用 bucket fold; the two
             // buckets start folded so the installed-and-enabled CLIs stay in
             // view, while the main rail starts open.
@@ -228,8 +235,7 @@ export default function SettingsPage() {
               writeCliNavOrder(next);
             },
             dragHandleLabel: t("settings.cliDrag"),
-          },
-        ];
+          });
         // Bucket order: 未安装 sorts before 未启用; both are folded buckets
         // that unfold on click (and stay visible on the mobile rail, which
         // has no headings to toggle). `nested` tucks each bucket under the
