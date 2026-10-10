@@ -120,6 +120,13 @@ fn update_kind(engine: &str, bin: &str) -> Option<&'static str> {
     if engine == "claude" || engine == "codex" {
         return Some(claude_update_kind(bin));
     }
+    // MiniMax Code ships one official installer per platform that covers both
+    // a fresh install and an in-place update, so it takes the native channel
+    // unconditionally (an npm copy installed by that script is still updated
+    // by the same script).
+    if engine == "minimax" {
+        return Some("native");
+    }
     npm_package(engine).map(|_| "npm")
 }
 
@@ -291,10 +298,37 @@ fn npm_install_argv(package: &str) -> (String, Vec<String>) {
 
 /// Official installer argv for a native-channel engine (claude / codex).
 fn native_install_argv(engine: &str) -> (&'static str, Vec<&'static str>) {
-    if engine == "codex" {
-        codex_native_argv()
+    match engine {
+        "codex" => codex_native_argv(),
+        // The commands the vendor documents for MiniMax Code
+        // (cli/README quick start; installs under ~/.minimax-code).
+        "minimax" => minimax_native_argv(),
+        _ => claude_native_argv(),
+    }
+}
+
+/// MiniMax Code's own installer: same fresh-install-or-update contract as the
+/// other standalone channels, from the vendor's file CDN.
+fn minimax_native_argv() -> (&'static str, Vec<&'static str>) {
+    if cfg!(target_os = "windows") {
+        (
+            "powershell",
+            vec![
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                "irm https://filecdn.minimax.chat/public/install.ps1 | iex",
+            ],
+        )
     } else {
-        claude_native_argv()
+        (
+            "bash",
+            vec![
+                "-lc",
+                "curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash",
+            ],
+        )
     }
 }
 
@@ -734,6 +768,16 @@ mod tests {
         // grok has no lifecycle action.
         assert_eq!(update_kind("grok", "/usr/local/bin/grok"), None);
         assert_eq!(update_kind("agy", "/usr/local/bin/agy"), None);
+        // minimax: the vendor's own installer, whatever the binary path is —
+        // the npm copy it lays down is updated by the same script.
+        assert_eq!(update_kind("minimax", "/usr/local/bin/mcode"), Some("native"));
+        assert_eq!(
+            update_kind(
+                "minimax",
+                "/Users/x/.minimax-code/bin/mcode"
+            ),
+            Some("native")
+        );
         // claude / codex: a node_modules path means the npm distribution;
         // anything else uses the official standalone installer.
         assert_eq!(
