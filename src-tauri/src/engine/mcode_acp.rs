@@ -287,14 +287,9 @@ async fn attach_session(
     let session_result = match loaded {
         Some(result) => result,
         None => {
-            let mut params = json!({ "cwd": cwd, "mcpServers": [] });
-            let additional = existing_dirs(&req.additional_dirs).await;
-            if !additional.is_empty() {
-                params["additionalDirectories"] = json!(additional);
-            }
             acp.routed(
                 "session/new",
-                params,
+                session_new_params(&cwd),
                 SESSION_NEW_TIMEOUT,
                 killed,
                 None,
@@ -314,17 +309,14 @@ async fn attach_session(
     Ok((session_id, session_result))
 }
 
-/// Grant only the additional roots that still exist: a stale grant must not
-/// fail the whole handshake.
-async fn existing_dirs(dirs: &[String]) -> Vec<String> {
-    let mut out = Vec::new();
-    for dir in dirs {
-        match tokio::fs::metadata(dir).await {
-            Ok(metadata) if metadata.is_dir() => out.push(dir.clone()),
-            _ => eprintln!("[mcode] skipping a granted root that is not a directory"),
-        }
-    }
-    out
+/// `session/new` params for this transport, and the ONLY shape it accepts:
+/// the CLI rejects a non-empty `additionalDirectories` outright
+/// (`assertNoAdditionalDirectories` in `cli/packages/tui/src/acp/agent.ts`), so
+/// forwarding the app's 已授权目录 failed the whole handshake instead of just
+/// being ignored. Those roots gate the app's own file APIs; the CLI reaches the
+/// disk under its own permission mode, which the picker already reflects.
+fn session_new_params(cwd: &str) -> Value {
+    json!({ "cwd": cwd, "mcpServers": [] })
 }
 
 /// The session id from a handshake result: `session/new` returns it at the
@@ -902,7 +894,7 @@ async fn probe_handshake(
     let session_result = acp
         .routed(
             "session/new",
-            json!({ "cwd": std::env::temp_dir().to_string_lossy(), "mcpServers": [] }),
+            session_new_params(&std::env::temp_dir().to_string_lossy()),
             MODEL_PROBE_TIMEOUT,
             killed,
             None,
@@ -1254,6 +1246,22 @@ mod tests {
         assert_eq!(
             resolve_model_value(&json!({}), "minimax/MiniMax-M3", None),
             None
+        );
+    }
+
+    /// The CLI's ACP transport rejects any non-empty `additionalDirectories`
+    /// with `invalidParams`, which used to fail the handshake for every user
+    /// with a granted directory in 设置 → 通用 → 已授权目录. The frame the
+    /// adapter sends must stay at the shape the transport accepts.
+    #[test]
+    fn session_new_params_never_carries_additional_directories() {
+        let params = session_new_params("/work/space");
+        assert_eq!(params["cwd"], "/work/space");
+        assert_eq!(params["mcpServers"], json!([]));
+        assert!(
+            params.get("additionalDirectories").is_none(),
+            "got {}",
+            params
         );
     }
 
