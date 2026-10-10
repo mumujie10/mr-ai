@@ -284,6 +284,27 @@ impl Db {
         Ok(())
     }
 
+    /// Name a session's composer mode ("chat" | "work"). The first send wins:
+    /// a session is labeled by how it was born, so re-sending from the other
+    /// mode never re-brands it.
+    pub fn remember_session_scope(
+        &self,
+        engine: &str,
+        session_id: &str,
+        scope: &str,
+        now: i64,
+    ) -> Result<(), String> {
+        let conn = self.0.lock();
+        conn.execute(
+            "INSERT INTO session_scopes(engine, session_id, scope, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(engine, session_id) DO NOTHING",
+            rusqlite::params![engine, session_id, scope, now],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// Approve (or re-approve) a device. Unknown ids are ignored: the row is
     /// created by the device's own request, never by the UI.
     pub fn web_device_approve(&self, id: &str, now: i64) -> Result<bool, String> {
@@ -930,6 +951,17 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             updated_at INTEGER NOT NULL,
             PRIMARY KEY(engine, session_id)
         );
+        -- Conversation vs work: which composer mode a session was created
+        -- from. The first send that reaches a session names it (later sends
+        -- in the other mode do not re-brand it); a session with no row predates
+        -- the split and every client shows it as 对话.
+        CREATE TABLE IF NOT EXISTS session_scopes(
+            engine TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            scope TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY(engine, session_id)
+        );
         -- Message bodies for full-text search. The transcript files stay
         -- the source of truth; this table is a derived index rebuilt by
         -- history::search::index_pending whenever a file's stat moves.
@@ -1325,6 +1357,39 @@ mod tests {
             .unwrap();
         assert_eq!(rows, 1, "one transcript keeps one row");
         assert_eq!(engine_of(&conn, "sessions", "dup"), "mireai");
+    }
+
+    #[test]
+    fn session_scope_record_round_trips_and_first_send_wins() {
+        let scratch = Scratch::new();
+        let db = Db::open_at(&scratch.path("app.db")).unwrap();
+        db.0.lock()
+            .execute(
+                "INSERT INTO sessions(engine, session_id, workspace_path, file_path, file_size, file_mtime_ms, title)
+                 VALUES('omp', 's1', '/ws', 'f.jsonl', 1, 1, 'first message')",
+                [],
+            )
+            .unwrap();
+        // The join list_sessions runs: a session with no record has no scope.
+        let read = || -> Option<String> {
+            let conn = db.0.lock();
+            conn.query_row(
+                "SELECT sc.scope FROM sessions s
+                 LEFT JOIN session_scopes sc ON sc.engine = s.engine AND sc.session_id = s.session_id
+                 WHERE s.engine='omp' AND s.session_id='s1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(read(), None, "no record yet");
+
+        db.remember_session_scope("omp", "s1", "work", 10).unwrap();
+        assert_eq!(read().as_deref(), Some("work"), "the first mode names it");
+
+        // A later send from the other mode must not re-brand the session.
+        db.remember_session_scope("omp", "s1", "chat", 20).unwrap();
+        assert_eq!(read().as_deref(), Some("work"), "first send wins");
     }
 
     #[test]

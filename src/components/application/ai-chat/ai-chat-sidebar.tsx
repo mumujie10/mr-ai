@@ -24,6 +24,26 @@ import {
 import { SessionSearchPalette } from "@/components/application/ai-chat/session-search-palette";
 import type { AiChatRepo, AiChatRepoSection, ThreadAction } from "@/components/application/ai-chat/sidebar-types";
 import { cx } from "@/utils/cx";
+import { PillTab, PillTabList } from "@/components/base/tabs/pill-tab";
+import { useConversationMode } from "@/features/chat/conversation-mode";
+
+/** 对话 / 工作 pill switcher. The mode also names new sessions ("scope") and
+ *  strips the engine/permission controls off the composer in 对话. */
+function ModePillTabs() {
+  const { t } = useTranslation();
+  const mode = useConversationMode((s) => s.mode);
+  const setMode = useConversationMode((s) => s.setMode);
+  return (
+    <PillTabList className="self-start">
+      <PillTab isSelected={mode === "chat"} onSelect={() => setMode("chat")}>
+        {t("chat.modeChat")}
+      </PillTab>
+      <PillTab isSelected={mode === "work"} onSelect={() => setMode("work")}>
+        {t("chat.modeWork")}
+      </PillTab>
+    </PillTabList>
+  );
+}
 
 export type { AiChatRepo, AiChatRepoSection, AiChatThread, ThreadAction } from "@/components/application/ai-chat/sidebar-types";
 
@@ -199,6 +219,8 @@ export function AiChatSidebar({
           className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain scrollbar-none"
           onContextMenu={onCreateGroup ? openBlankMenu : undefined}
         >
+          <ModePillTabs />
+
           <SidebarPrimaryNav
             onNewSession={onNewSession}
             onNewBrowser={onNewBrowser}

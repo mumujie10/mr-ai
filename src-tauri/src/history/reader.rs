@@ -54,11 +54,12 @@ pub fn list_sessions(state: tauri::State<'_, crate::AppState>) -> Result<Vec<Ses
         &state,
         "SELECT s.engine, s.session_id, s.workspace_path, s.file_path, s.file_size, s.file_mtime_ms,
                 s.title, s.preview, s.created_at, s.updated_at, s.message_count, s.pinned, s.custom_title,
-                m.model, e.effort, p.provider_id
+                m.model, e.effort, p.provider_id, sc.scope
          FROM sessions s
          LEFT JOIN session_models m ON m.engine = s.engine AND m.session_id = s.session_id
          LEFT JOIN session_efforts e ON e.engine = s.engine AND e.session_id = s.session_id
          LEFT JOIN session_providers p ON p.engine = s.engine AND p.session_id = s.session_id
+         LEFT JOIN session_scopes sc ON sc.engine = s.engine AND sc.session_id = s.session_id
          WHERE NOT EXISTS (
              SELECT 1 FROM session_archives a
              WHERE a.engine = s.engine AND a.session_id = s.session_id
@@ -82,6 +83,7 @@ pub fn list_sessions(state: tauri::State<'_, crate::AppState>) -> Result<Vec<Ses
                 model: r.get(13)?,
                 effort: r.get(14)?,
                 provider: r.get(15)?,
+                scope: r.get(16)?,
                 remote: None,
                 remote_path: None,
             })
@@ -264,6 +266,30 @@ pub fn remember_session_provider(
     state
         .db
         .remember_session_provider(&engine, &session_id, &provider_id, now)?;
+    state.sink.emit_sessions_changed();
+    Ok(())
+}
+
+/// Name the composer mode a session was born in. The first send wins — the
+/// db layer refuses to overwrite — so a session keeps the label it was born
+/// with even if later turns come from the other mode — see [`SessionMeta::scope`].
+#[tauri::command]
+pub fn remember_session_scope(
+    state: tauri::State<'_, crate::AppState>,
+    engine: String,
+    session_id: String,
+    scope: String,
+) -> Result<(), String> {
+    if scope != "chat" && scope != "work" {
+        return Err("invalid scope".into());
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    state
+        .db
+        .remember_session_scope(&engine, &session_id, &scope, now)?;
     state.sink.emit_sessions_changed();
     Ok(())
 }
@@ -1019,6 +1045,7 @@ pub(super) fn delete_session_blocking(
         "session_models",
         "session_efforts",
         "session_providers",
+        "session_scopes",
         "session_archives",
     ] {
         tx.execute(
@@ -1962,6 +1989,7 @@ mod tests {
             model: Some("provider/model".into()),
             effort: Some("high".into()),
             provider: Some("provider".into()),
+            scope: None,
             remote: None,
             remote_path: None,
         }

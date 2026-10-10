@@ -83,6 +83,8 @@ export const zh = {
     emptyPaneNewChat: "新建会话",
     workspaces: "工作区",
     workspacesHint: "工作区就是 Agent 动手的地方：它会在这里看文件、改文件、跑命令，也会读取这里的 Git 状态。",
+    modeChat: "对话",
+    modeWork: "工作",
     expandWorkspace: "展开会话列表",
     collapseWorkspace: "收起会话列表",
     noProjectSelected: "未选择项目",

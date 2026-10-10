@@ -492,6 +492,7 @@ pub fn run() {
             history::reader::remember_session_model,
             history::reader::remember_session_effort,
             history::reader::remember_session_provider,
+            history::reader::remember_session_scope,
             history::reader::rescan_sessions,
             history::reader::list_workspaces,
             history::reader::add_workspace,

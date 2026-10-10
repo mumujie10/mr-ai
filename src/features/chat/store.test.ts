@@ -11,6 +11,7 @@ import {
   SESSION_ACTIVATED_TOPIC,
 } from "@/features/plugins/runtime/events";
 import { setPluginSessionEffort, useChatStore } from "./store";
+import { useConversationMode } from "./conversation-mode";
 import { ENGINE_PREF_KEY, OPEN_TABS_KEY } from "./store/persistence";
 import { EMPTY_SESSION } from "./store/stream";
 import { handleEngineEvents, type EngineEventDeps } from "./store/engine-events";
@@ -23,6 +24,7 @@ vi.mock("@/lib/ipc", () => ({
     interruptSession: vi.fn(async () => true),
     rememberSessionModel: vi.fn(async () => {}),
     rememberSessionEffort: vi.fn(async () => {}),
+    rememberSessionScope: vi.fn(async () => {}),
     listSessions: vi.fn(async () => []),
     listArchivedSessions: vi.fn(async () => []),
     listPlanReviews: vi.fn(async () => []),
@@ -731,6 +733,22 @@ describe("model selection is per session", () => {
       expect.objectContaining({ model: "claude-opus-5" }),
     );
   });
+  it("tags a send with the current 对话/工作 mode; the backend keeps the first", async () => {
+    const a = sess("s-a");
+    useChatStore.setState({ activeEngine: "omp", openTabs: [a], active: a });
+    vi.mocked(ipc.rememberSessionScope).mockClear();
+
+    useConversationMode.getState().setMode("chat");
+    await useChatStore.getState().send("next", []);
+    expect(vi.mocked(ipc.rememberSessionScope)).toHaveBeenCalledWith("omp", "s-a", "chat");
+
+    useConversationMode.getState().setMode("work");
+    await useChatStore.getState().send("next", []);
+    expect(vi.mocked(ipc.rememberSessionScope)).toHaveBeenLastCalledWith("omp", "s-a", "work");
+
+    useConversationMode.getState().setMode("work");
+  });
+
   it("keeps an existing session's effort out of the engine default and sibling sessions", async () => {
     const a = sess("s-a");
     const b = sess("s-b");

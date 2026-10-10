@@ -923,6 +923,9 @@ const pendingSessionEfforts = new Map<string, string>();
 /** Same hand-off for the in-app channel: spawn injects env from this id, and
  *  a brand-new session only learns its native id from the `session` event. */
 const pendingSessionProviders = new Map<string, string>();
+/** Same hand-off for the composer mode a new session was born in: the pill
+ *  is read at send time, the native id only arrives with the `session` event. */
+const pendingSessionScopes = new Map<string, string>();
 
 export function rememberModelForRun(
   key: string,
@@ -943,6 +946,10 @@ export function rememberProviderForRun(
   provider: string | null | undefined,
 ) {
   if (provider) pendingSessionProviders.set(key, provider);
+}
+
+export function rememberScopeForRun(key: string, scope: string | null | undefined) {
+  if (scope) pendingSessionScopes.set(key, scope);
 }
 
 function onSession(
@@ -1022,6 +1029,15 @@ function onSession(
     pendingSessionProviders.delete(key);
     void ipc
       .rememberSessionProvider?.(event.engine, nativeId, sentProvider)
+      ?.catch(() => {});
+  }
+  const sentScope =
+    pendingSessionScopes.get(fromKey) ?? pendingSessionScopes.get(key);
+  if (sentScope) {
+    pendingSessionScopes.delete(fromKey);
+    pendingSessionScopes.delete(key);
+    void ipc
+      .rememberSessionScope?.(event.engine, nativeId, sentScope)
       ?.catch(() => {});
   }
 

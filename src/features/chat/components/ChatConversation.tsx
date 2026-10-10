@@ -35,6 +35,7 @@ import type { EngineInfo, Workspace } from "@/lib/ipc";
 import type { OmpServiceTier } from "@/lib/omp-service-tier";
 import { EmptyState } from "@/components/base/empty-state";
 import { parseUsage } from "../usage";
+import { useConversationMode as useComposerMode } from "../conversation-mode";
 import { rememberContextWindow, resolveContextMax } from "../context-window-memory";
 import { modelSettingFor, useModelSettings } from "../model-settings";
 import { ModelSettingsDialog } from "./ModelSettingsDialog";
@@ -526,6 +527,11 @@ export const ChatConversation = memo(function ChatConversation({
       refreshModels,
       loadingEngines,
     });
+  // 对话模式撤掉宿主的引擎/权限胶囊（插件槽位保留，由 ConversationFooter
+  // 继续渲染 ComposerSlotExtras）；工作模式维持原样。
+  const mode = useComposerMode((s) => s.mode);
+  const composerCliMenu = mode === "chat" ? null : cliMenu;
+  const composerPermissionMenu = mode === "chat" ? null : permissionMenu;
 
   if (active && conversationMode.exitBlocked && !conversationMode.mode) {
     return <EmptyState className="text-body-medium">{t("plugins.conversationMode.recoveryRequired")}</EmptyState>;
@@ -576,8 +582,8 @@ export const ChatConversation = memo(function ChatConversation({
         noEnabledEngines={noEnabledEngines}
         composerInputRef={composerInputRef}
         addMenu={addMenu}
-        cliMenu={<>{cliMenu}<ConversationModePicker disabled={!active || streaming || queue.length > 0 || planReviewGate} onSelect={conversationMode.onSelect} /></>}
-        permissionMenu={permissionMenu}
+        cliMenu={<>{composerCliMenu}<ConversationModePicker disabled={!active || streaming || queue.length > 0 || planReviewGate} onSelect={conversationMode.onSelect} /></>}
+        permissionMenu={composerPermissionMenu}
         supportsImages={supportsImages}
         onPasteImages={pasteImages}
         onDropPaths={active ? handleDroppedPaths : undefined}

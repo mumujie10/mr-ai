@@ -26,6 +26,7 @@ import {
   untrackRun,
 } from "./stream";
 import { mergeUsage, parseUsage } from "../usage";
+import { useConversationMode } from "../conversation-mode";
 import { modelSettingFor, useModelSettings } from "../model-settings";
 import {
   bindRunLifecycle,
@@ -40,6 +41,7 @@ import {
   rememberEffortForRun,
   patchQuestionByRequestId,
   rememberProviderForRun,
+  rememberScopeForRun,
   settleOrphanedRuns,
   upsertSessionMetaInto,
 } from "./engine-events";
@@ -227,6 +229,15 @@ export function createMessagingActions(
     }
     const engine = tab.engine;
     const key = sessionKey(engine, tab.sessionId, tab.workspacePath);
+    // Tag the session with the composer mode it was born in ("chat" | "work").
+    // The backend keeps the first value, so re-sending from the other mode
+    // never re-brands an existing session.
+    const composerMode = useConversationMode.getState().mode;
+    if (tab.sessionId) {
+      void ipc.rememberSessionScope?.(engine, tab.sessionId, composerMode)?.catch(() => {});
+    } else {
+      rememberScopeForRun(key, composerMode);
+    }
     // Computer use asks for the driver; engines without an MCP-mount path
     // would run the prompt text-only while the user believes the machine is
     // under agent control. Refuse loudly instead of downgrading silently.

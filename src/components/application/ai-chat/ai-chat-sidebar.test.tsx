@@ -21,6 +21,14 @@ function repo(id: string, defaultOpen = false): AiChatRepo {
 let node: HTMLDivElement;
 let root: Root;
 
+// jsdom has no ResizeObserver (the 对话/工作 PillTabList measures with it).
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal("ResizeObserver", ResizeObserverStub);
+
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   localStorage.clear();

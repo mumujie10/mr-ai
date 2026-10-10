@@ -33,6 +33,9 @@ export interface SessionMeta {
   /** In-app channel this session last ran. Spawn injects that channel's env;
    * native CLI files stay official. Absent until a send remembers one. */
   provider?: string | null;
+  /** Composer mode the session was born in ("chat" | "work"). Absent for
+   *  sessions created before the split — clients show those as 对话. */
+  scope?: string | null;
 }
 
 export type TodoStatus = "pending" | "active" | "complete" | "blocked" | "dropped";
@@ -1584,6 +1587,10 @@ export const ipc = {
    *  channel without rewriting the CLI's own config file. */
   rememberSessionProvider: (engine: string, sessionId: string, providerId: string) =>
     invoke<void>("remember_session_provider", { engine, sessionId, providerId }),
+  /** Name the composer mode a session was born in ("chat" | "work"). The
+   *  backend keeps the first value, so later sends never re-brand it. */
+  rememberSessionScope: (engine: string, sessionId: string, scope: string) =>
+    invoke<void>("remember_session_scope", { engine, sessionId, scope }),
   rescanSessions: () => invoke<void>("rescan_sessions"),
   listWorkspaces: () => invoke<Workspace[]>("list_workspaces"),
   addWorkspace: (path: string, meta?: Record<string, unknown>) =>

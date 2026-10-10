@@ -82,6 +82,10 @@ pub struct SessionMeta {
     /// onto the child; native CLI files stay official. Absent until a send
     /// remembers one — the engine default `current` then applies.
     pub provider: Option<String>,
+    /// Composer mode the session was born in ("chat" | "work"). Absent for
+    /// sessions created before the split — clients show those as 对话.
+    #[serde(default)]
+    pub scope: Option<String>,
     /// Plugin-fed remote sessions have no local transcript. Archive snapshots
     /// preserve their route so Settings can restore or delete them too.
     #[serde(default, skip_serializing_if = "Option::is_none")]

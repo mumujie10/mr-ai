@@ -329,6 +329,13 @@ struct RememberProviderArgs {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct RememberScopeArgs {
+    engine: String,
+    session_id: String,
+    scope: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct PathArgs {
     path: String,
     /// Optional workspace meta passthrough (plugin workspaces.add keeps
@@ -893,6 +900,15 @@ pub(super) async fn dispatch(
                 a.engine,
                 a.session_id,
                 a.provider_id,
+            ))
+        }
+        "remember_session_scope" => {
+            let a: RememberScopeArgs = parse_args(&raw)?;
+            ser(crate::history::reader::remember_session_scope(
+                app.state(),
+                a.engine,
+                a.session_id,
+                a.scope,
             ))
         }
         "rescan_sessions" => {
