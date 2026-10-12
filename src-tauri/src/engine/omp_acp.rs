@@ -47,7 +47,7 @@ use serde_json::{json, Map, Value};
 
 use crate::engine::plan_review::{self, PlanExecution, PlanReview, PlanReviewKind, PlanStatus};
 use crate::engine::qoder_session::{
-    answer_agent_request, initialize_params, jsonrpc_id_key, jsonrpc_result_response,
+    answer_agent_request, exit_note, initialize_params, jsonrpc_id_key, jsonrpc_result_response,
     session_update_from_notification, spawn_piped_acp, teardown, AcpLine, AcpProcess,
     QoderSessionUpdate, PROMPT_TIMEOUT, RPC_HANDSHAKE_TIMEOUT, SESSION_NEW_TIMEOUT,
 };
@@ -163,11 +163,19 @@ async fn turn_inner(
     core.registry
         .set_stdin(&core.run_id, Arc::clone(&spawned.acp.stdin));
     let result = handshake_and_prompt(&mut spawned.acp, core, state, view, req, killed).await;
+    // 退出状态要在拆树之前取，拆完就分不清是 CLI 自己退了还是我们把它拆了。
+    let child_exit = match &result {
+        Ok(()) => String::new(),
+        Err(_) => exit_note(&mut spawned.child),
+    };
     // ACP 是驻留会话协议：prompt 应答后 CLI 仍在，每条退出路径都拆树。
     teardown(&mut spawned.child).await;
     match result {
         Ok(()) => Ok(()),
-        Err(error) => Err(terminal_message(error, &spawned.stderr_buf)),
+        Err(error) => Err(format!(
+            "{}{child_exit}",
+            terminal_message(error, &spawned.stderr_buf)
+        )),
     }
 }
 

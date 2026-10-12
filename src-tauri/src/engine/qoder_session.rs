@@ -1008,6 +1008,36 @@ pub(crate) async fn teardown(child: &mut Child) {
     let _ = timeout(POST_TERMINAL_DRAIN, child.wait()).await;
 }
 
+/// 把退出状态写成一句能进错误消息的话。拆出来是为了可测：`ExitStatus` 造不出来。
+fn exit_detail(code: Option<i32>, signal: Option<i32>) -> String {
+    match (code, signal) {
+        (Some(code), _) => format!("，退出码 {code}"),
+        (None, Some(signal)) => format!("，被信号 {signal} 终止"),
+        (None, None) => "，状态未知".to_string(),
+    }
+}
+
+/// 子进程此刻的退出状态，附到失败消息尾部；仍在运行或取不到状态时返回空串，
+/// 失败消息保持原样（超时不该被写成「子进程退出」）。
+///
+/// **必须在 [`teardown`] 之前取**：teardown 会自己杀掉整棵树，之后就分不清
+/// 「CLI 自己退了」和「我们把它拆了」——而 `session/new ended: ACP stdout
+/// closed` 这句话本身分不清这两者，正是排查时最缺的一条线索。
+pub(crate) fn exit_note(child: &mut Child) -> String {
+    let Ok(Some(status)) = child.try_wait() else {
+        // 还在跑：是握手超时或我们主动断开，不是子进程退出。
+        return String::new();
+    };
+    #[cfg(unix)]
+    let signal = {
+        use std::os::unix::process::ExitStatusExt;
+        status.signal()
+    };
+    #[cfg(not(unix))]
+    let signal: Option<i32> = None;
+    format!("（CLI 已退出{}）", exit_detail(status.code(), signal))
+}
+
 // ==================== turn driver ====================
 
 /// Per-turn projection state.
@@ -1086,10 +1116,18 @@ async fn turn_inner(
     }
     let mut spawned = spawn_acp(bin, &req.workspace).await?;
     let result = handshake_and_prompt(&mut spawned.acp, core, state, view, req, killed).await;
+    // 退出状态要在拆树之前取，见 [`exit_note`]。
+    let child_exit = match &result {
+        Ok(()) => String::new(),
+        Err(_) => exit_note(&mut spawned.child),
+    };
     teardown(&mut spawned.child).await;
     match result {
         Ok(()) => Ok(()),
-        Err(error) => Err(terminal_message(error, view, &spawned.stderr_buf)),
+        Err(error) => Err(format!(
+            "{}{child_exit}",
+            terminal_message(error, view, &spawned.stderr_buf)
+        )),
     }
 }
 
@@ -1382,6 +1420,51 @@ pub(crate) async fn probe_models(bin: &str) -> Result<Vec<QoderModelEntry>, Stri
 mod tests {
     use super::*;
     use crate::engine::tool_call_message;
+
+    #[test]
+    fn exit_detail_names_the_code_or_the_signal() {
+        assert_eq!(exit_detail(Some(1), None), "，退出码 1");
+        assert_eq!(exit_detail(Some(0), None), "，退出码 0");
+        assert_eq!(exit_detail(None, Some(9)), "，被信号 9 终止");
+        assert_eq!(exit_detail(None, None), "，状态未知");
+    }
+
+    #[tokio::test]
+    async fn exit_note_reports_an_exited_child() {
+        // Re-run this very test binary with a filter matching nothing: it
+        // exits promptly with a status, without a CLI, a network or a fixture.
+        let mut command = tokio::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .arg("--exact")
+            .arg("__no_such_test__")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut exited = command.spawn().unwrap();
+        timeout(Duration::from_secs(30), exited.wait())
+            .await
+            .unwrap()
+            .unwrap();
+        let note = exit_note(&mut exited);
+        assert!(
+            note.starts_with("（CLI 已退出，退出码 "),
+            "unexpected note: {note}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn exit_note_is_quiet_while_the_child_is_still_running() {
+        let mut sleeping = tokio::process::Command::new("/bin/sleep")
+            .arg("30")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        assert_eq!(exit_note(&mut sleeping), "");
+        let _ = sleeping.kill().await;
+    }
 
     #[test]
     fn parses_response_notification_and_agent_request() {
