@@ -1,18 +1,39 @@
 <!--
-Thanks for contributing! A bot check enforces the base-branch rule below,
-so getting this right up front saves a round trip.
+感谢贡献。本仓有一条 CI 检查会校验目标分支（见下方），先写对能省一个来回。
 -->
 
-## Base branch
+## 目标分支
 
-- **Feature / fix PRs** → target the **active development branch** (e.g. `v1.0.6`), NOT `main`.
-- **`main`** only receives release PRs cut by a maintainer from a `vX.Y.Z` branch.
-- Wrong base? Click **Edit** at the top of the PR and change it — no rebase needed in most cases.
+本项目的模型是 **`main` 上开发、按 tag 发版**：日常功能与修复的 PR 目标 `main`。
 
-## Description
+> ⚠️ 已知冲突：`.github/workflows/pr-target-branch.yml` 仍沿用上游旧约定，会把**所有非白名单账号发起、目标为 `main` 的 PR 判为失败**（白名单里是上游作者的账号）。在这个 workflow 被改或删掉之前，这条检查变红**不代表你的改动有问题**，请在评论里说明，由维护者处理。规则本身的口径见 `docs/团队规范/分支提交与评审.md`。
 
-<!-- What does this PR do? Link related issues. -->
+## 这个改动做了什么
 
-## Testing
+<!-- 说清行为变化，不是文件清单：改之前是什么表现、改之后是什么表现、为什么这样做。
+     有关联 issue 或历史设计文档（docs/plans/…）就在这里链接。 -->
 
-<!-- How did you verify this change? -->
+## 怎么验证的
+
+按 `docs/04-测试与验收分层.md` 的三档口径写清，**不要只写"测试通过"**：
+
+- **命令与结果**：`pnpm build` / `pnpm test`（哪几个文件、多少例）/ `cargo test --lib` / 具体集成测试
+- **真机操作**：在应用里手动走过哪些路径，看到了什么
+- **未验证项**：具体是什么、为什么给不了（例如未交叉编译 Windows、缺系统权限无法点进界面、未接真实模型）
+
+界面交互、视觉或动效时长有变化 → 已在同一个提交内更新 `docs/ui-ux-spec.zh-CN.md`：
+
+- [ ] 已更新界面规范（或本次改动不涉及用户可见行为）
+
+## 影响面
+
+- [ ] 后端命令：`#[tauri::command]` + `lib.rs` 的 `invoke_handler` + `web/dispatch.rs` 三处都已改（手机端也要能调）
+- [ ] `AppSettings` 字段：`settings.rs` ↔ `src/lib/ipc.ts` ↔ 设置页 ↔ `builtin-search.ts` ↔ `zh.ts`/`en.ts` 全部同步
+- [ ] 文本样式 token：`src/styles/typography.css` ↔ `src/utils/cx.ts` 已同步
+- [ ] 插件 SDK / 扩展点 / 权限目录：已跑 `pnpm plugin-skill:docs`
+- [ ] 新增依赖：已说明理由与影响（体积、编译时长、许可证），并确认不是 lock 里已有的包
+- [ ] 没有把凭据、真实用户对话、机器相关的路径或端口写进代码、日志、示例与测试
+
+## 评审者需要知道的限制
+
+<!-- 已知没覆盖的场景、需要对方帮忙点的界面、依赖的外部条件等。没有就写"无"。 -->
