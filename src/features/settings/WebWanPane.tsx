@@ -26,7 +26,11 @@ export function WebWanPane({ onInfoRefresh }: { onInfoRefresh: () => void }) {
   }, []);
 
   const saveRelayFields = useCallback(async (url: string, key: string) => {
-    const latest = await ipc.getAppSettings();
+    // De-cached read on purpose: 无人值守 is written by its own command (and by
+    // a phone over the bridge), never through this funnel, so a cached copy
+    // would carry the marker from before that write and the spread below would
+    // quietly revert it while saving the address.
+    const latest = await ipc.refreshAppSettings();
     await ipc.updateAppSettings({ ...latest, webRelayUrl: url || null, webRelayKey: key || null });
   }, []);
 

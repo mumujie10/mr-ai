@@ -2,9 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ModelOption } from "@/components/application/ai-chat/cli-menu";
 import type { ChannelOption } from "@/components/application/ai-chat/engine-model-panel";
-import { ipc, type CliConfig, type EngineCatalog, type EngineInfo } from "@/lib/ipc";
+import {
+  ipc,
+  type CliConfig,
+  type EngineCatalog,
+  type EngineInfo,
+  type MrChannelSlug,
+} from "@/lib/ipc";
 import { modelSettingFor, useModelSettings } from "../model-settings";
 import {
+  BUNDLED_ENGINE_ID,
   CLI_CONFIG_CHANGED_EVENT,
   isPseudoProvider,
   providerEntries,
@@ -27,6 +34,9 @@ const probeKey = (engine: EngineInfo) => `${engine.id}:${engine.available ? 1 : 
 export interface EngineModelsState {
   catalogs: Record<string, EngineCatalog>;
   modelsByEngine: Record<string, ModelOption[]>;
+  /** The same rows grouped per channel (keyed by channel id, 官方配置 under
+   *  `PSEUDO_LOCAL`), with nothing filtered out — 模型设置 lists every channel. */
+  modelsByChannel: Record<string, Record<string, ModelOption[]>>;
   channelsByEngine: Record<string, ChannelOption[]>;
   refresh: () => Promise<void>;
   pendingEngines: Record<string, true>;
@@ -55,6 +65,49 @@ function configuredModel(
 ): string {
   const raw = channelRaw(engineId, cliConfig, channelId);
   return raw ? providerModel(engineId as EngineId, raw).trim() : "";
+}
+
+/** Catalog ids can be `provider/model` composites (DSH's session/modelCatalog
+ *  flattens to them) while the channel's configured model is stored bare —
+ *  the same model then listed twice: once raw, once catalogued. Resolve a
+ *  bare id to its unique composite catalog entry so the two collapse into
+ *  one row. */
+function resolveCompositeId(id: string, catalogIds: string[]): string {
+  if (!id || id.includes("/")) return id;
+  const matches = catalogIds.filter((cid) => cid.endsWith(`/${id}`));
+  return matches.length === 1 ? matches[0] : id;
+}
+
+/** The rows one channel of the bundled runtime can actually serve.
+ *
+ *  The CLI advertises its whole model menu in one go — every channel's rows
+ *  arrive together, each prefixed with the CLI's own provider slug — so the
+ *  channel that is in use decides which rows stay. Without this filter picking
+ *  another channel left the list showing the previous channel's models.
+ *
+ *  `null` means "cannot be answered" (no slug table yet, a channel the CLI does
+ *  not list) and the caller then keeps the full menu: an unreadable CLI must not
+ *  blank a picker, and 官方配置 legitimately comes back empty when the runtime
+ *  has no models of its own. */
+function channelCatalog<T extends { provider?: string }>(
+  catalog: T[],
+  channelId: string,
+  channelName: string,
+  slugs: MrChannelSlug[],
+): T[] | null {
+  if (slugs.length === 0) return null;
+  const providerSlugs = new Set(slugs.map((row) => row.slug));
+  if (isPseudoProvider(channelId)) {
+    // 官方配置 = whatever the CLI files outside its `custom_provider:` namespace.
+    return catalog.filter((row) => !providerSlugs.has(row.provider ?? ""));
+  }
+  // A same-name re-save makes the CLI fork the slug (`llm` → `llm-2`), so one
+  // name can own several; all of them are this channel's models.
+  const mine = new Set(
+    slugs.filter((row) => row.name === channelName).map((row) => row.slug),
+  );
+  if (mine.size === 0) return null;
+  return catalog.filter((row) => mine.has(row.provider ?? ""));
 }
 
 export function useEngineModels(
@@ -94,6 +147,18 @@ export function useEngineModels(
   // it already knows (usually just the configured model) until it lands, so
   // the panel needs to say "still loading" instead of looking truncated.
   const [pendingByWs, setPendingByWs] = useState<Record<string, Record<string, true>>>({});
+  // The bundled runtime's channel → slug table (see `ipc.mireaiChannelSlugs`).
+  // Empty means nothing was read, and then the model menu is left unfiltered —
+  // guessing a slug from a channel name would hide that channel's own models.
+  const [channelSlugs, setChannelSlugs] = useState<MrChannelSlug[]>([]);
+  const readChannelSlugs = useCallback((force: boolean) => {
+    ipc
+      .mireaiChannelSlugs(force)
+      .then(setChannelSlugs)
+      // An unreadable CLI leaves the previous table in place: the picker stays
+      // as good as it was rather than dropping to no filter at all.
+      .catch(() => {});
+  }, []);
   // Probes already dispatched, keyed by workspace — see the probe effect.
   const probedByWs = useRef<Record<string, Set<string>>>({});
 
@@ -110,11 +175,15 @@ export function useEngineModels(
         .getAppSettings()
         .then((s) => setCustomModels(s.customModels ?? {}))
         .catch(() => {});
+      // The CLI mints a fresh slug when a same-name channel is re-saved, so
+      // the table is re-read with every channel mutation (cached: this is the
+      // same listing the flyout's 刷新 forces).
+      readChannelSlugs(true);
     };
     reload();
     window.addEventListener(CLI_CONFIG_CHANGED_EVENT, reload);
     return () => window.removeEventListener(CLI_CONFIG_CHANGED_EVENT, reload);
-  }, []);
+  }, [readChannelSlugs]);
   // 模型设置 rows (hidden / effort / context window) live in their own store so
   // the dialog and the picker read one source; writes update both at once.
   const modelSettings = useModelSettings((s) => s.byKey);
@@ -205,7 +274,12 @@ export function useEngineModels(
   // Per-engine model lists for the CLI menu flyouts: the backend catalog
   // plus the session (or engine-default) channel's configured model — spawn
   // injects that channel's env, including claude; native files stay official.
-  const modelsByEngine = useMemo(() => {
+  //
+  // `modelsByEngine` is what a picker shows: the channel in use only.
+  // `modelsByChannel` is the same rows per channel with nothing dropped, which
+  // is what 模型设置 needs — it lists every channel side by side, and a view that
+  // hides channels cannot be the source for that.
+  const [modelsByEngine, modelsByChannel] = useMemo(() => {
     // 模型设置 can hide a row, but never the one the engine is currently
     // running: a hidden selection would blank the pill and strand the session.
     const visible = (engineId: string, rows: ModelOption[], currentId: string) =>
@@ -215,72 +289,127 @@ export function useEngineModels(
           !modelSettingFor(modelSettings, engineId, row.id)?.hidden,
       );
     const result: Record<string, ModelOption[]> = {};
+    const byChannel: Record<string, Record<string, ModelOption[]>> = {};
     for (const engine of engines) {
-      const configured = configuredModel(engine.id, cliConfig, providers[engine.id]);
-      const families = providerFamilyModels(
-        engine.id,
-        channelRaw(engine.id, cliConfig, providers[engine.id]),
-      );
-      const providerModels = configured ? [configured] : [];
-      const current = models[engine.id]?.trim();
       const catalog = catalogs[engine.id]?.models ?? [];
+      const catalogIds = catalog.map((m) => m.id);
+      const section = cliConfig?.[engine.id as EngineId];
+      const entries = providerEntries(engine.id as EngineId, section);
+      // The channel whose models this list is showing: the session's own when it
+      // carries one, otherwise the engine default (the same pair `channelRaw`
+      // resolves). Unset means 官方配置 — the same reading `engineCurrents` uses.
+      const channelId =
+        (providers[engine.id] || section?.current || "").trim() || PSEUDO_LOCAL;
+      const channelName = entries.find((entry) => entry.id === channelId)?.name ?? "";
+      // 内置运行时:一次上报的菜单含所有渠道的行,按当前渠道收窄;问不到 slug
+      // 时保持整表,宁可不收窄也不把渠道自己的模型藏掉。
+      const scoped = (id: string, name: string) =>
+        engine.id === BUNDLED_ENGINE_ID
+          ? channelCatalog(catalog, id, name, channelSlugs) ?? catalog
+          : catalog;
+      const rowsFor = (menu: typeof catalog, forChannel: string) => {
+        const configured = resolveCompositeId(
+          configuredModel(engine.id, cliConfig, forChannel),
+          catalogIds,
+        );
+        const families = providerFamilyModels(
+          engine.id,
+          channelRaw(engine.id, cliConfig, forChannel),
+        );
+        const providerModels = configured ? [configured] : [];
+        const current = resolveCompositeId(models[engine.id]?.trim() ?? "", catalogIds);
+        // Channel model leads (it is what the CLI would run unprompted), the
+        // current channel's catalog rows follow, then engine-level custom models,
+        // and the current-override append last so the selection never vanishes.
+        const known = [
+          ...new Set([
+            ...providerModels,
+            ...menu.map((m) => m.id),
+            ...(customModels[engine.id] ?? []),
+            ...(current ? [current] : []),
+          ]),
+        ];
+        const byId = new Map(catalog.map((m) => [m.id, m]));
+        return known.map((m) => {
+          const entry = byId.get(m);
+          // The CLI's alias rows (Default/Opus/…) describe the CLI's OWN
+          // settings — the official channel's. Under another channel the alias
+          // runs that channel's mapped id (spawn injects its env), so the row
+          // has to name it; without this the list kept showing the official
+          // mapping after a channel switch.
+          const mapped = families[m];
+          return {
+            id: m,
+            label: mapped ?? (entry?.name || m),
+            description: mapped
+              ? // The CLI menu's own row shape ("Custom Opus model"): family is
+                // the alias id, capitalized the way the CLI displays it.
+                t("chat.customFamilyModel", {
+                  family: m.charAt(0).toUpperCase() + m.slice(1),
+                })
+              : entry?.description ?? undefined,
+            // Channel/override ids keep the "provider/model" shape, so the
+            // prefix stands in when the catalog doesn't name the provider.
+            provider: entry?.provider ?? (m.includes("/") ? m.slice(0, m.indexOf("/")) : undefined),
+          };
+        });
+      };
       // Remote workspace (WSL distro): local channel/custom models cannot
       // run there — the distro CLI's own list is the entire menu.
       if (catalogs[engine.id]?.remote) {
+        const remote = catalog.map((m) => ({
+          id: m.id,
+          label: m.name || m.id,
+          description: m.description ?? undefined,
+          provider: m.provider,
+        }));
         result[engine.id] = visible(
           engine.id,
-          catalog.map((m) => ({
-            id: m.id,
-            label: m.name || m.id,
-            description: m.description ?? undefined,
-            provider: m.provider,
-          })),
-          current,
+          remote,
+          resolveCompositeId(models[engine.id]?.trim() ?? "", catalogIds),
         );
         continue;
       }
-      // Channel model leads (it is what the CLI would run unprompted), the
-      // backend catalog follows, then engine-level custom models, and the
-      // current-override append last so the selection never vanishes.
-      const known = [
-        ...new Set([
-          ...providerModels,
-          ...catalog.map((m) => m.id),
-          ...(customModels[engine.id] ?? []),
-          ...(current ? [current] : []),
-        ]),
-      ];
-      const byId = new Map(catalog.map((m) => [m.id, m]));
+      // Only the bundled runtime's menu is a per-channel list, so only it gets
+      // grouped rows. Under another engine every channel runs the same alias
+      // rows (default / opus / … resolved from that CLI's own settings), and
+      // repeating them under each channel caption would read as different
+      // models. The dialog falls back to one flat list when there is no map.
+      if (engine.id === BUNDLED_ENGINE_ID) {
+        byChannel[engine.id] = {
+          [PSEUDO_LOCAL]: rowsFor(scoped(PSEUDO_LOCAL, ""), PSEUDO_LOCAL),
+          ...Object.fromEntries(
+            entries.map((entry) => [
+              entry.id,
+              rowsFor(scoped(entry.id, entry.name), entry.id),
+            ]),
+          ),
+        };
+      }
+      // The picker shows the channel in use. An id the app no longer has a
+      // record for (deleted elsewhere) falls back to the **whole** menu rather
+      // than to 官方配置: showing another channel's models would silently
+      // misattribute what the user is about to run.
       result[engine.id] = visible(
         engine.id,
-        known.map((m) => {
-        const entry = byId.get(m);
-        // The CLI's alias rows (Default/Opus/…) describe the CLI's OWN
-        // settings — the official channel's. Under another channel the alias
-        // runs that channel's mapped id (spawn injects its env), so the row
-        // has to name it; without this the list kept showing the official
-        // mapping after a channel switch.
-        const mapped = families[m];
-        return {
-          id: m,
-          label: mapped ?? (entry?.name || m),
-          description: mapped
-            ? // The CLI menu's own row shape ("Custom Opus model"): family is
-              // the alias id, capitalized the way the CLI displays it.
-              t("chat.customFamilyModel", {
-                family: m.charAt(0).toUpperCase() + m.slice(1),
-              })
-            : entry?.description ?? undefined,
-          // Channel/override ids keep the "provider/model" shape, so the
-          // prefix stands in when the catalog doesn't name the provider.
-          provider: entry?.provider ?? (m.includes("/") ? m.slice(0, m.indexOf("/")) : undefined),
-        };
-        }),
-        current,
+        byChannel[engine.id]?.[channelId] ??
+          rowsFor(scoped(channelId, channelName), channelId),
+        resolveCompositeId(models[engine.id]?.trim() ?? "", catalogIds),
       );
     }
-    return result;
-  }, [engines, cliConfig, catalogs, wsKey, models, customModels, providers, modelSettings, t]);
+    return [result, byChannel] as const;
+  }, [
+    engines,
+    cliConfig,
+    catalogs,
+    wsKey,
+    models,
+    customModels,
+    providers,
+    modelSettings,
+    channelSlugs,
+    t,
+  ]);
   // Selectable ids WITHOUT the current-override append: what the channel,
   // the backend catalog, and the custom model list can actually serve.
   const knownIdsByEngine = useMemo(() => {
@@ -301,20 +430,29 @@ export function useEngineModels(
     }
     return result;
   }, [engines, cliConfig, catalogs, wsKey, customModels]);
-  // Official + custom channels for the flyout. Skip the list when the engine
-  // has no in-app channels — a lone 官方配置 row is noise.
+  // Official + custom channels for the flyout. The two are different things and
+  // neither one is switched off by the other existing: 官方配置 is what the
+  // runtime itself is configured with, the rest are channels entered here, and
+  // the caption only says where each group starts. Engines with no in-app
+  // channels still skip the list — a lone 官方配置 row is noise — but the
+  // bundled runtime always shows its own, because "官方配置 下面是空的" is a fact
+  // the picker has to be able to show.
   const channelsByEngine = useMemo(() => {
     const result: Record<string, ChannelOption[]> = {};
-    const official: ChannelOption = {
-      id: PSEUDO_LOCAL,
-      label: t("settings.cliOfficial"),
-    };
     for (const engine of engines) {
-      const customs = providerEntries(
+      const customs: ChannelOption[] = providerEntries(
         engine.id as EngineId,
         cliConfig?.[engine.id as EngineId],
-      ).map((entry) => ({ id: entry.id, label: entry.name }));
-      result[engine.id] = customs.length > 0 ? [official, ...customs] : [];
+      ).map((entry) => ({ id: entry.id, label: entry.name, kind: "custom" }));
+      const officialRow: ChannelOption = {
+        id: PSEUDO_LOCAL,
+        label: t("settings.cliOfficial"),
+        kind: "official",
+      };
+      result[engine.id] =
+        customs.length > 0 || engine.id === BUNDLED_ENGINE_ID
+          ? [officialRow, ...customs]
+          : [];
     }
     return result;
   }, [engines, cliConfig, t]);
@@ -363,6 +501,7 @@ export function useEngineModels(
   // remote (distro) workspace keeps its own and would otherwise stay stale.
   const refresh = useCallback(async () => {
     await ipc.getCliConfig().then(setCliConfig).catch(() => {});
+    readChannelSlugs(true);
     // Local context first — probed with the active workspace when that one is
     // local, so the spinner lands in the bucket the picker reads — then every
     // cached remote context, each of which owns its own catalog.
@@ -389,11 +528,12 @@ export function useEngineModels(
       }
     }
     await Promise.all(probes);
-  }, [engines, wsKey, context, applyCatalog, markPending, contextByWs]);
+  }, [engines, wsKey, context, applyCatalog, markPending, contextByWs, readChannelSlugs]);
 
   return {
     catalogs,
     modelsByEngine,
+    modelsByChannel,
     channelsByEngine,
     refresh,
     pendingEngines: pending,

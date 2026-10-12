@@ -48,7 +48,8 @@ NOTARY_PROFILE="${NOTARY_PROFILE:-ccgui-notary}"
 DMG="$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' | head -n 1)"
 [ -n "$DMG" ] || { echo "error: no dmg produced" >&2; exit 1; }
 
-xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
-xcrun stapler staple "$DMG"
+# Shared with CI: submit without `--wait` and poll the status, so one timed-out
+# App Store Connect request costs a retry instead of the whole build.
+"$(dirname "$0")/notarize-dmg.sh" "$DMG" "$NOTARY_PROFILE"
 
 echo "done: $DMG"

@@ -24,6 +24,11 @@ import type { MenuOption, ModelOption } from "./cli-menu";
 export interface ChannelOption {
   id: string;
   label: string;
+  /** `official` = whatever the runtime itself is configured with (the key lives
+   *  in the CLI, never here); `custom` = a channel added in this app. Two
+   *  different things, listed apart so neither reads as the other — and picking
+   *  one never turns the other off. */
+  kind: "official" | "custom";
 }
 
 /** Per-engine model flyout: the second card of the CLI popover row, sitting to
@@ -98,6 +103,16 @@ function ChannelFilterField({
   );
 }
 
+/** Section caption separating the app-managed channels from the runtime's own
+ *  官方配置 row above them. */
+function ChannelSectionLabel({ children }: { children: ReactNode }) {
+  return (
+    <span className="px-2 pt-1.5 pb-1 text-caption-2-regular text-text-tertiary">
+      {children}
+    </span>
+  );
+}
+
 /** Provider dropdown: collapsed to the current channel until opened, then a
  *  height-bounded scroll list. The old inline list rendered every channel at
  *  once, so a machine with a dozen relays pushed the model list — the part
@@ -131,8 +146,32 @@ function ChannelPicker({
         `${channel.label} ${channel.id}`.toLowerCase().includes(needle),
       )
     : channels;
+  const officialRows = visible.filter((channel) => channel.kind === "official");
+  const customRows = visible.filter((channel) => channel.kind === "custom");
+  // Only the app-managed group gets a caption, and it reuses the settings
+  // page's own words (供应商渠道): the official row already reads 官方配置, and
+  // a second name for one group is worse than no header at all.
+  const sectioned = officialRows.length > 0 && customRows.length > 0;
   const expanded = open || needle.length > 0;
   const selected = channels.find((channel) => channel.id === selectedChannelId);
+  const pick = (engine: string, id: string) => {
+    // Restore focus before this row unmounts; otherwise the overlay
+    // focuses the first engine row and switches away from this panel.
+    triggerRef.current?.focus({ preventScroll: true });
+    onPickChannel(engine, id);
+    onQueryChange("");
+    setOpen(false);
+  };
+  const rows = (list: ChannelOption[]) =>
+    list.map((channel) => (
+      <ChannelRow
+        key={channel.id}
+        option={channel}
+        selected={channel.id === selectedChannelId}
+        engineId={engineId}
+        onPick={pick}
+      />
+    ));
   return (
     <div className="flex w-full flex-col">
       <button
@@ -172,22 +211,11 @@ function ChannelPicker({
           aria-label={t("chat.channelPicker")}
           className="flex max-h-[200px] w-full flex-col overflow-y-auto"
         >
-          {visible.map((channel) => (
-            <ChannelRow
-              key={channel.id}
-              option={channel}
-              selected={channel.id === selectedChannelId}
-              engineId={engineId}
-              onPick={(engine, id) => {
-                // Restore focus before this row unmounts; otherwise the overlay
-                // focuses the first engine row and switches away from this panel.
-                triggerRef.current?.focus({ preventScroll: true });
-                onPickChannel(engine, id);
-                onQueryChange("");
-                setOpen(false);
-              }}
-            />
-          ))}
+          {rows(officialRows)}
+          {sectioned && (
+            <ChannelSectionLabel>{t("settings.cliChannels")}</ChannelSectionLabel>
+          )}
+          {rows(customRows)}
           {visible.length === 0 && (
             <span className="px-2 py-1.5 text-body-2-regular text-text-tertiary">
               {t("chat.noMatchingChannels")}

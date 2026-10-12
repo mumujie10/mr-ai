@@ -111,6 +111,9 @@ export interface ComposerProps {
   inputRef?: MutableRefObject<ComposerInputHandle | null>;
   /** Clipboard images pasted into the field; absent = paste stays text-only. */
   onPasteImages?: (files: File[]) => void;
+  /** Clipboard files with a resolvable path, routed exactly like a drop.
+   *  Absent = no active session: pasted files stay ignored. */
+  onPastePaths?: (paths: string[]) => void;
   /** Active workspace root: enables the `@` file-mention picker. */
   workspacePath?: string;
   /** Commands the engine of the session this composer drives advertised
@@ -133,17 +136,18 @@ export function Composer({
   permissionMenu,
   inputRef,
   onPasteImages,
+  onPastePaths,
   workspacePath,
   engineCommands,
 }: ComposerProps = {}) {
   const editableRef = useRef<HTMLDivElement>(null);
-  // IME composition tracking (desktop-cc-gui parity): WKWebView fires
-  // `compositionend` BEFORE the Enter keydown that commits the candidate, so
-  // `nativeEvent.isComposing` is already false at that keydown and the plain
-  // check would send the message. Gate Enter on a sync ref plus a 100ms
-  // "recently settled" window after compositionend.
+  // IME composition tracking: WKWebView fires `compositionend` BEFORE the
+  // Enter keydown that commits the candidate, so `nativeEvent.isComposing` is
+  // already false at that keydown and the plain check would send the message.
+  // keyCode 229 still identifies that keydown, so Enter is gated on the sync
+  // ref plus 229 rather than a timer — the next independent Enter then sends
+  // immediately instead of needing a second press.
   const isComposingRef = useRef(false);
-  const lastCompositionEndTimeRef = useRef(0);
   // Reactive mirror of isComposingRef: gates the ghost completion so IME
   // candidates never produce a suggestion.
   const [isComposing, setIsComposing] = useState(false);
@@ -226,7 +230,10 @@ export function Composer({
   );
 
   // ArrowUp/ArrowDown recall of previously submitted prompts.
-  const { handleKeyDown: handleHistoryKeyDown } = usePromptHistoryNav({
+  const {
+    handleKeyDown: handleHistoryKeyDown,
+    resetNavigation: resetHistoryNavigation,
+  } = usePromptHistoryNav({
     editableRef,
     setText: setEditableText,
   });
@@ -314,12 +321,12 @@ export function Composer({
           acceptCompletion={completion.accept}
           setEditableText={setEditableText}
           handleHistoryKeyDown={handleHistoryKeyDown}
+          resetHistoryNavigation={resetHistoryNavigation}
           mentionMenuRef={mentionMenuRef}
           slashMenuRef={slashMenuRef}
           botMenuRef={botMenuRef}
           promptMenuRef={promptMenuRef}
           isComposingRef={isComposingRef}
-          lastCompositionEndTimeRef={lastCompositionEndTimeRef}
           setIsComposing={setIsComposing}
           emitChange={emitChange}
           syncTags={syncTags}
@@ -327,6 +334,7 @@ export function Composer({
           disabled={disabled}
           onSubmit={onSubmit}
           onPasteImages={onPasteImages}
+          onPastePaths={onPastePaths}
           manualHeightPx={manualHeightPx}
         />
       )}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { Message, PlanReviewDecision } from "@/lib/ipc";
 import { useChatStore } from "../store";
+import { centerColumnClass } from "../chat-column";
 import { useScopedSession, useScopedSessionKey } from "../split/session-scope";
 import { isPlanActionable } from "../store/plan-review";
 import { memoizeMessageHistory } from "./memoize-message-history";
@@ -352,6 +353,8 @@ function PlanReviewHoldPanel({
 export function PlanReviewDock() {
   const pending = usePendingPlanReview();
   const key = useScopedSessionKey();
+  // Read before the early return below: hooks must run in the same order.
+  const wide = useChatStore((s) => s.wideLayout);
   const [hold, setHold] = useState<Message | null>(null);
   // The hold belongs to the session that produced it.
   useEffect(() => setHold(null), [key]);
@@ -365,7 +368,7 @@ export function PlanReviewDock() {
   const message = pending ?? hold;
   if (!message?.planReview) return null;
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className={centerColumnClass(wide)}>
       <div className="rounded-xl border border-border-secondary bg-background-secondary-default px-3.5 py-3 shadow-lg">
         {pending ? (
           <PlanReviewDockBody message={pending} onHold={setHold} />

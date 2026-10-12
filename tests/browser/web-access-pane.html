@@ -71,7 +71,13 @@ window.__TAURI_INTERNALS__ = {
         };
         return state.relay;
       case "web_relay_stop":
+        // Same as the real backend: stopping clears 无人值守 first, so the
+        // fixture must not leave a marker that would redial on the next boot.
+        state.settings.webRelayUnattended = false;
         state.relay = null;
+        return null;
+      case "web_relay_unattended_set":
+        state.settings.webRelayUnattended = Boolean(args.enabled);
         return null;
       case "plugin:event|listen":
       case "plugin:event|unlisten":

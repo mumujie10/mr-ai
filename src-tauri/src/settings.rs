@@ -109,10 +109,18 @@ pub struct AppSettings {
     /// Shared key the relay worker checks.
     #[serde(default)]
     pub web_relay_key: Option<String>,
-    /// Relay switch position, remembered across launches: the tunnel is what
-    /// keeps the machine reachable unattended, so an app relaunch restores it.
+    /// 无人值守 switch (设置 → 远程访问 → 外网访问). When on, the relay dials the
+    /// stored address at launch and keeps redialing — the machine stays
+    /// reachable with nobody at the desk. Off (the default) means the relay
+    /// switch itself is session-only: the user turns it on by hand after every
+    /// launch. Off/absent ⇒ false.
     #[serde(default)]
-    pub web_relay_on: Option<bool>,
+    pub web_relay_unattended: Option<bool>,
+    // The relay on/off position is deliberately NOT a setting: the switch is
+    // session-only, so every launch starts with the tunnel off and the user
+    // turns it on again unless 无人值守 asked for the autostart above. Redials
+    // while the tunnel is running are unconditional — they are not gated on
+    // 无人值守.
     /// LAN web access auto-start switch (设置 → 远程访问 → 内网访问: 随应用自动开启).
     /// Some(true) starts the LAN bridge at application launch.
     #[serde(default)]
@@ -138,6 +146,14 @@ pub struct AppSettings {
     /// `font_family == "custom"` (the frontend registers it as a FontFace).
     #[serde(default)]
     pub font_file: String,
+    #[serde(default = "default_ui_font_size")]
+    pub ui_font_size: u32,
+    #[serde(default = "default_content_font_size")]
+    pub content_font_size: u32,
+    #[serde(default = "default_code_font_size")]
+    pub code_font_size: u32,
+    #[serde(default = "default_ui_font_weight")]
+    pub ui_font_weight: String,
     /// Code font for chat code blocks and the built-in terminal: "" = 系统默认,
     /// "custom" = the uploaded file in `code_font_file`.
     #[serde(default)]
@@ -185,6 +201,11 @@ pub struct AppSettings {
     /// until the user folds it (设置 → 通用 → 行为 → 思考过程).
     #[serde(default)]
     pub thinking_auto_collapse: Option<bool>,
+    /// Chat content column width (设置 → 通用 → 外观 → 宽幕布): None/Some(false)
+    /// = the default centered column, Some(true) = the timeline, composer and
+    /// docks fill their pane (only the 16px gutter stays).
+    #[serde(default)]
+    pub chat_wide_layout: Option<bool>,
     /// 记忆行为 (设置 → 记忆): None/Some(true) = 全局记忆可用，Some(false) =
     /// 关闭——内置引擎 (mireai) 启动时注入 MAVIS_MEMORY_GLOBAL=0，CLI 侧
     /// 不读取也不更新用户级长期记忆。
@@ -251,6 +272,22 @@ fn default_theme() -> String {
 fn default_titlebar() -> String {
     "native".to_string()
 }
+fn default_ui_font_size() -> u32 {
+    16
+}
+
+fn default_content_font_size() -> u32 {
+    14
+}
+
+fn default_code_font_size() -> u32 {
+    13
+}
+
+fn default_ui_font_weight() -> String {
+    "standard".to_string()
+}
+
 fn default_sidebar_thread_limit() -> u32 {
     5
 }
@@ -397,7 +434,7 @@ impl Default for AppSettings {
             web_auth_key: None,
             web_relay_url: None,
             web_relay_key: None,
-            web_relay_on: None,
+            web_relay_unattended: None,
             web_access_auto_start: None,
             web_access_port: None,
             web_access_token: None,
@@ -412,6 +449,10 @@ impl Default for AppSettings {
             sidebar_thread_limit: default_sidebar_thread_limit(),
             font_family: String::new(),
             font_file: String::new(),
+            ui_font_size: default_ui_font_size(),
+            content_font_size: default_content_font_size(),
+            code_font_size: default_code_font_size(),
+            ui_font_weight: default_ui_font_weight(),
             code_font_family: String::new(),
             code_font_file: String::new(),
             composer_send_shortcut: default_composer_send_shortcut(),
@@ -429,6 +470,7 @@ impl Default for AppSettings {
             decrease_ui_scale_shortcut: default_decrease_ui_scale_shortcut(),
             reset_ui_scale_shortcut: default_reset_ui_scale_shortcut(),
             thinking_auto_collapse: None,
+            chat_wide_layout: None,
             memory_global_enabled: None,
             memory_project_enabled: None,
             beta_features: HashMap::new(),
@@ -850,6 +892,12 @@ fn persist_settings_to(
     } else if !settings.web_auth_enabled {
         settings.web_auth_key = None;
     }
+    // The relay switch is session-only now: a switch position from an older
+    // file lands in the flattened extras map (it is not a known field any
+    // more) and would round-trip forever, so drop it before writing. The
+    // relay's own address and key above stay — only the on/off position is
+    // session state.
+    settings.bin_overrides.remove("webRelayOn");
     // Reject only the offending bin-override fields: the rest of the settings
     // still persist, and the warning names what was dropped.
     let mut rejected = Vec::new();
@@ -985,7 +1033,9 @@ pub fn rotate_web_auth_key(app: &tauri::AppHandle) -> Result<(), String> {
 
 /// Through the sink: the webview *and* every browser attached over the bridge
 /// must see the new code, or a phone would keep showing one that is spent.
-fn announce_settings(app: &tauri::AppHandle) {
+/// Also how a settings write that happened outside `update_app_settings`
+/// (relay 无人值守) reaches the same listeners.
+pub(crate) fn announce_settings(app: &tauri::AppHandle) {
     use crate::event_sink::Emit;
     use tauri::Manager;
     app.state::<crate::AppState>()
@@ -1274,7 +1324,7 @@ mod tests {
         let path = scratch.path("settings.json");
         let missing_bin = scratch.path("missing-claude");
         let mut settings = AppSettings {
-            web_relay_on: Some(true),
+            web_relay_unattended: Some(true),
             web_relay_url: Some("https://relay.example".to_string()),
             web_relay_key: Some("SAVED_KEY".to_string()),
             ..AppSettings::default()
@@ -1298,6 +1348,36 @@ mod tests {
         );
     }
 
+    /// 中转过渡期：老文件里那个跨启动记住的开/关位置（`webRelayOn`）不再是已知
+    /// 字段，会落进 flatten 的附加字段表并被永久回写。保存时显式丢掉它，只保留
+    /// 地址与密钥；无人值守标记是设置，照常往返。
+    #[test]
+    fn legacy_relay_switch_is_discarded_when_settings_are_saved() {
+        let scratch = Scratch::new();
+        let path = scratch.path("settings.json");
+        for enabled in [true, false] {
+            let mut settings: AppSettings = serde_json::from_value(serde_json::json!({
+                "webRelayOn": enabled,
+                "webRelayUnattended": enabled,
+                "webRelayUrl": "https://relay.example",
+                "webRelayKey": "SAVED_KEY"
+            }))
+            .unwrap();
+
+            persist_settings_to(&mut settings, &path).unwrap();
+            let saved: Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            assert!(saved.get("webRelayOn").is_none(), "the switch is session-only");
+            assert_eq!(
+                saved["webRelayUnattended"].as_bool(),
+                Some(enabled),
+                "无人值守 is a setting and round-trips"
+            );
+            assert_eq!(saved["webRelayUrl"], "https://relay.example");
+            assert_eq!(saved["webRelayKey"], "SAVED_KEY");
+        }
+    }
+
     #[test]
     fn titlebar_defaults_to_native_and_round_trips() {
         assert_eq!(AppSettings::default().titlebar, "native");
@@ -1312,6 +1392,25 @@ mod tests {
             .unwrap()
             .contains("\"titlebar\":\"mac\""));
     }
+
+    /// 宽幕布（设置 → 通用 → 外观）：缺字段 / false 都是默认列宽，true 才会占满窗格，
+    /// 且 camelCase 键名要能往返（前端 `AppSettings.chatWideLayout` 直接读写）。
+    #[test]
+    fn chat_wide_layout_defaults_to_narrow_and_round_trips() {
+        assert_eq!(AppSettings::default().chat_wide_layout, None);
+        let parsed: AppSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(
+            parsed.chat_wide_layout, None,
+            "旧设置文件没有 chatWideLayout → 保持默认列宽，不能崩"
+        );
+        let wide: AppSettings = serde_json::from_str(r#"{"chatWideLayout":true}"#).unwrap();
+        assert_eq!(wide.chat_wide_layout, Some(true));
+        assert!(serde_json::to_string(&wide)
+            .unwrap()
+            .contains("\"chatWideLayout\":true"));
+        let narrow: AppSettings = serde_json::from_str(r#"{"chatWideLayout":false}"#).unwrap();
+        assert_eq!(narrow.chat_wide_layout, Some(false));
+    }
     #[test]
     fn font_fields_default_to_bundled_and_round_trip_camel_case() {
         let parsed: AppSettings = serde_json::from_str("{}").unwrap();
@@ -1320,16 +1419,26 @@ mod tests {
             "旧设置文件没有 fontFamily 字段 → 视为内置字体，不能崩"
         );
         assert_eq!(parsed.font_file, "");
+        assert_eq!(parsed.ui_font_size, 16);
+        assert_eq!(parsed.content_font_size, 14);
+        assert_eq!(parsed.code_font_size, 13);
+        assert_eq!(parsed.ui_font_weight, "standard");
         assert_eq!(parsed.code_font_family, "");
         assert_eq!(parsed.code_font_file, "");
         let custom: AppSettings = serde_json::from_str(
-            r#"{"fontFamily":"custom","fontFile":"/tmp/My Font.ttf","codeFontFamily":"system"}"#,
+            r#"{"fontFamily":"custom","fontFile":"/tmp/My Font.ttf","codeFontFamily":"system","uiFontSize":18,"contentFontSize":20,"codeFontSize":15,"uiFontWeight":"medium"}"#,
         )
         .unwrap();
         assert_eq!(custom.font_family, "custom");
+        assert_eq!(custom.ui_font_size, 18);
+        assert_eq!(custom.content_font_size, 20);
+        assert_eq!(custom.code_font_size, 15);
+        assert_eq!(custom.ui_font_weight, "medium");
         assert_eq!(custom.font_file, "/tmp/My Font.ttf");
         assert_eq!(custom.code_font_family, "system");
         let json = serde_json::to_string(&custom).unwrap();
+        assert!(json.contains("\"uiFontSize\":18"));
+        assert!(json.contains("\"uiFontWeight\":\"medium\""));
         assert!(json.contains("\"fontFamily\":\"custom\""));
         assert!(json.contains("\"fontFile\":\"/tmp/My Font.ttf\""));
         assert!(json.contains("\"codeFontFamily\":\"system\""));

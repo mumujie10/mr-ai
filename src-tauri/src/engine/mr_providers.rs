@@ -12,6 +12,7 @@
 //! an argv value (a command line is visible to other processes and lands in
 //! crash reports and logs) and it is never included in an error string.
 
+use serde::Serialize;
 use serde_json::Value;
 use std::process::{Command, Stdio};
 
@@ -72,7 +73,11 @@ fn effort_levels_from_json(json: &Value) -> Vec<String> {
         .into_iter()
         .flatten()
     {
-        let Some(level) = value.as_str().map(str::trim).filter(|level| !level.is_empty()) else {
+        let Some(level) = value
+            .as_str()
+            .map(str::trim)
+            .filter(|level| !level.is_empty())
+        else {
             continue;
         };
         if !levels.iter().any(|seen| seen == level) {
@@ -141,6 +146,67 @@ fn remove_args(provider_id: &str) -> Vec<String> {
         provider_id.to_string(),
         "--yes".into(),
     ]
+}
+
+/// One channel as the CLI itself stores it: the display name this app also
+/// keeps, plus the slug the model menu advertises that channel's models under.
+///
+/// The slug has to be read back rather than derived from the name, because
+/// `provider add --name llm` can land on `custom_provider:llm-2` once a
+/// same-name re-add forks it — and the model ids then come as
+/// `llm-2/MiniMax-M3`. Matching a channel to its own models without this reads
+/// a slug that no longer exists.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MrChannelSlug {
+    pub name: String,
+    /// Provider id with the CLI's `custom_provider:` namespace removed.
+    pub slug: String,
+}
+
+const OFFICIAL_PROVIDER_ID: &str = "minimax_api";
+const OFFICIAL_PROVIDER_KIND: &str = "minimax-api-key";
+
+fn is_official_row(provider: &Value) -> bool {
+    provider.get("providerId").and_then(Value::as_str) == Some(OFFICIAL_PROVIDER_ID)
+        || provider.get("kind").and_then(Value::as_str) == Some(OFFICIAL_PROVIDER_KIND)
+}
+
+/// The CLI's own provider listing, minus its official row (which is not a
+/// channel the app can name-match). Unparseable output yields no rows, which
+/// the UI reads as "nothing to filter by" rather than as an empty channel.
+fn channel_slugs(list_json: &str) -> Vec<MrChannelSlug> {
+    let Ok(document) = serde_json::from_str::<Value>(list_json) else {
+        return Vec::new();
+    };
+    let Some(providers) = document.get("providers").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    providers
+        .iter()
+        .filter(|provider| !is_official_row(provider))
+        .filter_map(|provider| {
+            let name = provider.get("name").and_then(Value::as_str)?.trim();
+            let provider_id = provider.get("providerId").and_then(Value::as_str)?;
+            // The same namespace rule the model menu is parsed with, so the
+            // slug here is the prefix those ids carry.
+            let slug = crate::engine::mcode_acp::channel_label(provider_id).trim();
+            (!name.is_empty() && !slug.is_empty()).then(|| MrChannelSlug {
+                name: name.to_string(),
+                slug: slug.to_string(),
+            })
+        })
+        .collect()
+}
+
+/// Ask the CLI for its provider listing. A non-zero exit is an error the caller
+/// reports; the UI then keeps the unfiltered model list rather than guessing.
+pub(crate) fn read_channel_slugs(bin: &str) -> Result<Vec<MrChannelSlug>, String> {
+    let listed = invoke(bin, &list_args(), &[])?;
+    if listed.status != 0 {
+        return Err(failure("读取渠道列表", &listed));
+    }
+    Ok(channel_slugs(&listed.stdout))
 }
 
 /// Every CLI provider id carrying this display name, in the CLI's own order.
@@ -590,6 +656,89 @@ mod tests {
         );
         assert!(provider_ids_for_name(&document.to_string(), "Gone").is_empty());
         assert!(provider_ids_for_name("not json", "My Relay").is_empty());
+    }
+
+    #[test]
+    fn channel_slugs_read_the_cli_namespace_and_skip_the_official_row() {
+        let listing = r#"{"minimaxModelSource":"token_plan","providers":[
+            {"providerId":"minimax_api","kind":"minimax-api-key","name":"MiniMax API Key","hasApiKey":true,"models":[]},
+            {"providerId":"custom_provider:llm-2","kind":"custom","name":"llm","hasApiKey":true,"models":[{"modelId":"MiniMax-M3"}]},
+            {"providerId":"custom_provider:probe-a","kind":"custom","name":"probe-a","hasApiKey":true}
+        ]}"#;
+        assert_eq!(
+            channel_slugs(listing),
+            vec![
+                MrChannelSlug {
+                    name: "llm".into(),
+                    slug: "llm-2".into()
+                },
+                MrChannelSlug {
+                    name: "probe-a".into(),
+                    slug: "probe-a".into()
+                },
+            ],
+            "the model menu advertises llm-2/…, so the CLI's slug — not the display name — is what maps a channel to its models"
+        );
+    }
+
+    #[test]
+    fn unusable_listing_reads_as_no_slugs_rather_than_a_wrong_one() {
+        // Nothing to filter by means the UI keeps showing the whole menu;
+        // inventing a slug would hide the channel's models.
+        assert!(channel_slugs("not json").is_empty());
+        assert!(channel_slugs("{}").is_empty());
+        assert!(channel_slugs(r#"{"providers":[{"providerId":"custom_provider:x"}]}"#).is_empty());
+        assert!(
+            channel_slugs(
+                r#"{"providers":[{"providerId":"minimax_api","kind":"minimax-api-key","name":"MiniMax API Key"}]}"#
+            )
+            .is_empty()
+        );
+    }
+
+    /// The status read is a plain listing: it needs no credential, so nothing
+    /// must be smuggled into argv or the child environment.
+    #[cfg(unix)]
+    #[test]
+    fn channel_slug_read_asks_the_cli_for_the_plain_listing() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("mr-official-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let log = dir.join("calls.log");
+        let log_path = log.display().to_string();
+        let stub = dir.join("mr");
+        std::fs::write(
+            &stub,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"ARGV:$*\" \"ENV:${{MCODE_PROVIDER_API_KEY:-unset}}\" >> '{log_path}'\ncat <<'JSON'\n{{\"providers\":[{{\"providerId\":\"minimax_api\",\"kind\":\"minimax-api-key\",\"name\":\"MiniMax API Key\"}},{{\"providerId\":\"custom_provider:llm\",\"kind\":\"custom\",\"name\":\"llm\"}}]}}\nJSON\nexit 0\n"
+            ),
+        )
+        .expect("write stub");
+        let mut permissions = std::fs::metadata(&stub).expect("metadata").permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&stub, permissions).expect("chmod");
+        std::fs::write(&log, "").expect("clear log");
+
+        let rows = read_channel_slugs(stub.to_str().expect("stub path")).expect("stub exits 0");
+
+        let recorded = std::fs::read_to_string(&log).expect("read log");
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert_eq!(
+            rows,
+            vec![MrChannelSlug {
+                name: "llm".into(),
+                slug: "llm".into()
+            }]
+        );
+        assert!(
+            recorded.contains("ARGV:provider list --json"),
+            "unexpected argv:\n{recorded}"
+        );
+        assert!(
+            recorded.contains("ENV:unset"),
+            "the listing read must not hand the CLI a key env:\n{recorded}"
+        );
     }
 
     #[test]

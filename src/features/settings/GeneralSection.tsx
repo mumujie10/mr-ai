@@ -16,6 +16,17 @@ import {
 import { ipc, type AppSettings } from "@/lib/ipc";
 import { IS_WINDOWS, isWeb, pickFile } from "@/lib/platform";
 import { applyTheme } from "./theme";
+import ChevronDown from "lucide-react/dist/esm/icons/chevron-down";
+import { Collapsible } from "@/components/application/collapsible/collapsible";
+import {
+  applyInterfaceTypography,
+  normalizeFontSize,
+  normalizeUiFontWeight,
+  TYPOGRAPHY_DEFAULTS,
+  type FontSizeField,
+  type InterfaceTypographyPreferences,
+  UI_FONT_WEIGHTS,
+} from "./interface-typography";
 import {
   applyFontPreferences,
   CUSTOM_FONT_VALUE,
@@ -67,6 +78,7 @@ function useGeneralSettingsState() {
   const [limitText, setLimitText] = useState<string | null>(null);
   // 正在读取/注册上传字体的行；null = 空闲，用于禁用再次点选。
   const [fontBusy, setFontBusy] = useState<FontField | null>(null);
+  const [typographyBusy, setTypographyBusy] = useState(false);
   // 窗口当前是否有系统装饰（isDecorated）；null = 还没读回来。
   const [decorated, setDecorated] = useState<boolean | null>(null);
 
@@ -190,6 +202,28 @@ function useGeneralSettingsState() {
     useChatStore.getState().setThinkingAutoCollapse(autoCollapse);
     void save({ thinkingAutoCollapse: autoCollapse });
   };
+  const onWideLayoutChange = (wide: boolean) => {
+    if (!settings) return;
+    setSettings({ ...settings, chatWideLayout: wide });
+    useChatStore.getState().setWideLayout(wide);
+    void save({ chatWideLayout: wide });
+  };
+
+  /** 字号 / 字重改动：先按新值渲染（保存要一个来回），写盘失败再把界面退回
+   *  原值——否则屏幕上的字号和落盘的结果会长期不一致。 */
+  const onTypographyChange = async (patch: InterfaceTypographyPreferences) => {
+    if (!settings || typographyBusy) return;
+    const next = { ...settings, ...patch };
+    setTypographyBusy(true);
+    setSettings(next);
+    applyInterfaceTypography(next);
+    const saved = await save(patch);
+    if (!saved) {
+      setSettings(settings);
+      applyInterfaceTypography(settings);
+    }
+    setTypographyBusy(false);
+  };
   /** Font mode commits (默认 / 系统 / 自定义): apply to the document root at
    *  once (bootstrap re-reads the mirror on the next launch) and persist.
    *  Entering 自定义 with an uploaded file re-applies that file right away;
@@ -246,6 +280,9 @@ function useGeneralSettingsState() {
     onThreadLimitKeyDown,
     onSendShortcutChange,
     onThinkingAutoCollapseChange,
+    onWideLayoutChange,
+    typographyBusy,
+    onTypographyChange,
     onFontModeChange,
     onFontFilePick,
   };
@@ -257,6 +294,7 @@ function AppearanceCard({
   limitText,
   decorated,
   fontBusy,
+  typographyBusy,
   onThemeChange,
   onTitlebarChange,
   onLanguageChange,
@@ -265,11 +303,14 @@ function AppearanceCard({
   onThreadLimitChange,
   onThreadLimitCommit,
   onThreadLimitKeyDown,
+  onWideLayoutChange,
+  onTypographyChange,
 }: {
   settings: AppSettings;
   limitText: string | null;
   decorated: boolean | null;
   fontBusy: FontField | null;
+  typographyBusy: boolean;
   onThemeChange: (key: Key | null) => void;
   onTitlebarChange: (key: Key | null) => void;
   onLanguageChange: (key: Key | null) => void;
@@ -278,6 +319,8 @@ function AppearanceCard({
   onThreadLimitChange: (value: string) => void;
   onThreadLimitCommit: () => void;
   onThreadLimitKeyDown: (event: KeyboardEvent) => void;
+  onWideLayoutChange: (wide: boolean) => void;
+  onTypographyChange: (patch: InterfaceTypographyPreferences) => Promise<void>;
 }) {
   const { t } = useTranslation();
   return (
@@ -337,6 +380,18 @@ function AppearanceCard({
           </Select>
         </SettingsRow>
         <ZoomRow />
+        <SettingsRow
+          anchor="chatWideLayout"
+          label={t("settings.chatWideLayout")}
+          description={t("settings.chatWideLayoutDesc")}
+        >
+          <Switch
+            size="sm"
+            aria-label={t("settings.chatWideLayout")}
+            isSelected={settings.chatWideLayout === true}
+            onChange={onWideLayoutChange}
+          />
+        </SettingsRow>
         <FontFamilyRow
           anchor="fontFamily"
           label={t("settings.fontFamily")}
@@ -373,7 +428,147 @@ function AppearanceCard({
           />
         </SettingsRow>
       </SettingsCard>
+      <TypographyCard
+        settings={settings}
+        busy={typographyBusy}
+        onChange={onTypographyChange}
+      />
     </div>
+  );
+}
+
+/** 高级排版（默认收起）：三档独立字号 + 界面字重 + 一次恢复这四项。收起时
+ *  界面与以前一致；搜索命中其中任一项会自动展开（设置搜索的 activatorAnchor）。 */
+function TypographyCard({
+  settings,
+  busy,
+  onChange,
+}: {
+  settings: AppSettings;
+  busy: boolean;
+  onChange: (patch: InterfaceTypographyPreferences) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mt-4">
+      <div className="mb-2 flex items-center justify-between">
+        <button
+          type="button"
+          data-setting-anchor="typographyAdvanced"
+          aria-expanded={open}
+          aria-controls="typography-advanced-panel"
+          onClick={() => setOpen(!open)}
+          className="flex cursor-pointer items-center gap-1 text-body-medium text-text-secondary"
+        >
+          {t("settings.typographyAdvanced")}
+          <ChevronDown
+            className={`size-4 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+            aria-hidden
+          />
+        </button>
+        <Button
+          size="small"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => void onChange(TYPOGRAPHY_DEFAULTS)}
+        >
+          {t("settings.typographyReset")}
+        </Button>
+      </div>
+      <Collapsible open={open} seconds={0.2}>
+        <div id="typography-advanced-panel">
+          <SettingsCard>
+            {(["uiFontSize", "contentFontSize", "codeFontSize"] as const).map((field) => (
+              <TypographySizeRow
+                key={field}
+                field={field}
+                value={settings[field]}
+                busy={busy}
+                onChange={onChange}
+              />
+            ))}
+            <SettingsRow
+              anchor="uiFontWeight"
+              label={t("settings.uiFontWeight")}
+              description={t("settings.uiFontWeightDesc")}
+            >
+              <Select
+                aria-label={t("settings.uiFontWeight")}
+                selectedKey={normalizeUiFontWeight(settings.uiFontWeight)}
+                isDisabled={busy}
+                onSelectionChange={(key) => {
+                  if (key != null) {
+                    void onChange({ uiFontWeight: normalizeUiFontWeight(String(key)) });
+                  }
+                }}
+                triggerClassName={SELECT_TRIGGER}
+              >
+                {UI_FONT_WEIGHTS.map((value) => (
+                  <SelectItem key={value} id={value}>
+                    {t(`settings.uiFontWeight_${value}`)}
+                  </SelectItem>
+                ))}
+              </Select>
+            </SettingsRow>
+          </SettingsCard>
+        </div>
+      </Collapsible>
+    </div>
+  );
+}
+
+function TypographySizeRow({
+  field,
+  value,
+  busy,
+  onChange,
+}: {
+  field: FontSizeField;
+  value: number;
+  busy: boolean;
+  onChange: (patch: InterfaceTypographyPreferences) => Promise<void>;
+}) {
+  const { t } = useTranslation();
+  const size = normalizeFontSize(field, value);
+  const [text, setText] = useState(String(size));
+  useEffect(() => setText(String(size)), [size]);
+  const commit = () => {
+    const next = Number(text);
+    if (!text.trim() || normalizeFontSize(field, next) !== next) {
+      setText(String(size));
+      return;
+    }
+    if (next !== size) void onChange({ [field]: next });
+  };
+  return (
+    <SettingsRow
+      anchor={field}
+      label={t(`settings.${field}`)}
+      description={t(`settings.${field}Desc`)}
+    >
+      <div className="flex shrink-0 items-center gap-2">
+        <Input
+          aria-label={t(`settings.${field}`)}
+          type="number"
+          size="small"
+          className="w-20"
+          value={text}
+          isDisabled={busy}
+          onChange={setText}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              (event.target as HTMLInputElement).blur();
+            } else if (event.key === "Escape") {
+              setText(String(size));
+            }
+          }}
+        />
+        <span className="text-body-regular text-text-secondary">px</span>
+      </div>
+    </SettingsRow>
   );
 }
 
@@ -560,6 +755,9 @@ export function GeneralSection() {
     onThreadLimitKeyDown,
     onSendShortcutChange,
     onThinkingAutoCollapseChange,
+    onWideLayoutChange,
+    typographyBusy,
+    onTypographyChange,
     fontBusy,
     onFontModeChange,
     onFontFilePick,
@@ -581,6 +779,7 @@ export function GeneralSection() {
           limitText={limitText}
           decorated={decorated}
           fontBusy={fontBusy}
+          typographyBusy={typographyBusy}
           onThemeChange={onThemeChange}
           onTitlebarChange={onTitlebarChange}
           onLanguageChange={onLanguageChange}
@@ -589,6 +788,8 @@ export function GeneralSection() {
           onThreadLimitChange={onThreadLimitChange}
           onThreadLimitCommit={commitThreadLimitText}
           onThreadLimitKeyDown={onThreadLimitKeyDown}
+          onWideLayoutChange={onWideLayoutChange}
+          onTypographyChange={onTypographyChange}
         />
       )}
       {settings && (

@@ -11,6 +11,7 @@ import {
   type EffortLevel,
   type ModelOption,
 } from "@/components/application/ai-chat/cli-menu";
+import type { ChannelOption } from "@/components/application/ai-chat/engine-model-panel";
 import {
   effectivePermission,
   useChatStore,
@@ -149,7 +150,7 @@ function useConversationMenus({
   displayEfforts: Record<string, EffortLevel>;
   /** Reasoning levels the active session's engine advertised, by engine id. */
   displayEffortLevels?: Record<string, string[] | null>;
-  channelsByEngine: Record<string, { id: string; label: string }[]>;
+  channelsByEngine: Record<string, ChannelOption[]>;
   displayProviders: Record<string, string>;
   ompServiceTier: OmpServiceTier;
   codexServiceTier: OmpServiceTier;
@@ -409,6 +410,7 @@ export const ChatConversation = memo(function ChatConversation({
   const {
     catalogs,
     modelsByEngine,
+    modelsByChannel,
     channelsByEngine,
     refresh: refreshModels,
     pendingEngines,
@@ -586,6 +588,7 @@ export const ChatConversation = memo(function ChatConversation({
         permissionMenu={composerPermissionMenu}
         supportsImages={supportsImages}
         onPasteImages={pasteImages}
+        onPastePaths={active ? handleDroppedPaths : undefined}
         onDropPaths={active ? handleDroppedPaths : undefined}
         onDropFiles={supportsImages ? pasteImages : undefined}
         sessionUsage={sessionUsage}
@@ -601,6 +604,8 @@ export const ChatConversation = memo(function ChatConversation({
         <ModelSettingsDialog
           engineId={settingsEngine}
           models={modelsByEngine[settingsEngine] ?? []}
+          channels={channelsByEngine[settingsEngine] ?? []}
+          modelsByChannel={modelsByChannel[settingsEngine]}
           effortLevels={displayEffortLevels?.[settingsEngine]}
           onClose={() => setSettingsEngine(null)}
         />

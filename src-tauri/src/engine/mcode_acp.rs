@@ -608,8 +608,10 @@ fn parse_model_option_value(value: &str) -> Option<(String, String)> {
 /// The CLI files user-added channels under the `custom_provider:<name>`
 /// namespace and leaves official ones bare (`minimax`). The `<name>` is the
 /// channel the user typed, so that is the label — the namespace is the CLI's
-/// internal bucket and says nothing to the picker.
-fn channel_label(provider: &str) -> &str {
+/// internal bucket and says nothing to the picker. Shared with
+/// `mr_providers::channel_slugs`, which has to mint the same prefix the model
+/// menu uses.
+pub(crate) fn channel_label(provider: &str) -> &str {
     provider
         .strip_prefix("custom_provider:")
         .unwrap_or(provider)

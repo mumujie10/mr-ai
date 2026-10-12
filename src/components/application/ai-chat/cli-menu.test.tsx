@@ -21,8 +21,8 @@ const MODELS = {
 
 const CHANNELS = {
   codex: [
-    { id: "c1", label: "codex-one" },
-    { id: "c2", label: "codex-two" },
+    { id: "c1", label: "codex-one", kind: "custom" as const },
+    { id: "c2", label: "codex-two", kind: "custom" as const },
   ],
 };
 

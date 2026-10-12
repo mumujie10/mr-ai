@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Slider as AriaSlider,
@@ -20,6 +21,7 @@ import {
   type EffortLevel,
 } from "@/components/application/ai-chat/effort-levels";
 import type { ModelOption } from "@/components/application/ai-chat/cli-menu";
+import type { ChannelOption } from "@/components/application/ai-chat/engine-model-panel";
 import {
   hiddenModelIds,
   modelSettingFor,
@@ -112,15 +114,49 @@ function ContextWindowSlider({
   );
 }
 
+/** One channel's block inside the table: a caption line, then its rows. Every
+ *  channel is listed — 官方配置 and each provider channel side by side — because
+ *  a preference belongs to a channel, and hiding one group would make its
+ *  settings uneditable from here. */
+function ChannelSection({
+  label,
+  rows,
+  children,
+}: {
+  label: string;
+  rows: number;
+  children: ReactNode;
+}) {
+  if (!label) return <>{children}</>;
+  return (
+    <>
+      <div className="flex items-baseline gap-2 bg-background-secondary-default px-2 py-1.5">
+        <span className="min-w-0 truncate text-caption-1-medium text-text-secondary">
+          {label}
+        </span>
+        <span className="shrink-0 text-caption-2-regular text-text-tertiary">{rows}</span>
+      </div>
+      {children}
+    </>
+  );
+}
+
 export function ModelSettingsDialog({
   engineId,
   models,
+  channels,
+  modelsByChannel,
   effortLevels,
   onClose,
 }: {
   engineId: string;
   /** The rows the picker shows (labels come from the engine's catalog). */
   models: ModelOption[];
+  /** Every channel this engine can run, official first. Listed here as its own
+   *  group so 官方配置 and the provider channels are visibly different things. */
+  channels?: ChannelOption[];
+  /** The same rows per channel id, unfiltered (see `useEngineModels`). */
+  modelsByChannel?: Record<string, ModelOption[]>;
   /** Levels the engine reported for the model this session runs. Missing =
    *  not reported (offer the app's fixed stops); empty = no knob at all. */
   effortLevels?: string[] | null;
@@ -150,6 +186,25 @@ export function ModelSettingsDialog({
     ];
   }, [models, hiddenIds]);
 
+  const engineChannels = channels ?? [];
+  // One block per channel — 官方配置 first, then every provider channel — each
+  // carrying its own rows. Nothing sits behind a selection: a preference belongs
+  // to one channel, so all of them have to be editable from the same screen.
+  // A channel with no models shows its caption and nothing under it, which is
+  // the truth rather than a message to explain it.
+  const groups = useMemo(() => {
+    if (engineChannels.length > 0 && modelsByChannel) {
+      return engineChannels.map((channel) => ({
+        key: channel.id,
+        label: channel.label,
+        rows: modelsByChannel[channel.id] ?? [],
+      }));
+    }
+    // No channel data for this engine: one unlabelled block, with the rows the
+    // picker dropped re-read from the same store so a hide stays undoable.
+    return [{ key: "", label: "", rows }];
+  }, [engineChannels, modelsByChannel, rows]);
+
   return (
     <ModalShell
       label={t("chat.modelSettings")}
@@ -166,7 +221,7 @@ export function ModelSettingsDialog({
       </div>
 
       <div className="-mx-1 min-h-0 flex-1 overflow-y-auto px-1">
-        {rows.length === 0 ? (
+        {groups.every((group) => group.rows.length === 0) ? (
           <p className="py-6 text-center text-body-2-regular text-text-tertiary">
             {t("chat.modelSettingsEmpty")}
           </p>
@@ -178,7 +233,9 @@ export function ModelSettingsDialog({
               <span className="text-center">{t("chat.modelVisibilityColumn")}</span>
               <span>{t("chat.modelContextColumn")}</span>
             </div>
-            {rows.map((row) => {
+            {groups.map((group) => (
+              <ChannelSection key={group.key || "all"} label={group.label} rows={group.rows.length}>
+                {group.rows.map((row) => {
               const setting = modelSettingFor(byKey, engineId, row.id);
               const hidden = setting?.hidden === true;
               return (
@@ -245,7 +302,9 @@ export function ModelSettingsDialog({
                   />
                 </div>
               );
-            })}
+                })}
+              </ChannelSection>
+            ))}
           </div>
         )}
       </div>

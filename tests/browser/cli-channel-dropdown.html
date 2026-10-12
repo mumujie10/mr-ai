@@ -6,6 +6,23 @@
 </head>
 <body style="margin:0;background:#0b0b0b">
 <div id="root"></div>
+<script>
+// Harness-only override: the in-app browser viewport is < 768px, where CliMenu
+// renders the model panel as a MODAL instead of the desktop side flyout. This
+// fixture measures the desktop flyout (its `div.absolute` popover row and the
+// hover-intent path), so pin the media query to desktop. Same override shape
+// as composer-footer-repro.html.
+window.matchMedia = (query) => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener() {},
+  removeListener() {},
+  addEventListener() {},
+  removeEventListener() {},
+  dispatchEvent: () => false,
+});
+</script>
 <pre id="result" style="position:fixed;top:0;left:0;z-index:50;color:#7dd3fc;font:12px monospace">Running…</pre>
 <script type="module" src="./cli-channel-dropdown.tsx"></script>
 </body>

@@ -1,3 +1,4 @@
+use crate::engine::mr_providers::MrChannelSlug;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -11,8 +12,7 @@ pub const DISABLED_PROVIDER_ID: &str = "__disabled__";
 pub const ENGINES: [&str; 13] = [
     "claude", "kimi", "grok", "codex", "pi", "omp", "dsh", "agy", "opencode", "qoder", "qoder-cn",
     // This app's own agent runtime, bundled under `cli/` and staged as `mr`.
-    "mireai",
-    // The official MiniMax Code CLI, installed by the user himself.
+    "mireai", // The official MiniMax Code CLI, installed by the user himself.
     "minimax",
 ];
 
@@ -275,6 +275,48 @@ pub(crate) fn resolve_provider(
 #[tauri::command]
 pub fn get_cli_config() -> Result<CliConfig, String> {
     read_config()
+}
+
+/// The bundled runtime's channels as the CLI itself lists them: the display name
+/// this app also stores, mapped to the slug its model menu advertises that
+/// channel under. Without it `llm` (app-side name) cannot be told apart from
+/// `llm-2` (the CLI's provider id), so picking a channel would keep showing the
+/// previous channel's models. An empty list means nothing was read — callers
+/// leave the menu unfiltered rather than blanking a channel.
+#[tauri::command]
+pub fn mireai_channel_slugs(force: Option<bool>) -> Result<Vec<MrChannelSlug>, String> {
+    channel_slugs_cached(force.unwrap_or(false))
+}
+
+/// The listing only changes when a channel is added, renamed or removed — all
+/// of which happen in this app — so one read serves every mount until an
+/// explicit 刷新 forces a fresh one. A failed read is not cached, so the next
+/// caller retries instead of serving an unfiltered menu for the whole window.
+const CHANNEL_SLUG_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+static CHANNEL_SLUGS: Mutex<Option<(std::time::Instant, Vec<MrChannelSlug>)>> = Mutex::new(None);
+
+fn channel_slugs_cached(force: bool) -> Result<Vec<MrChannelSlug>, String> {
+    let settings = crate::settings::read_settings().unwrap_or_default();
+    let bin = crate::engine::engine_bin(&settings, crate::engine::mr_providers::MIREAI_ENGINE_ID);
+    read_channel_slugs(&bin, force)
+}
+
+/// Split out from [`channel_slugs_cached`] so the cache contract is testable
+/// against a stub binary.
+fn read_channel_slugs(bin: &str, force: bool) -> Result<Vec<MrChannelSlug>, String> {
+    let mut cache = CHANNEL_SLUGS
+        .lock()
+        .unwrap_or_else(|poisoned| std::sync::PoisonError::into_inner(poisoned));
+    if !force {
+        if let Some((read_at, rows)) = cache.as_ref() {
+            if read_at.elapsed() < CHANNEL_SLUG_TTL {
+                return Ok(rows.clone());
+            }
+        }
+    }
+    let rows = crate::engine::mr_providers::read_channel_slugs(bin)?;
+    *cache = Some((std::time::Instant::now(), rows.clone()));
+    Ok(rows)
 }
 
 /// Lock-free core of mutate_section: callers that already hold the
@@ -854,6 +896,134 @@ mod tests {
             stored,
             Some(complete),
             "the aborted save must not replace the channel"
+        );
+    }
+
+    /// Stub `mr` that logs one line per call and answers with `json` (or fails
+    /// outright when `json` is `None`).
+    /// The status cache is process-global, so these two cases take turns.
+    static OFFICIAL_STATUS_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Owns the stub binary's temp directory and the test lock. Deliberately
+    /// not `Scratch`: this cache needs no environment, and `Scratch` redirects
+    /// the process-global `HOME` that unrelated tests (for instance
+    /// `engine::codex_app`'s protocol peer) also read — holding it would widen
+    /// a collision the test under no obligation to touch.
+    struct StubDir {
+        dir: std::path::PathBuf,
+        _lock: std::sync::MutexGuard<'static, ()>,
+    }
+
+    fn stub_dir() -> StubDir {
+        let dir = std::env::temp_dir().join(format!(
+            "ccgui-next-official-status-{}",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        StubDir {
+            dir,
+            _lock: OFFICIAL_STATUS_TEST_LOCK
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        }
+    }
+
+    impl Drop for StubDir {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.dir).ok();
+        }
+    }
+
+    #[cfg(unix)]
+    fn channel_slug_stub(
+        scratch: &StubDir,
+        json: Option<&str>,
+    ) -> (std::path::PathBuf, std::path::PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let log = scratch.dir.join("calls.log");
+        let stub = scratch.dir.join("mr");
+        let body = match json {
+            Some(json) => format!("cat <<'JSON'\n{json}\nJSON\nexit 0\n"),
+            None => "printf 'boom' >&2\nexit 1\n".to_string(),
+        };
+        std::fs::write(
+            &stub,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\n{body}",
+                log.display()
+            ),
+        )
+        .expect("write stub");
+        let mut permissions = std::fs::metadata(&stub).expect("metadata").permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&stub, permissions).expect("chmod");
+        std::fs::write(&log, "").expect("clear log");
+        (stub, log)
+    }
+
+    #[cfg(unix)]
+    fn slug_calls(log: &std::path::Path) -> usize {
+        std::fs::read_to_string(log)
+            .expect("read log")
+            .lines()
+            .count()
+    }
+
+    #[cfg(unix)]
+    fn clear_channel_slug_cache() {
+        *CHANNEL_SLUGS
+            .lock()
+            .unwrap_or_else(|poisoned| std::sync::PoisonError::into_inner(poisoned)) = None;
+    }
+
+    /// One spawn feeds every mount until the window ends, and only an explicit
+    /// 刷新 asks again — otherwise opening the flyout would mean a process.
+    #[cfg(unix)]
+    #[test]
+    fn channel_slugs_are_cached_until_a_forced_read() {
+        let scratch = stub_dir();
+        clear_channel_slug_cache();
+        let (stub, log) = channel_slug_stub(
+            &scratch,
+            Some(
+                r#"{"providers":[{"providerId":"minimax_api","kind":"minimax-api-key","name":"MiniMax API Key"},{"providerId":"custom_provider:llm-2","kind":"custom","name":"llm"}]}"#,
+            ),
+        );
+        let path = stub.to_str().expect("stub path");
+        let expected = vec![MrChannelSlug {
+            name: "llm".into(),
+            slug: "llm-2".into(),
+        }];
+
+        assert_eq!(read_channel_slugs(path, false).unwrap(), expected);
+        assert_eq!(read_channel_slugs(path, false).unwrap(), expected);
+        assert_eq!(
+            slug_calls(&log),
+            1,
+            "the second read within the window must not spawn the CLI again"
+        );
+
+        assert_eq!(read_channel_slugs(path, true).unwrap(), expected);
+        assert_eq!(slug_calls(&log), 2, "force re-reads");
+    }
+
+    /// A CLI that cannot be asked leaves the menu unfiltered — but only for
+    /// this call: nothing gets cached, so the next caller tries again instead
+    /// of serving a stale answer for the rest of the window.
+    #[cfg(unix)]
+    #[test]
+    fn failed_channel_slug_read_leaves_nothing_cached() {
+        let scratch = stub_dir();
+        clear_channel_slug_cache();
+        let (stub, log) = channel_slug_stub(&scratch, None);
+        let path = stub.to_str().expect("stub path");
+
+        assert!(read_channel_slugs(path, false).is_err());
+        assert!(read_channel_slugs(path, false).is_err());
+        assert_eq!(
+            slug_calls(&log),
+            2,
+            "a failure must not be cached for the whole window"
         );
     }
 }

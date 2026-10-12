@@ -6,6 +6,7 @@ import { ipc } from "@/lib/ipc";
 import "@/lib/i18n";
 import i18n from "@/lib/i18n";
 import { useEngineModels, type EngineModelsState } from "./use-engine-models";
+import { PSEUDO_LOCAL } from "@/features/settings/providers";
 import { useModelSettings } from "../model-settings";
 
 vi.mock("@/lib/ipc", () => ({
@@ -13,6 +14,7 @@ vi.mock("@/lib/ipc", () => ({
     getCliConfig: vi.fn(async () => ({})),
     getAppSettings: vi.fn(async () => ({})),
     listEngineModels: vi.fn(async () => ({ models: [], authoritative: false })),
+    mireaiChannelSlugs: vi.fn(async () => [] as { name: string; slug: string }[]),
   },
 }));
 
@@ -154,6 +156,41 @@ describe("useEngineModels channel models", () => {
 
     await show(null, undefined, { claude: "c2" });
     expect(opusLabel()).toBe("two-opus");
+  });
+
+  it("DSH 渠道裸模型 id 与目录的 provider/model 复合 id 合并为一行", async () => {
+    // 报告的问题:DSH 选择器里 deepseek-v4-pro(渠道配置的裸 id)与
+    // DeepSeek-V4-Pro(catalog 的 deepseek-official/deepseek-v4-pro)重复出现。
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      ...cliConfigWith(EMPTY_SECTION),
+      dsh: {
+        current: "ch1",
+        providers: { ch1: { name: "Deepseek", model: "deepseek-v4-pro" } },
+      },
+    });
+    vi.mocked(ipc.listEngineModels).mockResolvedValue({
+      models: [
+        {
+          id: "deepseek-official/deepseek-v4-pro",
+          name: "DeepSeek-V4-Pro",
+          description: "Stronger agentic coding",
+          provider: "deepseek-official",
+        },
+        {
+          id: "deepseek-official/deepseek-flash",
+          name: "DeepSeek-V41-Flash",
+          provider: "deepseek-official",
+        },
+      ],
+      authoritative: true,
+    } as unknown as EngineCatalog);
+
+    await show([engineInfo("dsh", true)]);
+    const rows = latest.modelsByEngine.dsh ?? [];
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.id).toBe("deepseek-official/deepseek-v4-pro");
+    expect(rows[0]?.label).toBe("DeepSeek-V4-Pro");
+    expect(rows[0]?.description).toBe("Stronger agentic coding");
   });
 });
 
@@ -322,5 +359,150 @@ describe("模型设置隐藏的行", () => {
     // 会话正在跑的那一行即使被藏也留在列表里:把它从选择器上抹掉会让胶囊变空，
     // 用户也再没法切回来。
     expect(ids).toContain("pi/m-picked");
+  });
+});
+
+describe("useEngineModels 渠道分组", () => {
+  const baseConfig = (): CliConfig => {
+    const section: ProviderSection = { providers: {}, current: null };
+    return {
+      claude: section,
+      kimi: section,
+      grok: section,
+      codex: section,
+      pi: section,
+      omp: section,
+      dsh: section,
+      agy: section,
+      opencode: section,
+      qoder: section,
+      "qoder-cn": section,
+      mireai: section,
+      minimax: section,
+    };
+  };
+
+  afterEach(() => {
+    vi.mocked(ipc.mireaiChannelSlugs).mockReset();
+    vi.mocked(ipc.mireaiChannelSlugs).mockResolvedValue([]);
+  });
+
+  // 内置运行时一次上报的模型菜单含所有渠道的行(CLI 就是这么给的),所以选中的
+  // 渠道决定看到哪些行。渠道 → slug 只能问 CLI:同名重存会让 CLI fork 出
+  // llm-2,模型 id 前缀跟着变。
+  const threeChannelCatalog = {
+    models: [
+      { id: "minimax/MiniMax-M2.7", name: "MiniMax-M2.7", provider: "minimax" },
+      { id: "llm-2/MiniMax-M3", name: "MiniMax-M3", provider: "llm-2" },
+      { id: "probe-a/model-alpha", name: "model-alpha", provider: "probe-a" },
+    ],
+    authoritative: true,
+  } as unknown as EngineCatalog;
+
+  it("选供应商渠道就只看这个渠道自己的模型", async () => {
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      ...baseConfig(),
+      mireai: {
+        current: "ch-llm",
+        providers: { "ch-llm": { name: "llm" }, "ch-probe": { name: "probe-a" } },
+      },
+    });
+    vi.mocked(ipc.listEngineModels).mockResolvedValue(threeChannelCatalog);
+    vi.mocked(ipc.mireaiChannelSlugs).mockResolvedValue([
+      { name: "llm", slug: "llm-2" },
+      { name: "probe-a", slug: "probe-a" },
+    ]);
+    await show([engineInfo("mireai", true)]);
+    expect((latest.modelsByEngine.mireai ?? []).map((m) => m.id)).toEqual([
+      "llm-2/MiniMax-M3",
+    ]);
+
+    // 换到另一个渠道,列表跟着换成那个渠道的模型 —— 用户报的就是这一步没跟。
+    await show(null, undefined, { mireai: "ch-probe" });
+    expect((latest.modelsByEngine.mireai ?? []).map((m) => m.id)).toEqual([
+      "probe-a/model-alpha",
+    ]);
+
+    // 渠道记录没了(别处删的)不猜:整表摆出来,而不是把官方配置的行冒充成它的。
+    await show(null, undefined, { mireai: "ch-gone" });
+    expect((latest.modelsByEngine.mireai ?? []).map((m) => m.id)).toHaveLength(3);
+  });
+
+  it("官方配置列运行时自己跑的模型,本 App 管的渠道不混进来", async () => {
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      ...baseConfig(),
+      mireai: { current: null, providers: { "ch-llm": { name: "llm" } } },
+    });
+    vi.mocked(ipc.listEngineModels).mockResolvedValue(threeChannelCatalog);
+    vi.mocked(ipc.mireaiChannelSlugs).mockResolvedValue([{ name: "llm", slug: "llm-2" }]);
+    await show([engineInfo("mireai", true)]);
+    // llm-2 归那个渠道;minimax 与 probe-a(用户只在 CLI 里配过)都还是 CLI 自己
+    // 在跑的东西,官方配置下面照样能选——不收窄不存在的那部分。
+    expect((latest.modelsByEngine.mireai ?? []).map((m) => m.id)).toEqual([
+      "minimax/MiniMax-M2.7",
+      "probe-a/model-alpha",
+    ]);
+  });
+
+  it("问不到 slug 时不收窄:宁可多列也不把渠道自己的模型藏掉", async () => {
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      ...baseConfig(),
+      mireai: { current: "ch-llm", providers: { "ch-llm": { name: "llm" } } },
+    });
+    vi.mocked(ipc.listEngineModels).mockResolvedValue(threeChannelCatalog);
+    vi.mocked(ipc.mireaiChannelSlugs).mockRejectedValue(new Error("mr 未安装"));
+    await show([engineInfo("mireai", true)]);
+    expect((latest.modelsByEngine.mireai ?? []).map((m) => m.id)).toHaveLength(3);
+  });
+
+  it("模型设置拿到的是每个渠道各自的行,一个渠道都不少", async () => {
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      ...baseConfig(),
+      mireai: {
+        current: "ch-llm",
+        providers: { "ch-llm": { name: "llm" }, "ch-probe": { name: "probe-a" } },
+      },
+    });
+    vi.mocked(ipc.listEngineModels).mockResolvedValue(threeChannelCatalog);
+    vi.mocked(ipc.mireaiChannelSlugs).mockResolvedValue([
+      { name: "llm", slug: "llm-2" },
+      { name: "probe-a", slug: "probe-a" },
+    ]);
+    await show([engineInfo("mireai", true)]);
+    const byChannel = latest.modelsByChannel.mireai ?? {};
+    expect(Object.keys(byChannel)).toEqual([PSEUDO_LOCAL, "ch-llm", "ch-probe"]);
+    expect(byChannel[PSEUDO_LOCAL].map((m) => m.id)).toEqual(["minimax/MiniMax-M2.7"]);
+    expect(byChannel["ch-llm"].map((m) => m.id)).toEqual(["llm-2/MiniMax-M3"]);
+    expect(byChannel["ch-probe"].map((m) => m.id)).toEqual(["probe-a/model-alpha"]);
+  });
+
+  it("内置引擎恒列出官方渠道,其他引擎照旧", async () => {
+    vi.mocked(ipc.getCliConfig).mockResolvedValue(baseConfig());
+    await show([engineInfo("mireai", true), engineInfo("omp", true)]);
+    expect((latest.channelsByEngine.mireai ?? []).map((c) => c.kind)).toEqual(["official"]);
+    expect(latest.channelsByEngine.omp ?? []).toEqual([]);
+  });
+
+  it("只有内置引擎按渠道分行:别的引擎每个渠道跑同一批别名行", async () => {
+    // claude/kimi 这些引擎的菜单是 CLI 自己的别名行,不随渠道变成不同的一批,
+    // 按渠道分段只会把同一批行重复抄几遍。
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      ...baseConfig(),
+      claude: { current: "c1", providers: { c1: { name: "one" }, c2: { name: "two" } } },
+    });
+    vi.mocked(ipc.listEngineModels).mockResolvedValue(threeChannelCatalog);
+    vi.mocked(ipc.mireaiChannelSlugs).mockResolvedValue([{ name: "llm", slug: "llm-2" }]);
+    await show([engineInfo("claude", true)]);
+    expect(latest.modelsByChannel.claude).toBeUndefined();
+    expect((latest.modelsByEngine.claude ?? []).map((m) => m.id)).toHaveLength(3);
+  });
+
+  it("刷新强制重读渠道 slug", async () => {
+    await show([engineInfo("mireai", true)]);
+    vi.mocked(ipc.mireaiChannelSlugs).mockClear();
+    await act(async () => {
+      await latest.refresh();
+    });
+    expect(ipc.mireaiChannelSlugs).toHaveBeenCalledWith(true);
   });
 });

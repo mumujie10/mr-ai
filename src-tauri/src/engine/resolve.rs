@@ -803,8 +803,12 @@ mod tests {
         let elapsed = started.elapsed();
         std::fs::remove_dir_all(root).unwrap();
         assert_eq!(result, Some(PathBuf::from("/prefix with spaces/bin")));
+        // The bug this catches is waiting for the pipe's EOF, which costs the
+        // child's own 30s. 10s is runner slack under a full suite (measured:
+        // this machine overruns a 2s bound while compiling siblings), not a
+        // grade on process-spawn speed.
         assert!(
-            elapsed < NPM_PROBE_TIMEOUT,
+            elapsed < Duration::from_secs(10),
             "stdout outlived npm: {elapsed:?}"
         );
     }
@@ -907,10 +911,11 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn npm_probe_stops_unlimited_output_before_timeout() {
-        // 16 MiB in one dd call: the 16 KiB budget trips on the first poll
-        // instead of depending on how fast this machine loops printf, so
-        // "before the deadline" is a property of the guard, not of the runner.
-        let root = fake_npm("/bin/dd if=/dev/zero bs=65536 count=256 2>/dev/null");
+        // 40 KiB: over the 16 KiB budget, so the guard trips on the first poll,
+        // and small enough that the assertion below measures the guard rather
+        // than how fast this machine pushes bytes through a pipe (16 MiB did —
+        // it blew the 2s bound on a loaded runner without any code being wrong).
+        let root = fake_npm("/bin/dd if=/dev/zero bs=1024 count=40 2>/dev/null");
         let started = Instant::now();
         let result = discover_npm_global_bin_dir(&[root.clone(), PathBuf::from("/bin")]);
         let elapsed = started.elapsed();

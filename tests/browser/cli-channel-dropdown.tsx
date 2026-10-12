@@ -6,29 +6,36 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CliMenu, type EffortLevel } from "../../src/components/application/ai-chat/cli-menu";
+import type { ChannelOption } from "../../src/components/application/ai-chat/engine-model-panel";
 import "../../src/index.css";
 import "../../src/lib/i18n";
 
-/** The reported machine: a dozen relays plus the official entry. */
-const CHANNELS = [
-  { id: "local", label: "官方配置" },
-  { id: "motomoto", label: "motomoto" },
-  { id: "ly", label: "LY gpt" },
-  { id: "g2a", label: "g2a" },
-  { id: "cpa", label: "cpa" },
-  { id: "agentrouter", label: "agentrouter" },
-  { id: "gorouter", label: "gorouter" },
-  { id: "mint", label: "薄荷" },
-  { id: "tabletoken", label: "tabletoken" },
-  { id: "zen2api", label: "zen2api" },
-  { id: "tg", label: "TG" },
-  { id: "anyrouter", label: "anyrouter 共享" },
+/** The reported machine: a dozen relays beside the runtime's own 官方配置. */
+const CHANNELS: ChannelOption[] = [
+  { id: "local", label: "官方配置", kind: "official" },
+  { id: "motomoto", label: "motomoto", kind: "custom" },
+  { id: "ly", label: "LY gpt", kind: "custom" },
+  { id: "g2a", label: "g2a", kind: "custom" },
+  { id: "cpa", label: "cpa", kind: "custom" },
+  { id: "agentrouter", label: "agentrouter", kind: "custom" },
+  { id: "gorouter", label: "gorouter", kind: "custom" },
+  { id: "mint", label: "薄荷", kind: "custom" },
+  { id: "tabletoken", label: "tabletoken", kind: "custom" },
+  { id: "zen2api", label: "zen2api", kind: "custom" },
+  { id: "tg", label: "TG", kind: "custom" },
+  { id: "anyrouter", label: "anyrouter 共享", kind: "custom" },
 ];
 
 /** Channel names that must NOT be visible while the dropdown is collapsed. */
 const COLLAPSED_HIDDEN = ["agentrouter", "anyrouter 共享", "tabletoken"];
 
-const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+/** A hidden tab (automated / background browser) never fires rAF, so the paint
+ *  flush falls back to a timer — layout still resolves on demand, which is all
+ *  the measurements below need. */
+const frame = () =>
+  new Promise<void>((resolve) =>
+    document.hidden ? setTimeout(resolve, 32) : requestAnimationFrame(() => resolve()),
+  );
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /** Poll for a condition instead of guessing at animation timings. */
@@ -71,8 +78,12 @@ function Test() {
           ),
         "the channel dropdown trigger",
       );
-      const flyout = channelTrigger.closest<HTMLElement>("div.absolute");
-      if (!flyout) throw new Error("channel trigger is not inside the flyout");
+      // The flyout card itself (`data-engine-flyout`), not an `absolute`
+      // wrapper: react-aria positions its popover with inline styles, so no
+      // `absolute` class exists to walk up to — measuring the card is what
+      // this fixture is about anyway.
+      const flyout = channelTrigger.closest<HTMLElement>("[data-engine-flyout]");
+      if (!flyout) throw new Error("channel trigger is not inside the flyout card");
       await sleep(400);
       await frame();
       if (cancelled) return;
@@ -101,6 +112,13 @@ function Test() {
         clientHeight: Math.round(list.clientHeight),
         scrollHeight: Math.round(list.scrollHeight),
         panelHeight: Math.round(flyout.getBoundingClientRect().height),
+        providerCaption: text().includes("供应商渠道"),
+        // 官方配置 stays an ordinary selectable row beside the relays: the two
+        // are different things and neither one switches the other off.
+        officialTag: [...channelRows()]
+          .find((row) => row.textContent?.trim().startsWith("官方配置"))
+          ?.tagName.slice(0, 20),
+        explainsNothing: !text().includes("未配置"),
       };
 
       // Header filter: the panel's own field narrows the channel list and
@@ -154,6 +172,9 @@ function Test() {
         opened.rows === CHANNELS.length &&
         opened.clientHeight <= 200 &&
         opened.scrollHeight > opened.clientHeight &&
+        opened.providerCaption &&
+        opened.officialTag === "BUTTON" &&
+        opened.explainsNothing &&
         filtered.rows === 1 &&
         filteredText.length === 1 &&
         filteredText[0] === "agentrouter" &&

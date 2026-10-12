@@ -190,14 +190,14 @@ jobs:
           exit 1
 
       - name: Notarize and staple DMG
+        # Polling lives in scripts/notarize-dmg.sh so the local `build:mac`
+        # path and CI share one implementation: `notarytool submit --wait`
+        # turns a single timed-out status poll into a failed release.
         run: |
           set -euo pipefail
           DMG=$(find src-tauri/target/release/bundle/dmg -maxdepth 1 -name '*.dmg' | head -n 1)
           test -n "$DMG"
-          xcrun notarytool submit "$DMG" \
-            --keychain-profile "$NOTARY_PROFILE_NAME" \
-            --wait
-          xcrun stapler staple "$DMG"
+          bash scripts/notarize-dmg.sh "$DMG" "$NOTARY_PROFILE_NAME"
 
       - name: Package artifacts
         run: |

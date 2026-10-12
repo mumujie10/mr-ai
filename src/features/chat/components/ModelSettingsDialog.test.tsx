@@ -4,6 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ipc } from "@/lib/ipc";
 import "@/lib/i18n";
 import i18n from "@/lib/i18n";
+import type { ChannelOption } from "@/components/application/ai-chat/engine-model-panel";
+import type { ModelOption } from "@/components/application/ai-chat/cli-menu";
+import { PSEUDO_LOCAL } from "@/features/settings/providers";
 import { useModelSettings } from "../model-settings";
 import { ModelSettingsDialog } from "./ModelSettingsDialog";
 
@@ -68,6 +71,47 @@ describe("ModelSettingsDialog", () => {
     expect(text()).toContain("MiniMax-M2.7");
     // Both channels of the same engine are separate rows.
     expect(switches().length).toBe(2);
+  });
+
+  describe("按渠道分组展示", () => {
+    const CHANNELS: ChannelOption[] = [
+      { id: PSEUDO_LOCAL, label: "官方配置", kind: "official" },
+      { id: "llm", label: "llm", kind: "custom" },
+    ];
+    const BY_CHANNEL: Record<string, ModelOption[]> = {
+      [PSEUDO_LOCAL]: [{ id: "minimax/MiniMax-M2.7", label: "MiniMax-M2.7", provider: "minimax" }],
+      llm: [{ id: "llm/MiniMax-M3", label: "MiniMax-M3", provider: "llm" }],
+    };
+    const captions = () =>
+      [...document.querySelectorAll("span")].filter((s) =>
+        ["官方配置", "llm"].includes(s.textContent?.trim() ?? ""),
+      ).length;
+
+    it("每个渠道各占一段，两段同时在场，一行都不藏", () => {
+      render({ channels: CHANNELS, modelsByChannel: BY_CHANNEL });
+      expect(captions()).toBeGreaterThanOrEqual(2);
+      // Both channels' rows stay editable at once.
+      expect(text()).toContain("MiniMax-M3");
+      expect(text()).toContain("MiniMax-M2.7");
+      expect(switches().length).toBe(2);
+    });
+
+    it("没有模型行的渠道照样列出来，不配解释", () => {
+      render({
+        channels: CHANNELS,
+        modelsByChannel: { [PSEUDO_LOCAL]: [], llm: BY_CHANNEL.llm },
+      });
+      expect(text()).toContain("官方配置");
+      expect(text()).toContain("MiniMax-M3");
+      expect(switches().length).toBe(1);
+    });
+
+    it("没有渠道数据时回落到一列全部行（旧样子）", () => {
+      render({ channels: CHANNELS });
+      expect(text()).toContain("MiniMax-M3");
+      expect(text()).toContain("MiniMax-M2.7");
+      expect(text()).not.toContain("官方配置");
+    });
   });
 
   it("keeps a hidden row editable — hiding must be undoable", () => {

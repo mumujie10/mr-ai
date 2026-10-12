@@ -3,7 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import "@/lib/i18n";
 import i18n from "@/lib/i18n";
-import { EngineModelPanel } from "./engine-model-panel";
+import { PSEUDO_LOCAL } from "@/features/settings/providers";
+import { EngineModelPanel, type ChannelOption } from "./engine-model-panel";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -13,6 +14,7 @@ import { EngineModelPanel } from "./engine-model-panel";
 const CHANNELS = Array.from({ length: 11 }, (_, index) => ({
   id: `p${index + 1}`,
   label: `provider-${index + 1}`,
+  kind: "custom" as const,
 }));
 
 describe("EngineModelPanel channel picker", () => {
@@ -32,7 +34,7 @@ describe("EngineModelPanel channel picker", () => {
     container.remove();
   });
 
-  const render = (selectedChannelId: string) =>
+  const render = (selectedChannelId: string, channels: ChannelOption[] = CHANNELS) =>
     act(() => {
       root.render(
         <EngineModelPanel
@@ -44,7 +46,7 @@ describe("EngineModelPanel channel picker", () => {
           effort="medium"
           onPickModel={() => {}}
           onEffortChange={() => {}}
-          channels={CHANNELS}
+          channels={channels}
           selectedChannelId={selectedChannelId}
           onPickChannel={onPickChannel}
           ompServiceTier={null}
@@ -189,5 +191,50 @@ describe("EngineModelPanel channel picker", () => {
       );
     });
     expect(container.querySelector("[aria-label='推理强度']")).toBeTruthy();
+  });
+
+  const official: ChannelOption = {
+    id: PSEUDO_LOCAL,
+    label: i18n.t("settings.cliOfficial"),
+    kind: "official",
+  };
+  const relay: ChannelOption = { id: "llm", label: "llm", kind: "custom" };
+  const radios = () => [...container.querySelectorAll<HTMLElement>("[role='radio']")];
+  const open = () => act(() => trigger()!.click());
+
+  describe("官方配置 与供应商渠道", () => {
+    it("groups the channels added here under the settings page's own caption", () => {
+      render(PSEUDO_LOCAL, [official, relay]);
+      open();
+      const text = container.textContent ?? "";
+      // 供应商渠道 is what 设置 already calls this group — one name, one group.
+      expect(text).toContain(i18n.t("settings.cliChannels"));
+      // 官方配置 leads, the caption opens the app-managed group after it.
+      expect(text.indexOf(i18n.t("settings.cliOfficial"))).toBeLessThan(
+        text.indexOf(i18n.t("settings.cliChannels")),
+      );
+      expect(text.indexOf(i18n.t("settings.cliChannels"))).toBeLessThan(text.indexOf("llm"));
+    });
+
+    it("keeps 官方配置 selectable beside a provider channel — the two do not compete", () => {
+      render("llm", [official, relay]);
+      open();
+      // Reading the rows first: picking one closes the list and unmounts them.
+      const rows = radios();
+      expect(rows.length).toBe(2);
+      expect(rows[0].tagName).toBe("BUTTON");
+      act(() => rows[0].click());
+      expect(onPickChannel).toHaveBeenCalledWith("codex", PSEUDO_LOCAL);
+    });
+
+    it("says nothing extra when the engine has only its official config", () => {
+      // 内置只有官方一行:显示出来就够,不配任何"怎么还没配"的解释。
+      render(PSEUDO_LOCAL, [official]);
+      open();
+      const text = container.textContent ?? "";
+      expect(text).toContain(i18n.t("settings.cliOfficial"));
+      expect(text).not.toContain(i18n.t("settings.cliChannels"));
+      expect(radios().length).toBe(1);
+    });
   });
 });

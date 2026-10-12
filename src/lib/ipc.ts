@@ -409,6 +409,17 @@ export interface ProviderSection {
   /** Provider parked when the engine was disabled via the enable switch. */
   disabledFrom?: string | null;
 }
+
+/** One bundled-runtime channel as the CLI itself lists it: the display name the
+ *  app stores, plus the slug the model menu advertises that channel under. */
+export interface MrChannelSlug {
+  name: string;
+  /** The CLI's own provider id minus its `custom_provider:` namespace. After a
+   *  same-name re-add forks (`llm` → `llm-2`) this is NOT the display name, and
+   *  model ids come prefixed with it — so a channel's models can only be found
+   *  through this. */
+  slug: string;
+}
 export interface CcSwitchStatus {
   installed: boolean;
   changed: boolean;
@@ -512,6 +523,12 @@ export interface AppSettings {
   fontFamily: string;
   /** Absolute path of the uploaded UI font file (设置 → 外观). */
   fontFile: string;
+  /** Base UI font size in px; layout spacing stays unchanged. */
+  uiFontSize: number;
+  contentFontSize: number;
+  codeFontSize: number;
+  /** standard / medium / bold: relative to each text style. */
+  uiFontWeight: string;
   /** Code font for chat code blocks and the built-in terminal: "" = 系统默认,
    *  "custom" = the uploaded code font in `codeFontFile`. */
   codeFontFamily: string;
@@ -538,6 +555,9 @@ export interface AppSettings {
   /** Thinking-process row behavior once its thinking settles: true/absent =
    *  auto-fold (default), false = stay expanded until the user folds it. */
   thinkingAutoCollapse?: boolean | null;
+  /** 宽幕布 (设置 → 通用 → 外观): true = the chat content column fills its pane;
+   *  false/absent = the default centered 750px / `max-w-3xl` track. */
+  chatWideLayout?: boolean | null;
   /** 记忆行为 (设置 → 记忆): true/absent = 全局记忆可用 (default),
    *  false = 内置引擎不读取也不更新用户级长期记忆。 */
   memoryGlobalEnabled?: boolean | null;
@@ -576,6 +596,9 @@ export interface AppSettings {
   webRelayUrl?: string | null;
   /** Shared relay key; also the phone URL's path segment. */
   webRelayKey?: string | null;
+  /** 无人值守: dial the stored relay again at launch. The relay on/off position
+   *  itself is session state and is deliberately not persisted. */
+  webRelayUnattended?: boolean | null;
   /** LAN web access auto-start on app launch (设置 → 远程访问 → 内网访问: 随应用自动开启). */
   webAccessAutoStart?: boolean | null;
   /** LAN web access fixed port (null/0 = auto). */
@@ -1363,6 +1386,13 @@ export interface PetPackage extends PetSummary {
 export const ipc = {
   // config
   getCliConfig: () => invoke<CliConfig>("get_cli_config"),
+  /** The bundled runtime's channels, mapped to the slug its model menu uses for
+   *  each. An empty list means nothing was read (CLI missing, command failed,
+   *  older build) — callers must then leave the model menu unfiltered, not show
+   *  a channel as having no models. `force` re-reads past the backend's short
+   *  cache, which the flyout's 刷新 uses. */
+  mireaiChannelSlugs: (force?: boolean) =>
+    invoke<MrChannelSlug[]>("mireai_channel_slugs", { force }),
   upsertProvider: (engine: string, id: string, json: unknown) =>
     invoke<void>("upsert_provider", { engine, id, json }),
   /** 测试连接: probe this draft channel inside a scratch CLI profile. Nothing is
@@ -1546,6 +1576,10 @@ export const ipc = {
    * can flow through the same path-based image pipeline as picked files. */
   savePastedImage: (dataBase64: string, extension: string) =>
     invoke<string>("save_pasted_image", { dataBase64, extension }),
+  /** Absolute paths of the files on the OS clipboard (Finder / Explorer
+   * copies expose no path to the webview). Empty when the clipboard holds no
+   * file; the web bridge has no OS pasteboard and always answers empty. */
+  clipboardFilePaths: () => invoke<string[]>("clipboard_file_paths"),
   /** Copy explicitly user-picked files into the app sandbox and return the
    * new paths (same order). Picked paths live outside the sandbox, so the
    * engines' path-based image pipeline cannot read them in place. */
@@ -1984,6 +2018,10 @@ export const ipc = {
   webRelayStatus: () => invoke<RelayInfo | null>("web_relay_status"),
   webRelayStart: (url: string, key: string) => invoke<RelayInfo>("web_relay_start", { url, key }),
   webRelayStop: () => invoke<void>("web_relay_stop"),
+  /** 无人值守 marker: remembers the relay across launches. Turning it on also
+   *  needs a dial (`webRelayStart`) — the card does both. */
+  webRelayUnattended: (enabled: boolean) =>
+    invoke<void>("web_relay_unattended_set", { enabled }),
   /** Is a browser driving this machine through the relay right now? */
   remoteControlActive: () => invoke<boolean>("remote_control_active"),
   /** Replace the pairing key now instead of waiting for the automatic
