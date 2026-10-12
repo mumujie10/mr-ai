@@ -587,7 +587,9 @@ fn scan_inner(
     let (stats, signature) = stat_all(&workspaces, &candidates, &accepted_signature);
     let Some(tier1) = tier1_gate(db, signature)? else {
         let pruned = prune_stale_sessions(db)?;
-        if super::codex_titles::sync(db)? || pruned {
+        let retitled = super::codex_titles::sync(db)?;
+        let mcode_retitled = super::mcode_titles::sync(db)?;
+        if retitled || mcode_retitled || pruned {
             on_changed();
         }
         return Ok(ScanReport {
@@ -654,6 +656,7 @@ fn scan_inner(
     )?;
     prune_stale_sessions(db)?;
     super::codex_titles::sync(db)?;
+    super::mcode_titles::sync(db)?;
     on_changed();
     if total > 0 {
         on_progress(crate::event_sink::ScanProgress {

@@ -148,6 +148,7 @@
 - **文件 Markdown 预览用 Streamdown 渲染**：`MarkdownPreview.tsx` 用 Vercel Streamdown（`mode="static"` + `code`/`math`/`mermaid`/`cjk` 插件），不再是裸 react-markdown 加手写标题样式（旧预览的 GFM 表格渲染成无边框纯文本）。它的 shadcn token（`bg-background`、`text-muted-foreground`、`border-border` 等）在 `src/styles/globals.css` 桥接到语义 token（`:root` 映射 + `@theme inline` 导出、`@source` 扫描 dist），暗色随 `.dark` 翻转，不另写 `dark:`。表格/代码块/图表的复制、下载、全屏按钮文案走 `files.markdown.*` i18n；外链一律 `openExternal` 交系统浏览器（内置 link-safety 弹层关闭，避免双重确认）；本地相对图片仍解析到 Markdown 文件旁的真实路径（`resolveMarkdownImageSrc`）。Mermaid 图滚入视口才渲染（IntersectionObserver 懒渲染），离屏留白是设计行为；编辑预览用 deferred 草稿整篇重解析，不逐键击卡顿。回归：`tests/browser/markdown-preview.html`。
 
 - **内网访问自启、访问 IP 切换与端口/Token配置**：设置「远程访问 / 内网访问」（`WebAccessSection.tsx`）提供「随应用自动开启」滑动开关（`Switch`），开启时客户端启动即自动运行内网 Web 服务（后端持久化于 `AppSettings.web_access_auto_start`，前端启动时带兜底探测与自启保障）。运行态下提供「访问 IP / 网卡」下拉框（`Select`），通过平台原生接口（Windows `GetAdaptersAddresses` / Unix `getifaddrs`）动态枚举本机网络接口 IPv4 列表，优先置顶 Tailscale 虚拟网卡与 CGNAT IP（100.64.0.0/10），并列出物理网卡及 Localhost 回环地址；切换 IP 联动实时更新访问地址、复制内容与二维码，并在本地持久化所选偏好（`WEB_ACCESS_SELECTED_IP_KEY`）。支持自定义监听端口（`web_access_port`，留空为自动分配随机端口）与持久化鉴权 Token（`web_access_token`，支持一键「重新生成」）；服务运行中修改配置在卡片内展示重启提示与快捷「立即重启服务」动作，绑定失败时在界面显式展示端口冲突原因。回归：`WebAccessSection.test.tsx`、`web::tests::*`。
+- **内置引擎的会话标题用 CLI 自己生成的那份，用户重命名仍然优先**：内置运行时（`mireai`）与官方 MiniMax Code（`minimax`）在首轮消息被接受后会各自生成一个贴题标题，提交进自己数据目录的 `local_runtime_sessions.title`；适配层把那份标题同步进会话行（`history/mcode_titles.rs`，只写 `title` 列、不碰 `custom_title`），侧栏因此显示引擎起的名字，而不是被截断的首条消息。CLI 生成标题**不改转录**，所以扫描快路径（stat 未变）也要跑同步；同步必须跑在重解析的 upsert 之后（重解析会把 title 重算回首条消息）。回合中途的标题由 CLI 的 `session_info_update` 通知即时接住——只认带非空标题的帧（同一条更新也会因活动变化重发，那不是命名事件）；通知与扫描都错过的那次，标题要到之后的扫描（下一轮落定 / 重开页面 / 手动同步）才出现，不假装实时。两个引擎各读各的库，标题不串行。回归：`history::mcode_titles::tests::sync_takes_cli_titles_per_engine_preserving_custom_titles`、`mcode_acp::tests::only_title_bearing_session_info_updates_trigger_a_sync`。
 
 ### 3.1 自动压缩：阈值控件与幕布行
 
@@ -291,6 +292,7 @@ const feedback = useRunningFeedback(store.loading);
 
 | 版本 | 时间 | 内容 |
 |---|---|---|
+| v0.95 | 2026-10-12 | 内置运行时 / 官方 MiniMax Code 的会话标题改用 CLI 自己生成的那份：适配层从各自 `runtime-state.sqlite` 的 `local_runtime_sessions.title` 同步进会话行（用户重命名 `custom_title` 仍优先），扫描（含快路径）与回合中的 `session_info_update` 通知两处接住；§3 补一条规则 |
 | v0.94 | 2026-10-10 | 切换「对话 / 工作」时中心区一起收拢：不属于新形态的会话页签被关掉（`mode-session-sync.ts`，经 `closeTab` 保留插件生命周期与重开缓存），分屏格子由 `reconcileLayout` 随后收起，草稿不关跟随当前形态；插件退出锁下的页签被拦下留在原地；§3 更新形态开关那条规则 |
 | v0.93 | 2026-10-10 | 「对话 / 工作」胶囊升级为**全局形态开关**（样式对齐设置 → 远程访问的 lan/wan 分段控件，不再是 `PillTabList` 蓝胶囊）：会话列表按出生 scope 筛（老会话归工作、草稿跟随当前形态、空仓库行保留）、右侧栏对话模式撤下「任务」页签（侧栏任务入口点击时先切回工作）、⌘L 搜索面板两条 lane 同筛（内容命中由后端 `history/search.rs` 两条 SQL LEFT JOIN `session_scopes` 带回 scope）、新会话首条发送打标；归属规则收敛到 `thread-scope.ts` 一处；§3 更新两条规则 |
 | v0.92 | 2026-10-10 | 侧栏顶部新增「对话 / 工作」胶囊切换（`PillTabList` 蓝胶囊，持久化）；会话落库 `session_scopes` 标识出生模式（**首条发送定名**，后发不改品牌；无行的老会话一律按对话展示）；对话模式下输入框撤掉宿主的引擎/权限胶囊，插件槽位保留 |

@@ -215,6 +215,14 @@ async fn handshake_and_prompt(
                 view.last_usage = Some(usage.clone());
                 core.dispatch_event(state, EngineEvent::Usage(usage));
             }
+            // The CLI generates the session title mid-turn and notifies
+            // after committing it; pull it into the sidebar now instead of
+            // waiting for the post-turn rescan.
+            if titled_session_info(params) {
+                if let Some(db) = core.db.as_ref() {
+                    crate::history::mcode_titles::sync_now(db, &core.sink);
+                }
+            }
             handle_session_update(core, state, view, params);
             None
         }
@@ -869,6 +877,17 @@ fn usage_update(params: &Value) -> Option<Value> {
     Some(
         json!({"input_tokens": update["used"].as_u64()?, "model_context_window": update["size"].as_u64()?}),
     )
+}
+
+/// A `session_info_update` that actually carries a title. The CLI re-sends
+/// this update for activity-only changes (`updatedAt` moves, no title);
+/// those are not naming events.
+fn titled_session_info(params: &Value) -> bool {
+    let update = &params["update"];
+    update["sessionUpdate"] == "session_info_update"
+        && update["title"]
+            .as_str()
+            .is_some_and(|title| !title.trim().is_empty())
 }
 
 /// The prompt result's `_meta` token totals, projected onto the names the
@@ -1552,5 +1571,24 @@ mod tests {
             usage_update(&json!({"update": {"sessionUpdate": "agent_message_chunk"}})).is_none()
         );
         assert!(prompt_usage(&json!({})).is_none());
+    }
+
+    #[test]
+    fn only_title_bearing_session_info_updates_trigger_a_sync() {
+        assert!(titled_session_info(&json!({
+            "update": {"sessionUpdate": "session_info_update", "title": "统计 TS 文件数量"}
+        })));
+        // Activity-only re-send: the CLI moves updatedAt without a title.
+        assert!(!titled_session_info(&json!({
+            "update": {"sessionUpdate": "session_info_update", "updatedAt": 123}
+        })));
+        // A blank title is not a naming event either.
+        assert!(!titled_session_info(&json!({
+            "update": {"sessionUpdate": "session_info_update", "title": "  "}
+        })));
+        assert!(!titled_session_info(&json!({
+            "update": {"sessionUpdate": "agent_message_chunk", "title": "x"}
+        })));
+        assert!(!titled_session_info(&json!({})));
     }
 }
