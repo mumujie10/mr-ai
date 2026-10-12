@@ -10,6 +10,7 @@ import { cx } from "@/utils/cx";
 import { useBrowserOcclusion } from "@/features/browser/occlusion";
 import { useConversationMode } from "@/features/chat/conversation-mode";
 import { ipc, type MessageSearchHit } from "@/lib/ipc";
+import { sessionDisplayTitle } from "@/features/chat/session-title";
 import { relativeTime } from "@/features/chat/time";
 import { formatSearchDuration } from "./session-search-format";
 import { isModalDialogOpen, hideModalDialog, showModalDialog } from "@/lib/engine-compat";
@@ -539,7 +540,7 @@ function PaletteResults({
                 className="size-3 shrink-0 text-foreground-icon-secondary"
               />
               <span className="min-w-0 flex-1 truncate text-body-medium text-text-primary">
-                {hit.customTitle || hit.title || hit.sessionId.slice(0, 8)}
+                {sessionDisplayTitle(hit)}
               </span>
               {hit.updatedAt ? (
                 <span className="shrink-0 text-caption-1-medium text-text-tertiary">

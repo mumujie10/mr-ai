@@ -14,11 +14,11 @@ import { EngineIcon } from "@/components/foundations/icons/engine-icon";
 import { listenSessionsChanged } from "@/lib/events";
 import { ipc, type SessionMeta } from "@/lib/ipc";
 import { useChatStore } from "@/features/chat/store";
+import { sessionDisplayTitle } from "@/features/chat/session-title";
 
 const ALL_WORKSPACES = "*";
 
-const sessionTitle = (session: SessionMeta) =>
-  session.customTitle || session.title || session.sessionId.slice(0, 8);
+const sessionTitle = (session: SessionMeta) => sessionDisplayTitle(session);
 
 const pathName = (path: string) =>
   path.split(/[\\/]/).filter(Boolean).at(-1) || path;

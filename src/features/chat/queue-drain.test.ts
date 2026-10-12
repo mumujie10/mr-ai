@@ -22,6 +22,11 @@ vi.mock("@/lib/ipc", () => ({
     updateAppSettings: vi.fn(async () => {}),
     rescanSessions: vi.fn(async () => {}),
     getCliConfig: vi.fn(async () => ({})),
+    autoTitleSession: vi.fn(async () => ({
+      status: "skipped",
+      message: "no_channel",
+      at: 0,
+    })),
   },
 }));
 

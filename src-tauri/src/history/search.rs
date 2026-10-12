@@ -64,6 +64,9 @@ pub struct MessageSearchHit {
     pub workspace_name: Option<String>,
     pub title: String,
     pub custom_title: Option<String>,
+    /// Model-generated title (session_auto_titles); display precedence sits
+    /// between custom_title and title, same as the session list.
+    pub auto_title: Option<String>,
     pub updated_at: Option<i64>,
     pub role: String,
     /// Session birth scope (session_scopes); None = pre-split session, which
@@ -547,6 +550,7 @@ struct RawHit {
     workspace_name: Option<String>,
     title: String,
     custom_title: Option<String>,
+    auto_title: Option<String>,
     updated_at: Option<i64>,
     scope: Option<String>,
 }
@@ -573,12 +577,13 @@ fn fts_search(
          SELECT b.engine, b.session_id, b.role,
                 snippet(messages_fts, 0, char(1), char(2), '…', 24),
                 s.workspace_path, w.name, s.title, s.custom_title, s.updated_at,
-                sc.scope
+                sc.scope, at.title
          FROM best b
          JOIN messages_fts ON messages_fts.rowid = b.id AND messages_fts MATCH ?1
          JOIN sessions s ON s.engine = b.engine AND s.session_id = b.session_id
          LEFT JOIN workspaces w ON w.path = s.workspace_path
          LEFT JOIN session_scopes sc ON sc.engine = b.engine AND sc.session_id = b.session_id
+         LEFT JOIN session_auto_titles at ON at.engine = b.engine AND at.session_id = b.session_id
          WHERE b.rn = 1
          ORDER BY b.rank ASC, s.updated_at DESC, b.engine, b.session_id
          LIMIT ?2 OFFSET ?3"
@@ -599,6 +604,7 @@ fn fts_search(
                     workspace_name: r.get(5)?,
                     title: r.get(6)?,
                     custom_title: r.get(7)?,
+                    auto_title: r.get(10)?,
                     updated_at: r.get(8)?,
                     scope: r.get(9)?,
                 })
@@ -623,7 +629,7 @@ fn like_search(
     let sql = format!(
         "SELECT m.engine, m.session_id, m.role, m.text,
                 s.workspace_path, w.name, s.title, s.custom_title, s.updated_at,
-                sc.scope
+                sc.scope, at.title
          FROM (
              SELECT m2.*, ROW_NUMBER() OVER (
                  PARTITION BY m2.engine, m2.session_id ORDER BY m2.seq
@@ -634,6 +640,7 @@ fn like_search(
          JOIN sessions s ON s.engine = m.engine AND s.session_id = m.session_id
          LEFT JOIN workspaces w ON w.path = s.workspace_path
          LEFT JOIN session_scopes sc ON sc.engine = m.engine AND sc.session_id = m.session_id
+         LEFT JOIN session_auto_titles at ON at.engine = m.engine AND at.session_id = m.session_id
          WHERE m.rn = 1
          ORDER BY s.updated_at DESC, m.engine, m.session_id
          LIMIT ?{} OFFSET ?{}",
@@ -658,6 +665,7 @@ fn like_search(
                 workspace_name: r.get(5)?,
                 title: r.get(6)?,
                 custom_title: r.get(7)?,
+                auto_title: r.get(10)?,
                 updated_at: r.get(8)?,
                 scope: r.get(9)?,
             })
@@ -719,6 +727,7 @@ pub fn search(
                 workspace_name: hit.workspace_name,
                 title: hit.title,
                 custom_title: hit.custom_title,
+                auto_title: hit.auto_title,
                 updated_at: hit.updated_at,
                 role: hit.role,
                 scope: hit.scope,

@@ -21,6 +21,13 @@ use super::discovery::mcode_data_dir;
 /// 一份标题永远不会串到另一个引擎的行上。
 const ENGINES: [&str; 2] = [crate::engine::mr_providers::MIREAI_ENGINE_ID, "minimax"];
 
+/// 这个引擎的标题由 CLI 命名（7a 同步会持续覆盖 `sessions.title`）。
+/// 标题补全（auto_titles）必须跳过它们，不然生成的 auto_title 会盖住
+/// CLI 自己维护的名字。
+pub(crate) fn manages_titles(engine: &str) -> bool {
+    ENGINES.contains(&engine)
+}
+
 pub(super) fn sync(db: &crate::db::Db) -> Result<bool, String> {
     let mut changed = false;
     for engine in ENGINES {

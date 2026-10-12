@@ -19,6 +19,11 @@ export interface SessionMeta {
   messageCount: number;
   pinned: boolean;
   customTitle: string | null;
+  /** Model-generated title (session_auto_titles), written once after the
+   * first turn for engines without their own naming (see Rust
+   * history::auto_titles). Display precedence: customTitle → autoTitle →
+   * title. Absent when no completion ran or it was skipped. */
+  autoTitle?: string | null;
   /** Model this app last sent for the session ("provider/model"), absent when
    * it never sent one — see ipc.rememberSessionModel. */
   model?: string | null;
@@ -616,6 +621,9 @@ export interface MessageSearchHit {
   workspaceName: string | null;
   title: string;
   customTitle: string | null;
+  /** Model-generated title (session_auto_titles); same precedence as history
+   *  rows: customTitle → autoTitle → title. */
+  autoTitle?: string | null;
   updatedAt: number | null;
   role: string;
   /** Session birth scope (`session_scopes`); null = pre-split session,
@@ -808,6 +816,15 @@ export interface MemoryReviewOutcome {
   /** 解析跳过或执行失败的条目数。 */
   failed: number;
   /** 跳过/失败的原因（`no_channel`、`busy` 或渠道错误原文）。 */
+  message?: string;
+  at: number;
+}
+
+/** `auto_title_session` 的返回值：首轮后一次性标题补全。跳过的原因收在
+ *  `message`（`own_naming`、`exists`、`renamed`、`no_channel`…）。 */
+export interface AutoTitleOutcome {
+  status: "applied" | "skipped" | "failed";
+  title?: string;
   message?: string;
   at: number;
 }
@@ -1691,6 +1708,15 @@ export const ipc = {
     model?: string | null;
     transcript: string;
   }) => invoke<MemoryReviewOutcome>("memory_review", args),
+  /** 首轮后一次性补全会话标题（其他引擎；自有命名的引擎后端会跳过）。
+   *  生成结果由后端写库并发 sessions://changed，这里不看返回值。 */
+  autoTitleSession: (args: {
+    engine: string;
+    sessionId: string;
+    providerId?: string | null;
+    model?: string | null;
+    seed: string;
+  }) => invoke<AutoTitleOutcome>("auto_title_session", args),
   // built-in agent catalog — bundled read-only personas (resources/
   // agent-catalogs); enabled ids live in app settings. The composer `#`
   // menu merges enabled ones; sendPrompt resolves the current prompt via

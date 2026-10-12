@@ -10,13 +10,13 @@
 //! 的复盘用进程内集合去重，同一个 Bot 同时只跑一个。
 
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::Mutex;
-use std::time::Duration;
 
 use super::pending::{gated, WriteOp, WriteOutcome};
 use super::{ledger, render, MemoryError, Target};
+use crate::channel::{call_channel, resolve_wire};
 use crate::db::Db;
 
 /// 送给模型的对话片段上限（保留最近的：越靠后的上下文越相关）。
@@ -293,256 +293,6 @@ impl Drop for InFlight {
     }
 }
 
-/// 一次渠道调用需要的全部字段（已从 provider JSON / env 映射解析出来）。
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Wire {
-    /// `anthropic` | `openai` | `openai-responses`
-    pub kind: &'static str,
-    pub base_url: String,
-    pub api_key: String,
-    pub model: String,
-}
-
-fn non_empty(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|text| !text.is_empty())
-        .map(str::to_string)
-}
-
-/// 从渠道配置解析调用参数。`model` 是当前会话的模型（优先），渠道里配置的
-/// 模型兜底；两者都拿不到就无法调用，报错误原因给界面。
-pub(crate) fn resolve_wire(
-    engine: &str,
-    provider: &Value,
-    session_model: Option<&str>,
-) -> Result<Wire, String> {
-    let env = crate::provider_files::channel_env(engine, provider)
-        .map_err(|e| format!("channel env: {e}"))?;
-    let from_env = |key: &str| non_empty(env.get(key).map(String::as_str));
-    let from_json = |key: &str| non_empty(provider.get(key).and_then(Value::as_str));
-    let pick = |keys: &[&str]| keys.iter().find_map(|key| from_env(key).or_else(|| from_json(key)));
-
-    // codex 的渠道把 wire_api 写进 configToml；responses 走 /responses，
-    // 其余（relay 预设默认）走 chat/completions。
-    let responses = engine == "codex"
-        && provider
-            .get("configToml")
-            .and_then(Value::as_str)
-            .is_some_and(|toml| toml.replace(' ', "").contains("wire_api=\"responses\""));
-
-    let kind = if engine == "claude" {
-        "anthropic"
-    } else if responses {
-        "openai-responses"
-    } else {
-        "openai"
-    };
-    let base_url = pick(&[
-        "ANTHROPIC_BASE_URL",
-        "OPENAI_BASE_URL",
-        "KIMI_BASE_URL",
-        "XAI_API_BASE_URL",
-        "baseUrl",
-    ])
-    .ok_or_else(|| "channel has no base URL".to_string())?;
-    let api_key = pick(&[
-        "ANTHROPIC_AUTH_TOKEN",
-        "ANTHROPIC_API_KEY",
-        "OPENAI_API_KEY",
-        "KIMI_API_KEY",
-        "XAI_API_KEY",
-        "apiKey",
-    ])
-    .ok_or_else(|| "channel has no API key".to_string())?;
-    // Claude 渠道的会话模型常是别名（opus/sonnet/…），直接拿它发 HTTP 会被
-    // 渠道当成未知模型；复用 spawn 的解析（槽位映射 + `[1m]` 去掉——那是 CLI
-    // 的 beta 约定，不是模型 id）。
-    // "default" 是界面上的「渠道默认」，不是模型 id。
-    let session_model = non_empty(session_model).filter(|model| model != "default");
-    let model = if engine == "claude" {
-        crate::engine::resolve_claude_channel_model(
-            session_model.as_deref(),
-            provider,
-            &env,
-        )
-        .or_else(|| from_env("ANTHROPIC_DEFAULT_SONNET_MODEL"))
-        .or_else(|| from_env("ANTHROPIC_DEFAULT_HAIKU_MODEL"))
-        .or_else(|| from_json("model"))
-    } else {
-        session_model
-            .or_else(|| from_json("model"))
-            .or_else(|| from_env("ANTHROPIC_MODEL"))
-            .or_else(|| from_env("KIMI_MODEL_NAME"))
-    }
-    .map(|model| model.strip_suffix("[1m]").unwrap_or(&model).to_string())
-    .ok_or_else(|| "channel has no model".to_string())?;
-    Ok(Wire {
-        kind,
-        base_url,
-        api_key,
-        model,
-    })
-}
-
-/// POST 的候选 URL：渠道的 base 可能是 origin、带 `/v1`，或厂商自定义前缀。
-/// base 已经带版本段时不再拼 `/v1`（`…/v1/v1/chat/completions` 只会浪费一次
-/// 请求）；没带版本段的两种拼法都试。
-fn request_urls(wire: &Wire) -> Vec<String> {
-    let base = wire.base_url.trim().trim_end_matches('/').to_string();
-    let versioned = base
-        .rsplit('/')
-        .next()
-        .is_some_and(|segment| {
-            segment.len() > 1
-                && segment.starts_with('v')
-                && segment[1..].chars().all(|c| c.is_ascii_digit())
-        });
-    fn push_unique(urls: &mut Vec<String>, url: String) {
-        if !urls.contains(&url) {
-            urls.push(url);
-        }
-    }
-    let suffix = match wire.kind {
-        "anthropic" => "/messages",
-        "openai-responses" => "/responses",
-        _ => "/chat/completions",
-    };
-    let mut urls: Vec<String> = Vec::new();
-    if versioned {
-        push_unique(&mut urls, format!("{base}{suffix}"));
-    } else if wire.kind == "anthropic" {
-        // Anthropic 路由惯例是 /v1/messages；没带版本段的 base 先试它。
-        push_unique(&mut urls, format!("{base}/v1{suffix}"));
-        push_unique(&mut urls, format!("{base}{suffix}"));
-    } else {
-        push_unique(&mut urls, format!("{base}{suffix}"));
-        push_unique(&mut urls, format!("{base}/v1{suffix}"));
-    }
-    urls
-}
-
-fn request_body(wire: &Wire, prompt: &str) -> Value {
-    match wire.kind {
-        "anthropic" => json!({
-            "model": wire.model,
-            "max_tokens": MAX_REPLY_TOKENS,
-            "temperature": 0,
-            "messages": [{ "role": "user", "content": prompt }],
-        }),
-        "openai-responses" => json!({
-            "model": wire.model,
-            "max_output_tokens": MAX_REPLY_TOKENS,
-            "input": prompt,
-        }),
-        _ => json!({
-            "model": wire.model,
-            "max_tokens": MAX_REPLY_TOKENS,
-            "temperature": 0,
-            "stream": false,
-            "messages": [{ "role": "user", "content": prompt }],
-        }),
-    }
-}
-
-/// 从响应体里取出模型的文本回复。Anthropic 是 `content[].text`，OpenAI chat
-/// 是 `choices[0].message.content`（个别渠道给数组），Responses 是
-/// `output[].content[].text`。
-fn reply_text(wire: &Wire, body: &Value) -> Option<String> {
-    match wire.kind {
-        "anthropic" => {
-            let mut out = String::new();
-            for block in body.get("content")?.as_array()? {
-                if block.get("type").and_then(Value::as_str) == Some("text") {
-                    if let Some(text) = block.get("text").and_then(Value::as_str) {
-                        out.push_str(text);
-                    }
-                }
-            }
-            (!out.trim().is_empty()).then_some(out)
-        }
-        "openai-responses" => {
-            let mut out = String::new();
-            for item in body.get("output")?.as_array()? {
-                let Some(content) = item.get("content").and_then(Value::as_array) else {
-                    continue;
-                };
-                for block in content {
-                    if let Some(text) = block.get("text").and_then(Value::as_str) {
-                        out.push_str(text);
-                    }
-                }
-            }
-            (!out.trim().is_empty()).then_some(out)
-        }
-        _ => match body.pointer("/choices/0/message/content") {
-            Some(Value::String(text)) => (!text.trim().is_empty()).then(|| text.clone()),
-            Some(Value::Array(blocks)) => {
-                let mut out = String::new();
-                for block in blocks {
-                    if let Some(text) = block.get("text").and_then(Value::as_str) {
-                        out.push_str(text);
-                    }
-                }
-                (!out.trim().is_empty()).then_some(out)
-            }
-            _ => None,
-        },
-    }
-}
-
-/// 出错时截取渠道返回的正文首段，让界面能说清为什么失败（401、模型不存在…）。
-fn error_excerpt(status: u16, body: &str) -> String {
-    let excerpt: String = body.trim().chars().take(300).collect();
-    if excerpt.is_empty() {
-        format!("HTTP {status}")
-    } else {
-        format!("HTTP {status}: {excerpt}")
-    }
-}
-
-async fn call_channel(wire: &Wire, prompt: &str) -> Result<String, String> {
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(60))
-        .build()
-        .map_err(|e| format!("build http client: {e}"))?;
-    let mut last_error: Option<String> = None;
-    for url in request_urls(wire) {
-        let mut request = client.post(&url).json(&request_body(wire, prompt));
-        if wire.kind == "anthropic" {
-            request = request
-                .header("x-api-key", wire.api_key.as_str())
-                .header("anthropic-version", "2023-06-01")
-                .header("authorization", format!("Bearer {}", wire.api_key));
-        } else {
-            request = request.header("authorization", format!("Bearer {}", wire.api_key));
-        }
-        let response = match request.send().await {
-            Ok(response) => response,
-            Err(e) => {
-                last_error = Some(format!("{url}: {e}"));
-                continue;
-            }
-        };
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        if !status.is_success() {
-            last_error = Some(format!("{url}: {}", error_excerpt(status.as_u16(), &body)));
-            continue;
-        }
-        let Ok(value) = serde_json::from_str::<Value>(&body) else {
-            last_error = Some(format!("{url}: reply was not JSON"));
-            continue;
-        };
-        match reply_text(wire, &value) {
-            Some(text) => return Ok(text),
-            None => last_error = Some(format!("{url}: reply carried no text")),
-        }
-    }
-    Err(last_error.unwrap_or_else(|| "no candidate endpoint succeeded".to_string()))
-}
-
 /// 跑一次复盘。`engine`/`provider_id` 决定用哪个渠道，`model` 是当前会话的
 /// 模型（None 时用渠道默认）。整个过程不阻塞对话：调用方 await 这个 future
 /// 即可（Tauri 命令在自己的异步任务里等它）。
@@ -581,7 +331,7 @@ pub async fn review(
         (user.used, user.limit),
         &clip_transcript(transcript),
     );
-    let reply = match call_channel(&wire, &prompt).await {
+    let reply = match call_channel(&wire, &prompt, MAX_REPLY_TOKENS).await {
         Ok(reply) => reply,
         Err(error) => return ReviewOutcome::failed(error),
     };

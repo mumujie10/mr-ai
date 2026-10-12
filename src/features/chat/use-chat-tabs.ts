@@ -19,6 +19,7 @@ import { RELEASE_NOTES_TAB_KEY, useReleaseNotesTabStore } from "@/features/updat
 import { fileName, useFilesStore } from "@/features/files/store";
 import { useGitStore } from "@/features/git/store";
 import type { SessionMeta } from "@/lib/ipc";
+import { sessionTitleChain } from "./session-title";
 import { sessionKey, useChatStore, type ActiveSession } from "./store";
 import type { ChatPageDialog } from "./ChatPageDialogs";
 
@@ -174,7 +175,7 @@ export function useChatTabs({
           // 会话身份随页签带下去：向下拖出页签条即分屏（split/drag.tsx）。
           session: tab,
           engine: tab.engine,
-          label: meta?.customTitle || meta?.title || t("chat.newChat"),
+          label: (meta && sessionTitleChain(meta)) || t("chat.newChat"),
           streaming: tabStreaming[index] ?? false,
           retrying: tabRetrying[index] ?? false,
           unseen: unseen[`${tab.engine}/${tab.sessionId}`] ?? false,

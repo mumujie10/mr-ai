@@ -11,6 +11,7 @@ import { copyText } from "@/lib/clipboard";
 import { worktreeMetaOf, type SessionMeta, type Workspace } from "@/lib/ipc";
 import { isWeb } from "@/lib/platform";
 import { recentPointerAnchor } from "@/lib/pointer-anchor";
+import { sessionDisplayTitle } from "./session-title";
 import { parseDraftSessionKey, sessionKey, useChatStore, sortedWorkspaceGroups } from "./store";
 import { dismissCenterSurfaces } from "./center-surfaces";
 import { focusComposerWhenVisible } from "./focus-composer";
@@ -141,7 +142,7 @@ export function useChatSidebar({
             return [
               {
                 id: `${s.engine}/${s.sessionId}`,
-                label: s.customTitle || s.title || s.sessionId.slice(0, 8),
+                label: sessionDisplayTitle(s),
                 engine: s.engine,
                 time: relativeTime(s.updatedAt),
                 pinned: s.pinned,

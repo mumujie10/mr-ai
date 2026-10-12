@@ -10,6 +10,7 @@ import {
   reviewTranscript,
   type ReviewContext,
 } from "@/features/bots/memory-review";
+import { noteSessionTurnSettled, titleSeed, type TitleContext } from "./session-title";
 import {
   ENGINE_PREF_KEY,
   persistTabs,
@@ -117,9 +118,41 @@ export const useChatStore = create<ChatStore>((set, get) => {
     };
   }
 
+  /** 一次性标题补全（7b）：首轮结算后用该引擎的渠道跑一次轻量调用。
+   *  拿不到开场消息（列表还没装载出第一条用户消息）就不触发，下一轮再看；
+   *  哪个引擎需要补、有没有渠道，由后端判断（自有命名的引擎直接跳过）。 */
+  function titleContext(key: string): TitleContext | null {
+    const s = get();
+    const session = s.bySession[key];
+    if (!session || session.streaming) return null;
+    const tab = s.openTabs.find(
+      (t) => sessionKey(t.engine, t.sessionId, t.workspacePath) === key,
+    );
+    const meta = tab
+      ? undefined
+      : s.sessions.find(
+          (m) => sessionKey(m.engine, m.sessionId, m.workspacePath) === key,
+        );
+    const engine = tab?.engine ?? meta?.engine;
+    const sessionId = tab?.sessionId ?? meta?.sessionId;
+    if (!engine || !sessionId) return null;
+    const seed = titleSeed(session.messages);
+    if (!seed) return null;
+    return {
+      key,
+      engine,
+      sessionId,
+      providerId: session.activeProvider ?? s.providers[engine] ?? null,
+      model: resolveSessionModel(tab ?? { engine }, session, s.models[engine]) ?? null,
+      seed,
+    };
+  }
+
   const turnSettled = (key: string) => {
     const context = memoryReviewContext(key);
     if (context) noteTurnCompleted(context);
+    const title = titleContext(key);
+    if (title) noteSessionTurnSettled(title);
   };
   const sessionEnded = (
     engine: string,

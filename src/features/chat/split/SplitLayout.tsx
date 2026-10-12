@@ -13,6 +13,7 @@ import { focusComposerWhenVisible } from "../focus-composer";
 import { useChatStore } from "../store";
 import { sessionKey, type ActiveSession } from "../store/persistence";
 import { PANEL_TOGGLE_CLASSES } from "../panel-toggle-classes";
+import { sessionTitleChain } from "../session-title";
 import { McpCommandPanel } from "@/features/mcp/McpCommandPanel";
 import { composerBridgeRef, registerPaneComposerRef } from "./composer-bridge";
 import { useDragSource, useOptionalSplitDrag } from "./drag";
@@ -166,7 +167,7 @@ const SplitPaneView = memo(function SplitPaneView({
     const meta = sessions.find(
       (item) => item.engine === session.engine && item.sessionId === session.sessionId,
     );
-    return meta?.customTitle || meta?.title || session.sessionId.slice(0, 8);
+    return (meta && sessionTitleChain(meta)) || session.sessionId.slice(0, 8);
   }, [session, sessions, t]);
   const dragPayload = useMemo(
     () => ({ kind: "pane" as const, paneId: pane.id, label: title }),

@@ -305,6 +305,27 @@ impl Db {
         Ok(())
     }
 
+    /// Remember a model-generated title for a session. First write wins
+    /// (DO NOTHING): generation is one-shot, and a later duplicate — a raced
+    /// retry, say — must not replace the title the user has already seen.
+    pub fn remember_session_auto_title(
+        &self,
+        engine: &str,
+        session_id: &str,
+        title: &str,
+        now: i64,
+    ) -> Result<(), String> {
+        let conn = self.0.lock();
+        conn.execute(
+            "INSERT INTO session_auto_titles(engine, session_id, title, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(engine, session_id) DO NOTHING",
+            rusqlite::params![engine, session_id, title, now],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// Approve (or re-approve) a device. Unknown ids are ignored: the row is
     /// created by the device's own request, never by the UI.
     pub fn web_device_approve(&self, id: &str, now: i64) -> Result<bool, String> {
@@ -959,6 +980,20 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
             engine TEXT NOT NULL,
             session_id TEXT NOT NULL,
             scope TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY(engine, session_id)
+        );
+        -- One-shot model-generated session titles for engines the scanner can
+        -- only seed with the first user message (engines with their own naming
+        -- are gated out at the caller). Lives beside `sessions.title` and is
+        -- never written by the scanner, so a reparse cannot clobber it;
+        -- display precedence is custom_title, then this, then the scanned
+        -- title. No row means generation was skipped (no channel, user rename,
+        -- own naming) and every client falls back to the scanned title.
+        CREATE TABLE IF NOT EXISTS session_auto_titles(
+            engine TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            title TEXT NOT NULL,
             updated_at INTEGER NOT NULL,
             PRIMARY KEY(engine, session_id)
         );

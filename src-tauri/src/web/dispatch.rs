@@ -421,6 +421,17 @@ struct MemoryReviewArgs {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct AutoTitleArgs {
+    engine: String,
+    session_id: String,
+    #[serde(default)]
+    provider_id: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    seed: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct LocaleArgs {
     locale: String,
 }
@@ -1074,6 +1085,23 @@ pub(super) async fn dispatch(
             )
             .await;
             serde_json::to_value(outcome).map_err(|e| e.to_string())
+        }
+        // one-shot session title completion for engines without their own
+        // naming (see history::auto_titles)
+        "auto_title_session" => {
+            let a: AutoTitleArgs = parse_args(&raw)?;
+            serde_json::to_value(
+                crate::history::auto_titles::run(
+                    &app.state(),
+                    &a.engine,
+                    &a.session_id,
+                    a.provider_id.as_deref(),
+                    a.model.as_deref(),
+                    &a.seed,
+                )
+                .await,
+            )
+            .map_err(|e| e.to_string())
         }
         // built-in agent catalog (agency-agents pack)
         "list_built_in_agents" => {

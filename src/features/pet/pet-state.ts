@@ -1,6 +1,7 @@
 import type { ChatStore } from "@/features/chat/store/types";
 import type { SessionState } from "@/features/chat/store/stream";
 import { sessionKey } from "@/features/chat/store/persistence";
+import { sessionTitleChain } from "@/features/chat/session-title";
 import type { MissionRun } from "@/features/mission/types";
 import { runStatus } from "@/features/mission/types";
 import type { PetStatus } from "./pet-atlas";
@@ -157,7 +158,7 @@ export function derivePetStates(
     if (!session) continue;
     const meta = metadataByKey.get(key);
     const sessionName =
-      meta?.customTitle?.trim() || meta?.title?.trim() || sessionNameFromState(session);
+      (meta && sessionTitleChain(meta)) || sessionNameFromState(session);
     const state = stateForSession(key, session, sessionName || null);
     if (state) states.push(state);
   }

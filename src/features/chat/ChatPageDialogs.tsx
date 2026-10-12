@@ -7,6 +7,7 @@ import { CreateWorkspaceDialog } from "./CreateWorkspaceDialog";
 import { DeleteWorktreeDialog } from "@/features/worktree/DeleteWorktreeDialog";
 import { useTerminalStore } from "@/features/terminal/store";
 import { worktreeMetaOf, type SessionMeta } from "@/lib/ipc";
+import { sessionTitleChain } from "./session-title";
 import { useChatStore } from "./store";
 
 /** Modal dialogs owned by the chat page. */
@@ -79,7 +80,7 @@ export function ChatPageDialogs({
       {dialog?.kind === "rename" && (
         <PromptDialog
           title={t("chat.renameSession")}
-          initial={dialog.session.customTitle || dialog.session.title}
+          initial={sessionTitleChain(dialog.session) ?? ""}
           onSubmit={(title) => {
             onClose();
             void renameSession(dialog.session.engine, dialog.session.sessionId, title);

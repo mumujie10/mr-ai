@@ -3,6 +3,7 @@ pub mod app_info;
 pub mod bots;
 pub mod browser;
 pub mod cc_switch;
+pub mod channel;
 pub mod cli_lifecycle;
 pub mod computer_use;
 pub mod computer_use_ax;
@@ -493,6 +494,7 @@ pub fn run() {
             history::reader::remember_session_effort,
             history::reader::remember_session_provider,
             history::reader::remember_session_scope,
+            history::auto_titles::auto_title_session,
             history::reader::rescan_sessions,
             history::reader::list_workspaces,
             history::reader::add_workspace,

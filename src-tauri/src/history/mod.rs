@@ -1,4 +1,5 @@
 mod agy;
+pub(crate) mod auto_titles;
 mod codex_titles;
 pub(crate) mod discovery;
 mod extract;
@@ -69,6 +70,12 @@ pub struct SessionMeta {
     pub message_count: i64,
     pub pinned: bool,
     pub custom_title: Option<String>,
+    /// Model-generated one-shot title (engines whose transcript only carries
+    /// the first user message get one after the first turn; engines with their
+    /// own naming — codex, mcode pair — never do). Display sits between
+    /// `custom_title` and the scanned `title`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auto_title: Option<String>,
     /// Model id this app sent for the session last ("provider/model", as the
     /// picker spells it). Kept in our own table because the engine's own
     /// transcript records only the bare model name — a session reopened in

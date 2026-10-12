@@ -54,12 +54,13 @@ pub fn list_sessions(state: tauri::State<'_, crate::AppState>) -> Result<Vec<Ses
         &state,
         "SELECT s.engine, s.session_id, s.workspace_path, s.file_path, s.file_size, s.file_mtime_ms,
                 s.title, s.preview, s.created_at, s.updated_at, s.message_count, s.pinned, s.custom_title,
-                m.model, e.effort, p.provider_id, sc.scope
+                m.model, e.effort, p.provider_id, sc.scope, at.title
          FROM sessions s
          LEFT JOIN session_models m ON m.engine = s.engine AND m.session_id = s.session_id
          LEFT JOIN session_efforts e ON e.engine = s.engine AND e.session_id = s.session_id
          LEFT JOIN session_providers p ON p.engine = s.engine AND p.session_id = s.session_id
          LEFT JOIN session_scopes sc ON sc.engine = s.engine AND sc.session_id = s.session_id
+         LEFT JOIN session_auto_titles at ON at.engine = s.engine AND at.session_id = s.session_id
          WHERE NOT EXISTS (
              SELECT 1 FROM session_archives a
              WHERE a.engine = s.engine AND a.session_id = s.session_id
@@ -84,6 +85,7 @@ pub fn list_sessions(state: tauri::State<'_, crate::AppState>) -> Result<Vec<Ses
                 effort: r.get(14)?,
                 provider: r.get(15)?,
                 scope: r.get(16)?,
+                auto_title: r.get(17)?,
                 remote: None,
                 remote_path: None,
             })
@@ -1046,6 +1048,7 @@ pub(super) fn delete_session_blocking(
         "session_efforts",
         "session_providers",
         "session_scopes",
+        "session_auto_titles",
         "session_archives",
     ] {
         tx.execute(
@@ -1986,6 +1989,7 @@ mod tests {
             message_count: 3,
             pinned: false,
             custom_title: None,
+            auto_title: None,
             model: Some("provider/model".into()),
             effort: Some("high".into()),
             provider: Some("provider".into()),
