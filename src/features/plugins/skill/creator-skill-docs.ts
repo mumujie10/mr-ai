@@ -433,7 +433,7 @@ function renderHeader(sdkVersion: string): string {
     "<!-- 由 src/features/plugins/skill/creator-skill-docs.ts 从源码生成，请勿手改。 -->",
     "<!-- 重新生成：pnpm plugin-skill:docs（测试 creator-skill-docs.test.ts 会断言本文件与源码一致）。 -->",
     "",
-    `# CC GUI 插件 SDK 参考（SDK ${sdkVersion}）`,
+    `# MireAI 插件 SDK 参考（SDK ${sdkVersion}）`,
     "",
     "本文件由脚本从 `packages/plugin-sdk`（公共契约）与宿主运行时（权限门禁）派生，属于 `ccgui-plugin-creator` skill。",
     "字段、方法、权限以本文件为准：**文中没有的 API 一律视为不存在**，不要凭记忆猜测方法名或权限名。",
@@ -465,7 +465,7 @@ function renderManifest(fields: ManifestField[], activateReturn: string): string
     ),
     "",
     "字段取值规则（`id` 命名、`version` 与 Release tag 的关系、`tier` 取值、`configSchema` 渲染范围、`contributes` 声明式能力）见 " +
-      "`references/development-guide.md` §5 与 §8。",
+      "仓库文档 `docs/plugin-development-guide.zh-CN.md` §5 与 §8（这份指南不随 skill 打包，本文件里不复制它以免出现第二份过期快照）。",
     "",
     "### 版本握手",
     "",

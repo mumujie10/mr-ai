@@ -1,5 +1,5 @@
 /**
- * CC GUI 中继（Cloudflare Worker）——让手机在外网访问本机 CC GUI，而无需在
+ * MireAI 中继（Cloudflare Worker）——让手机在外网访问本机 MireAI，而无需在
  * 本机开放任何入站端口。
  *
  * 桌面端主动外连 /agent?key=<secret> 并保持一条 WebSocket；此后每个进来的请求
@@ -11,7 +11,7 @@
  *
  * ---
  *
- * CC GUI relay: lets a phone reach the desktop app without opening any
+ * MireAI relay: lets a phone reach the desktop app without opening any
  * inbound port on the desktop.
  *
  * The desktop dials OUT to /agent?key=<secret> and keeps one WebSocket open.
@@ -68,7 +68,7 @@ export class Relay {
 
     if (!this.agent || this.agent.readyState !== WebSocket.OPEN) {
       return new Response(
-        "CC GUI 桌面端未连接到中继。请在电脑上打开 CC GUI → 设置 → 远程访问 → 外网访问，启动中转。",
+        "MireAI 桌面端未连接到中继。请在电脑上打开 MireAI → 设置 → 远程访问 → 外网访问，启动中转。",
         { status: 503, headers: { "content-type": "text/plain; charset=utf-8" } },
       );
     }

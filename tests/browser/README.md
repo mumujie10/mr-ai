@@ -312,3 +312,51 @@ instead of the wave indicator. The four buttons switch idle / host / engine /
 resume states; the readout reports the rendered bubbles against the five
 stored rows, the hint's computed colour and alignment, and PASS/FAIL. No model,
 no IPC, no saved conversation.
+
+Open `/tests/browser/changes-row-layout.html` for the changes-panel row grid.
+Rows used to reserve four permanent trailing columns (fixed 4.5rem stats, new-file
+dot slot, discard slot, action slot) that sat empty on most rows, so a staged "+3"
+row wasted its whole right side. The grid must now be status | path | stats
+(content-sized), the new-file dot lives inside the stats cell, and row actions float
+as an absolutely positioned overlay revealed on hover or keyboard focus. Real
+ChangesPanel with stubbed store actions; no repository is touched.
+
+Open `/tests/browser/discard-changes.html` for the discard (撤销更改) action:
+worktree-side rows (unstaged / untracked) get a discard button and staged rows do
+not, the button opens a danger confirmation, and only confirming calls the store's
+discard with that row's path. Real ChangesPanel; store mutations stubbed. No app,
+no backend, no repository.
+
+Open `/tests/browser/run-status-strip.html` for the strip above the composer.
+Seeded chat and git stores replay a live turn and its settlement so the pill row
+(子代理 / 已编辑 with rolling line stats), the single-open panels and the chrome
+toggle can be checked in both themes. No IPC, no model, no saved conversation.
+
+Open `/tests/browser/composer-triggers.html` to exercise the real `Composer` with
+seeded agent and prompt catalogs: click the field, type `#` or `!` at line start and
+the picker must open above the composer. `window.__probe()` returns
+`{ text, agentOpen, promptOpen }`. No backend, no model.
+
+Open `/tests/browser/cli-update-dialog.html` for the one-click CLI install dialog:
+plan → confirm → streaming live log → done, driven by a fixture flow so no real
+install ever runs. Visual smoke only — it does not prove the npm / native channel
+mapping is correct.
+
+Open `/tests/browser/settings-dialog-dismissal.html` for the modal dismissal path
+under the settings `<dialog>` shell: with `?open=1` the bot editor opens, and
+pressing the grey area outside it (top strip, rail, or the side margins) must close
+the editor and nothing else. The rail, list and editor are production components,
+so this exercises react-aria's `isDismissable` on the real ModalOverlay. Bots are
+in-memory; nothing is written.
+
+Open `/tests/browser/web-access-pane.html` for the remote-access pane inside the
+settings modal (fixed 720px dialog, scrolling page below): relay state flips are
+checked for layout shift and for the pairing key following a backend-side rotation.
+IPC is mocked. No app, no relay, no saved state.
+
+Open `/tests/browser/creator-jump.html` for the 创建插件 jump: it mounts the real
+PluginHub, real ChatCenterPane and real Composer and clicks in the real order, so the
+input must genuinely take the caret after the centre surface switches back to chat
+(the old direct `focus()` was silently ignored while the surface was still
+`visibility:hidden`), with the prefilled draft intact and the cursor at its end.
+`window.__probe()` returns the PASS/FAIL map on screen. No backend.

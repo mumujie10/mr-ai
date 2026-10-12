@@ -286,7 +286,7 @@ pub(crate) struct TurnCore {
     pub(crate) db: Option<Arc<crate::db::Db>>,
 }
 /// 停住的计划审批随运行消亡:原生请求不再有效,记录过期并推送
-/// PlanReviewSettled,历史 UI 不得假装还能批准(PRD §8 防线 3)。
+/// PlanReviewSettled,历史 UI 不得假装还能批准(防线 3)。
 /// host-transport 驱动(dsh/grok/qoder/codex/omp-acp)在自己的 settle 段
 /// 对每个注册键调用一次,语义与 run_reader 的收尾一致。无 db 句柄的
 /// 路径不产生计划事件,plans 必然为空。

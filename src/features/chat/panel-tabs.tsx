@@ -9,7 +9,7 @@ import { TasksPanel } from "./TasksPanel";
 
 /**
  * Builtin right-panel tabs, registered through the same extension-point
- * registry plugins use (plan §4.2 #4 — files/changes are the dogfood
+ * registry plugins use (files/changes are the dogfood
  * surface). Module-scope side effect, imported once by ChatPage; the
  * registry's upsert semantics make HMR re-runs harmless.
  */

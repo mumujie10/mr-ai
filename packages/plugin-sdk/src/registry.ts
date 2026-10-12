@@ -10,13 +10,13 @@ export interface ConversationModeDef {
 }
 
 /**
- * 扩展点定义类型（plan §4.2）与注册表（plan §4.1 runtime/registry.ts）。
+ * 扩展点定义类型与注册表（runtime/registry.ts）。
  * 宿主业务代码与插件运行时都经本包访问，不再触达 features/plugins 内部。
  * 本模块是包内唯一依赖 React 运行时的模块（useSyncExternalStore）。
  */
 
 // ---------------------------------------------------------------------------
-// 扩展点定义类型（plan §4.2）
+// 扩展点定义类型
 // ---------------------------------------------------------------------------
 
 /** Settings extension point entry. `key` is the `?page=` value; plugin
@@ -38,7 +38,7 @@ export interface SettingsSectionDef {
   component: ComponentType;
 }
 
-/** Composer "Add" menu extension row (plan §4.2 #3). */
+/** Composer "Add" menu extension row. */
 export interface AddMenuRowDef {
   id: string;
   label: () => string;
@@ -47,7 +47,7 @@ export interface AddMenuRowDef {
   onSelect: () => void;
 }
 
-/** Composer toolbar slot extension (plan §4.2 #2): an extra control rendered
+/** Composer toolbar slot extension: an extra control rendered
  *  beside the builtin control of one of the composer's three slots. */
 export type ComposerSlotId = "addMenu" | "cliMenu" | "permissionMenu";
 
@@ -59,7 +59,7 @@ export interface ComposerSlotDef {
   order?: number;
 }
 
-/** Chat right-panel tab (plan §4.2 #4). Builtin tabs (files/changes) are
+/** Chat right-panel tab. Builtin tabs (files/changes) are
  *  registered through the same registry and keep icon + label in the strip;
  *  plugin tabs render icon-only (label → title/accessible name) inside a
  *  PluginBoundary. */
@@ -71,7 +71,7 @@ export interface PanelTabDef {
   order?: number;
 }
 
-/** App status bar item (plan §4.2 #8). The plugin owns its chip's look; the
+/** App status bar item. The plugin owns its chip's look; the
  *  host only provides placement and the crash boundary. */
 export interface StatusBarItemDef {
   id: string;
@@ -98,7 +98,7 @@ export interface OverlayDef {
   order?: number;
 }
 
-/** Command palette entry (plan §4.2 #9). */
+/** Command palette entry. */
 export interface CommandDef {
   id: string;
   /** Resolved at palette render time so language flips re-title rows. */
@@ -125,7 +125,7 @@ export interface SessionMenuItemDef {
   run: (target: SessionMenuTarget) => void;
 }
 
-/** Markdown pipeline contributions (plan §4.2 #5): extra remark/rehype
+/** Markdown pipeline contributions: extra remark/rehype
  *  plugins and react-markdown component overrides, merged over the host
  *  defaults at render time. remark/rehype arrays are typed loosely — plugin
  *  bundles can't share the host's unified type identities across a blob
@@ -137,7 +137,7 @@ export interface MarkdownRendererDef {
   components?: Components;
 }
 
-/** Plugin overlay page (plan §4.2 #10), reachable at `#/p/<id>` — the
+/** Plugin overlay page, reachable at `#/p/<id>` — the
  *  /settings overlay pattern generalized. Open by navigating (hash) or by
  *  registering a palette command that navigates. */
 export interface PageDef {
@@ -146,7 +146,7 @@ export interface PageDef {
   component: ComponentType;
 }
 
-/** Chat timeline row renderer for plugin-defined row kinds (plan §4.2 #5).
+/** Chat timeline row renderer for plugin-defined row kinds.
  *  The timeline dispatch consults this registry before the host's builtin
  *  kind switch, so a plugin can own the rendering of a row kind the host
  *  doesn't know. Custom-kind rows carry plugin-defined payloads — typed
@@ -256,19 +256,19 @@ export function useRegistry<T extends { id: string }>(registry: Registry<T>): re
   return useSyncExternalStore(registry.subscribe, registry.getSnapshot);
 }
 
-/** Settings nav/page registry (plan §4.2 #1). */
+/** Settings nav/page registry. */
 export const settingsRegistry = new Registry<SettingsSectionDef>();
 
-/** Composer "Add" menu row registry (plan §4.2 #3). */
+/** Composer "Add" menu row registry. */
 export const addMenuRegistry = new Registry<AddMenuRowDef>();
 
-/** Composer toolbar slot registry (plan §4.2 #2). */
+/** Composer toolbar slot registry. */
 export const composerSlotRegistry = new Registry<ComposerSlotDef>();
 
-/** Chat right-panel tab registry (plan §4.2 #4). */
+/** Chat right-panel tab registry. */
 export const panelTabRegistry = new Registry<PanelTabDef>();
 
-/** App status bar item registry (plan §4.2 #8). */
+/** App status bar item registry. */
 export const statusBarRegistry = new Registry<StatusBarItemDef>();
 /** Composer status-row item registry (0.3.9). */
 export const composerStatusRegistry = new Registry<ComposerStatusItemDef>();
@@ -276,19 +276,19 @@ export const composerStatusRegistry = new Registry<ComposerStatusItemDef>();
 /** Non-modal viewport mounts, independent of the current route. */
 export const overlayRegistry = new Registry<OverlayDef>();
 
-/** Command palette registry (plan §4.2 #9). */
+/** Command palette registry. */
 export const commandRegistry = new Registry<CommandDef>();
 
 /** Sidebar session context-menu item registry. */
 export const sessionMenuRegistry = new Registry<SessionMenuItemDef>();
 
-/** Markdown pipeline registry (plan §4.2 #5). */
+/** Markdown pipeline registry. */
 export const markdownRegistry = new Registry<MarkdownRendererDef>();
 
-/** Plugin page registry (plan §4.2 #10); entries render at `#/p/<id>`. */
+/** Plugin page registry; entries render at `#/p/<id>`. */
 export const pageRegistry = new Registry<PageDef>();
 
-/** Chat timeline row renderer registry (plan §4.2 #5). */
+/** Chat timeline row renderer registry. */
 export const timelineRowRegistry = new Registry<TimelineRowRendererDef>();
 
 /** Sidebar workspace row context-menu registry (generic extension point). */

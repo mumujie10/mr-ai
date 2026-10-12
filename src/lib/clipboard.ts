@@ -1,6 +1,6 @@
 /**
  * navigator.clipboard is only exposed in Secure Contexts (HTTPS or localhost).
- * When CC GUI is accessed over plain HTTP via the LAN web bridge / web access
+ * When MireAI is accessed over plain HTTP via the LAN web bridge / web access
  * (e.g. http://100.66.0.1:14200), navigator.clipboard is undefined, causing
  * "TypeError: Cannot read properties of undefined (reading 'writeText')" when
  * copy buttons or menu items are clicked.

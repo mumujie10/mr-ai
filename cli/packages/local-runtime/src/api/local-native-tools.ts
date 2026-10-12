@@ -220,6 +220,7 @@ export function buildLocalNativeRuntimeTools(input: {
                     readEnabled: input.memoryReadEnabled !== false,
                     writeEnabled: input.memoryWriteEnabled !== false,
                     agentScopeEnabled: input.memoryAgentScopeEnabled,
+                    projectWorkspacePath: input.workspaceRoot,
                   },
                 ),
             }

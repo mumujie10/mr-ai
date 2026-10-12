@@ -1,7 +1,7 @@
 <!-- 由 src/features/plugins/skill/creator-skill-docs.ts 从源码生成，请勿手改。 -->
 <!-- 重新生成：pnpm plugin-skill:docs（测试 creator-skill-docs.test.ts 会断言本文件与源码一致）。 -->
 
-# CC GUI 插件 SDK 参考（SDK 0.3.20）
+# MireAI 插件 SDK 参考（SDK 0.3.20）
 
 本文件由脚本从 `packages/plugin-sdk`（公共契约）与宿主运行时（权限门禁）派生，属于 `ccgui-plugin-creator` skill。
 字段、方法、权限以本文件为准：**文中没有的 API 一律视为不存在**，不要凭记忆猜测方法名或权限名。
@@ -32,7 +32,7 @@ export default function activate(ctx: PluginContext): void | (() => void) {
 | `icon`? | `string` | 可选 | 市场展示用的方形图标：仓库内相对路径（推荐放 `docs/`，如 `docs/icon.png`）或绝对 https URL。缺省 = 市场用插件名首字母瓷砖。 面板页签没注册 `icon` 时也回落到它：市场安装会把索引品牌图按相对路径 落到插件目录（发布包无需内含图片文件），绝对 URL 直接联网加载。 |
 | `screenshots`? | `string[]` | 可选 | 市场详情页的效果图：仓库内相对路径或绝对 https URL，≤ 5 张，按数组 顺序展示。缺省 = 详情页不渲染图集。图片在插件仓库默认分支上按路径读取， 换图无需发版。 |
 
-字段取值规则（`id` 命名、`version` 与 Release tag 的关系、`tier` 取值、`configSchema` 渲染范围、`contributes` 声明式能力）见 `references/development-guide.md` §5 与 §8。
+字段取值规则（`id` 命名、`version` 与 Release tag 的关系、`tier` 取值、`configSchema` 渲染范围、`contributes` 声明式能力）见 仓库文档 `docs/plugin-development-guide.zh-CN.md` §5 与 §8（这份指南不随 skill 打包，本文件里不复制它以免出现第二份过期快照）。
 
 ### 版本握手
 
@@ -53,22 +53,22 @@ export default function activate(ctx: PluginContext): void | (() => void) {
 | `ctx.ui.registerConversationMode` | `ui:conversation-mode` | — |
 | `ctx.ui.registerSettingsSection` | `ui:settings-section` | — |
 | `ctx.ui.registerAddMenuRow` | `ui:add-menu` | — |
-| `ctx.ui.registerComposerSlot` | `ui:composer-status` | Extra control rendered beside a composer slot's builtin control (plan §4.2 #2). Permission `ui:composer-status` (shared with registerComposerStatusItem — both gate on the same composer-area grant; there is no separate `ui:composer` permission). |
-| `ctx.ui.registerPanelTab` | `ui:panel-tab` | Chat right-panel tab (plan §4.2 #4); renders with the active workspace path. The strip renders plugin tabs icon-only, so `icon` is the visible identity — without one the tab falls back to the plugin's artwork / letter tile, and the label stays a title/accessible name. |
-| `ctx.ui.registerStatusBarItem` | `ui:status-bar` | App status-bar chip (plan §4.2 #8). |
+| `ctx.ui.registerComposerSlot` | `ui:composer-status` | Extra control rendered beside a composer slot's builtin control. Permission `ui:composer-status` (shared with registerComposerStatusItem — both gate on the same composer-area grant; there is no separate `ui:composer` permission). |
+| `ctx.ui.registerPanelTab` | `ui:panel-tab` | Chat right-panel tab; renders with the active workspace path. The strip renders plugin tabs icon-only, so `icon` is the visible identity — without one the tab falls back to the plugin's artwork / letter tile, and the label stays a title/accessible name. |
+| `ctx.ui.registerStatusBarItem` | `ui:status-bar` | App status-bar chip. |
 | `ctx.ui.registerComposerStatusItem` | `ui:composer-status` | Composer status-row chip (permission `ui:composer-status`, 0.3.9): renders in the composer's status row (branch/context meter row), left group after the branch switcher. |
 | `ctx.ui.registerOverlay` | `ui:overlay` | Persistent viewport mount; requires ui:overlay. The plugin controls placement and opts interactive children into pointer-events: auto. |
-| `ctx.ui.registerCommand` | `ui:command` | Command palette entry (plan §4.2 #9). |
+| `ctx.ui.registerCommand` | `ui:command` | Command palette entry. |
 | `ctx.ui.registerSessionMenuItem` | `ui:session-menu` | Sidebar session right-click menu row (permission `ui:session-menu`, 0.3.5 起)。`run` 收到打开菜单的会话 `{ engine, sessionId }`。 |
 | `ctx.ui.openSettings` | `ui:settings-section` | 跳转到本插件的设置页（权限 `ui:settings-section`，0.3.6 起）。 `key` 对应 registerSettingsSection 的子 key，省略时打开主 section； 供状态栏 chip、面板按钮等做深链入口。 |
-| `ctx.ui.registerMarkdownRenderer` | `ui:markdown` | Markdown pipeline additions, merged over host defaults (plan §4.2 #5). |
-| `ctx.ui.registerPage` | `ui:page` | Overlay page at `#/p/<id>` (plan §4.2 #10). |
-| `ctx.ui.registerTimelineRowRenderer` | `ui:timeline-row` | Renderer for a plugin-defined chat timeline row kind (plan §4.2 #5). The row payload is plugin-defined and typed loosely — blob bundles can't share the host's TimelineRow type identity. |
+| `ctx.ui.registerMarkdownRenderer` | `ui:markdown` | Markdown pipeline additions, merged over host defaults. |
+| `ctx.ui.registerPage` | `ui:page` | Overlay page at `#/p/<id>`. |
+| `ctx.ui.registerTimelineRowRenderer` | `ui:timeline-row` | Renderer for a plugin-defined chat timeline row kind. The row payload is plugin-defined and typed loosely — blob bundles can't share the host's TimelineRow type identity. |
 | `ctx.ui.registerWorkspaceMenuItem` | `ui:workspace-menu` | Sidebar workspace row context-menu entry. |
 | `ctx.ui.registerSidebarNav` | `ui:sidebar-entry` | Home sidebar nav entry under the builtin 自动化 row (permission `ui:sidebar-entry`, 0.3.12). `onOpen` usually opens the plugin's center tab via openCenterTab. |
 | `ctx.ui.registerCenterTab` | `ui:center-tab` | Center-area tab definition (permission `ui:center-tab`, 0.3.12): renders in the center tab strip like session/file/browser tabs. Opening goes through openCenterTab; multiple keys = multiple tabs. |
 | `ctx.ui.openCenterTab` | `ui:center-tab` | Open (or focus) one of this plugin's registered center tabs (permission `ui:center-tab`, 0.3.12). Throws when the tab was never registered — open failures must be visible, not silent. |
-| `ctx.theme.injectCss` | `theme` | Inject a stylesheet scoped to this plugin; removed on unload. Rejects remote references (`@import`, `url(http…)`): plugins must be self-contained (plan §8 gate rules). |
+| `ctx.theme.injectCss` | `theme` | Inject a stylesheet scoped to this plugin; removed on unload. Rejects remote references (`@import`, `url(http…)`): plugins must be self-contained (gate rules). |
 | `ctx.theme.setTokens` | `theme` | Shorthand for BoardUI token overrides: keys must be `--*` custom properties; emits `:root {…}` and `.dark {…}` blocks. |
 | `ctx.i18n.addBundle` | `i18n` | — |
 | `ctx.storage.set` | `storage` | — |

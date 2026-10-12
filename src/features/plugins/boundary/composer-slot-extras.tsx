@@ -4,7 +4,7 @@ import type { ComposerSlotId } from "@ccgui/plugin-sdk";
 import { compareByOrder, composerSlotRegistry, pluginIdFromRegistryKey, useRegistry } from "@ccgui/plugin-sdk";
 
 /**
- * Extra composer-toolbar controls contributed by plugins (plan §4.2 #2).
+ * Extra composer-toolbar controls contributed by plugins.
  * Rendered beside the builtin control of one slot by composing into the
  * Composer's slot props from ConversationFooter, so the Composer's public
  * API stays unchanged. Each control renders inside a PluginBoundary keyed

@@ -123,7 +123,7 @@ export interface PluginModelCatalogError {
   message: string;
 }
 
-/** 信任层级（ADR-1）：declarative = 零 JS 声明式。 */
+/** 信任层级：declarative = 零 JS 声明式。 */
 export type PluginTier = "declarative" | "js";
 
 /** 插件入口唯一约定：main.js 默认导出本函数。 */
@@ -161,7 +161,7 @@ export interface JsonSchemaObject {
   required?: string[];
 }
 
-/** ccgui.plugin.json（plan §5.1）。 */
+/** ccgui.plugin.json。 */
 export interface PluginManifest {
   id: string;
   name: string;
@@ -433,7 +433,7 @@ export interface PluginAssets {
 }
 
 
-/** 插件唯一能力门面（plan §5.2）。每个 register* 需要对应权限声明，
+/** 插件唯一能力门面。每个 register* 需要对应权限声明，
  *  返回 Disposer；未显式回收也由宿主 disposer 栈兜底。 */
 export interface PluginContext {
   pluginId: string;

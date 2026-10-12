@@ -178,6 +178,9 @@ struct SendMessageArgs {
     /// 记忆工具挂载（memory/mcp.rs）：默认值让旧客户端保持可用。
     #[serde(default)]
     memory_bot: Option<String>,
+    /// GUI 界面语言（"en" | "zh"）：决定 CLI 默认用哪种语言回复与思考。
+    #[serde(default)]
+    ui_language: Option<String>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -687,6 +690,7 @@ pub(super) async fn dispatch(
         }
         // settings
         "get_app_settings" => ser(crate::settings::get_app_settings()),
+        "memory_dirs" => ser(crate::memory::cli_memory::memory_dirs().await),
         "update_app_settings" => {
             let a: UpdateSettingsArgs = parse_args(&raw)?;
             ser(crate::settings::update_app_settings(
@@ -713,6 +717,7 @@ pub(super) async fn dispatch(
                 a.run_id,
                 a.computer_use,
                 a.memory_bot,
+                a.ui_language,
             )
             .await)
         }
@@ -1306,7 +1311,7 @@ pub(super) async fn dispatch(
             let a: DeviceIdArgs = parse_args(&raw)?;
             ser(web_device_revoke(app.clone(), a.id))
         }
-        // plugins (plan §9 risk table ruling): read-only commands ride the
+        // plugins (risk-table ruling): read-only commands ride the
         // bridge so web clients render plugin UI; install/uninstall/enable/
         // storage writes stay desktop-only and fall through to unknown.
         "plugin_list" => ser(crate::plugins::plugin_list(app.state()).await),

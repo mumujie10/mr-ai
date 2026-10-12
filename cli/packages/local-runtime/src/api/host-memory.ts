@@ -8,6 +8,7 @@ import {
 
 import type { LocalRuntimeConfig } from '../config/types.js';
 import { logger } from '../common/logger.js';
+import { resolveLocalMemoryScopeGates } from '../memory/local-memory-env-gates.js';
 import {
   LocalDataCollector,
   type LocalAgentFactsReader,
@@ -16,6 +17,7 @@ import {
 } from '../memory/local-data-collector.js';
 import { LocalMemoryFacade } from '../memory/local-memory-facade.js';
 import type { LocalMemoryBusEmitter } from '../memory/local-memory-orchestration.js';
+import type { LocalMemoryScopeGates } from '../memory/types.js';
 import type { CliSunsetNoticeEvaluator } from '../memory/cli-sunset-notice.js';
 
 export function createLocalMemorySubsystem(input: {
@@ -26,6 +28,8 @@ export function createLocalMemorySubsystem(input: {
   cronEnabled?: () => boolean;
   /** Host-owned user-scoped Memory availability. Omit to keep it enabled. */
   userMemoryEnabled?: () => boolean;
+  /** Env scope gates (MAVIS_MEMORY_GLOBAL / MAVIS_MEMORY_PROJECT). Omit to keep both enabled. */
+  memoryScopeGates?: () => LocalMemoryScopeGates;
   cliSunsetNotice?: CliSunsetNoticeEvaluator;
   agentFacts?: () => LocalAgentFactsReader | undefined;
   userConfiguredName?: () => string | undefined;
@@ -37,11 +41,13 @@ export function createLocalMemorySubsystem(input: {
     }),
     nowMs: input.nowMs,
     emitBusEvent: input.emitBusEvent,
+    ...(input.memoryScopeGates ? { scopeGates: input.memoryScopeGates } : {}),
   });
   const localDataCollector = new LocalDataCollector(memoryFacade, {
     dataDir: () => input.configGetter().dataDir,
     memoryEnabled: () => input.configGetter().memory?.enabled !== false,
-    ...(input.userMemoryEnabled ? { userMemoryEnabled: input.userMemoryEnabled } : {}),
+    userMemoryEnabled: () =>
+      (input.userMemoryEnabled?.() ?? true) && resolveLocalMemoryScopeGates().userEnabled,
     ...(input.cronEnabled ? { cronEnabled: input.cronEnabled } : {}),
     proactiveMemoryEnabled: () => {
       const memory = input.configGetter().memory;

@@ -100,7 +100,7 @@ export function AddMenu({
 }) {
   const { t } = useTranslation();
   const { isOpen, triggerRef, popoverRef, setOpen } = usePopoverState();
-  // Plugin rows (plan §4.2 #3): registered via ctx.ui.registerAddMenuRow;
+  // Plugin rows: registered via ctx.ui.registerAddMenuRow;
   // labels are thunks so a language flip re-labels live rows.
   const pluginDefs = useRegistry(addMenuRegistry);
 

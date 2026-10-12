@@ -186,7 +186,7 @@ pub(crate) fn validate_manifest(
     }
 
     // Per-file hard cap across the whole bundle (CI warns at 512KB, the host
-    // refuses past 16MB locally — plan §6.1), read from the caller's walk.
+    // refuses past 16MB locally —), read from the caller's walk.
     for (rel, size) in files {
         if *size > MAX_FILE_BYTES {
             return Err(format!(

@@ -14,7 +14,8 @@ import {
 
 /**
  * M2 画布数据映射回归：定义视图（组 + 子流程节点）、运行视图（每项任务
- * 卡），以及状态聚合优先级。交互行为对齐 mission-native.html 的语义。
+ * 卡），以及状态聚合优先级。交互判据见 docs/plans/mission-workbench-plan.md
+ * 第 5、6 节（概念稿 HTML 不随仓库分发）。
  */
 
 async function runDemoToAttention(): Promise<{ run: MissionRun; definition: ReturnType<typeof buildPrReviewDemoFlow> }> {

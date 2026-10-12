@@ -23,7 +23,7 @@ const active: ActiveSession = {
   workspacePath: "/tmp/ws",
 };
 
-describe("panel tabs registry integration (plan §4.2 #4)", () => {
+describe("panel tabs registry integration", () => {
   let container: HTMLDivElement;
   let root: Root;
 

@@ -1,5 +1,5 @@
 /**
- * Host global hardening (plan §5.4). Same-origin ESM plugins share the window
+ * Host global hardening. Same-origin ESM plugins share the window
  * with the host, so true isolation is impossible; this module is the
  * "raise the bar + observable behavior" layer the plan explicitly scopes to:
  *

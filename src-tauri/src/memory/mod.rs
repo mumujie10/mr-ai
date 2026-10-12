@@ -13,6 +13,7 @@
 //! 存储是独立的 `memory_entries` 表而不是 Bot 目录里的文件：USER 是全局的、
 //! MCP 子进程要在主进程之外读写、将来按来源会话回溯，这些都是表比文件自然。
 
+pub mod cli_memory;
 pub mod commands;
 pub mod mcp;
 pub mod pending;

@@ -37,7 +37,7 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-describe("AppStatusBar plugin items (plan §4.2 #8)", () => {
+describe("AppStatusBar plugin items", () => {
   let container: HTMLDivElement;
   let root: Root;
   const disposers: Disposer[] = [];

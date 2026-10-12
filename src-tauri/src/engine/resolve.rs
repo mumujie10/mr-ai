@@ -730,25 +730,42 @@ mod tests {
         root
     }
 
+    /// Read a pid file the stub writes as its first act. Under a loaded runner
+    /// /bin/sh can be scheduled late, so wait for it instead of panicking on a
+    /// NotFound that says nothing about the probe.
+    #[cfg(unix)]
+    fn read_stub_pid(dir: &std::path::Path, name: &str) -> String {
+        let path = dir.join(name);
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            if let Ok(text) = std::fs::read_to_string(&path) {
+                let trimmed = text.trim().to_string();
+                if !trimmed.is_empty() {
+                    return trimmed;
+                }
+            }
+            if Instant::now() >= deadline {
+                panic!("{name} never appeared — /bin/sh did not start in 3s; \
+                        this run cannot judge the reap at all");
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn npm_probe_times_out_and_reaps_child() {
+        // 30s, not 4s: a probe that wrongly waits for its child is unmistakable
+        // against the 2s deadline, and a slow runner cannot make 4s look like a
+        // timeout regression.
         let root = fake_npm(
-            "echo $$ > \"$0.pid\"; /bin/sleep 4 & echo $! > \"$0.child\"; wait; printf /late",
+            "echo $$ > \"$0.pid\"; /bin/sleep 30 & echo $! > \"$0.child\"; wait; printf /late",
         );
         let started = Instant::now();
         let result = discover_npm_global_bin_dir(&[root.clone(), PathBuf::from("/bin")]);
         let elapsed = started.elapsed();
-        let pid: i32 = std::fs::read_to_string(root.join("npm.pid"))
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
-        let descendant: u32 = std::fs::read_to_string(root.join("npm.child"))
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
+        let pid: i32 = read_stub_pid(&root, "npm.pid").trim().parse().unwrap();
+        let descendant: u32 = read_stub_pid(&root, "npm.child").trim().parse().unwrap();
         let mut status = 0;
         let waited = unsafe { libc::waitpid(pid, &mut status, libc::WNOHANG) };
         let wait_error = std::io::Error::last_os_error().raw_os_error();
@@ -757,7 +774,10 @@ mod tests {
             result.is_none(),
             "timed-out npm must not supply a prefix: {result:?}"
         );
-        assert!(elapsed < Duration::from_secs(3), "probe took {elapsed:?}");
+        // The probe gives up at NPM_PROBE_TIMEOUT and reaps within
+        // NPM_REAP_TIMEOUT; anything close to the child's own 30s sleep is a
+        // hang, and 10s is runner slack, not a grade on process-spawn speed.
+        assert!(elapsed < Duration::from_secs(10), "probe took {elapsed:?}");
         assert_eq!(waited, -1);
         assert_eq!(wait_error, Some(libc::ECHILD));
         let mut system = sysinfo::System::new();
@@ -774,14 +794,17 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn npm_probe_does_not_wait_for_descendant_stdout() {
-        let root = fake_npm("/bin/sleep 4 &\nprintf '/prefix with spaces\\n'");
+        // npm prints and exits at once; the background sleep keeps the pipe's
+        // write end open for 30s. A reader waiting for EOF therefore shows up as
+        // ~30s, far outside the probe's own deadline.
+        let root = fake_npm("/bin/sleep 30 &\nprintf '/prefix with spaces\\n'");
         let started = Instant::now();
         let result = discover_npm_global_bin_dir(&[root.clone(), PathBuf::from("/bin")]);
         let elapsed = started.elapsed();
         std::fs::remove_dir_all(root).unwrap();
         assert_eq!(result, Some(PathBuf::from("/prefix with spaces/bin")));
         assert!(
-            elapsed < Duration::from_secs(1),
+            elapsed < NPM_PROBE_TIMEOUT,
             "stdout outlived npm: {elapsed:?}"
         );
     }
@@ -884,15 +907,18 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn npm_probe_stops_unlimited_output_before_timeout() {
-        let root = fake_npm("while :; do printf '%1024s' x; done");
+        // 16 MiB in one dd call: the 16 KiB budget trips on the first poll
+        // instead of depending on how fast this machine loops printf, so
+        // "before the deadline" is a property of the guard, not of the runner.
+        let root = fake_npm("/bin/dd if=/dev/zero bs=65536 count=256 2>/dev/null");
         let started = Instant::now();
         let result = discover_npm_global_bin_dir(&[root.clone(), PathBuf::from("/bin")]);
         let elapsed = started.elapsed();
         std::fs::remove_dir_all(root).unwrap();
         assert!(result.is_none());
         assert!(
-            elapsed < Duration::from_secs(1),
-            "output budget took {elapsed:?}"
+            elapsed < NPM_PROBE_TIMEOUT,
+            "output budget did not stop the probe: {elapsed:?}"
         );
     }
 

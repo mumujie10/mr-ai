@@ -1,26 +1,24 @@
 <div align="center">
 
-# Desktop MireAI
+# MireAI 客户端
 
-<img width="120" alt="MireAI icon" src="./public/app-icon.png" />
-
-**English** · [简体中文](./README.zh-CN.md)
+<img width="120" alt="MireAI 图标" src="./public/app-icon.png" />
 
 ![platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-c4f042?labelColor=black&style=flat-square)
 
 </div>
 
-**MireAI** is an open-source **multi-engine AI coding desktop client**. In plain words: it brings command-line AI coding runtimes — **Claude Code**, **Codex CLI**, **Kimi CLI**, **Grok CLI**, **Pi CLI**, **OMP CLI**, **DeepSeek Harness (DSH)**, **Antigravity**, **OpenCode**, **Qoder**, and **MiniMax Code** — plus **MireAI's own runtime, shipped inside the app** — into one graphical interface.
+**MireAI** 是一个开源的 **multi-engine AI 编程桌面客户端**。简单说：它把 **Claude Code**、**Codex CLI**、**Kimi CLI**、**Grok CLI**、**Pi CLI**、**OMP CLI**、**DeepSeek Harness（DSH）**、**Antigravity**、**OpenCode**、**Qoder**、**MiniMax Code** 等命令行 AI 编程 runtime，再加一个 **随应用一起打包的 MireAI 自带 runtime**，放进一个统一的图形界面里。
 
-No more staring at a black terminal. Open MireAI, pick a project, and chat with AI to write code, fix bugs, and commit to Git. Streaming output, thinking traces, and tool calls are visible as they happen; token usage appears when the engine reports it.
+你不用再盯着黑乎乎的终端敲命令——打开 MireAI，选好项目，像聊天一样让 AI 帮你写代码、改 Bug、提交 Git。流式输出、思考过程和工具调用都会实时展示；token 用量在引擎上报时同步呈现。
 
-The app is built with **Tauri 2 + React 18 + TypeScript + Rust** and runs on macOS, Windows, and Linux. Settings and state are persisted locally. Content sent to an AI provider follows the boundary of the channel you configured for that CLI.
+应用基于 **Tauri 2 + React 18 + TypeScript + Rust** 开发，支持 macOS / Windows / Linux。设置与状态默认在本机持久化；发送给 AI provider 的内容，遵循你为对应 CLI 配置的渠道边界。
 
 ---
 
-## Supported engines
+## 支持的引擎
 
-Every engine below is wired in through a **dedicated protocol adapter** in the Rust backend — streaming events, session history, and provider channels are handled natively, not scraped off a terminal screen.
+下面每个引擎都通过 Rust 后端里的**专属协议适配器**接入——流式事件、会话历史、供应商渠道都是原生处理的，而不是从终端屏幕上抓输出。
 
 <p>
   <a href="https://code.claude.com/docs/en/cli-reference"><kbd><img src="https://www.google.com/s2/favicons?domain=anthropic.com&sz=64" alt="Claude Code logo" width="16" valign="middle" /> Claude Code</kbd></a> &nbsp;
@@ -32,139 +30,137 @@ Every engine below is wired in through a **dedicated protocol adapter** in the R
   <a href="https://github.com/deepseek-ai/dsh"><kbd><img src="https://www.google.com/s2/favicons?domain=deepseek.com&sz=64" alt="DeepSeek Harness logo" width="16" valign="middle" /> DeepSeek Harness</kbd></a> &nbsp;
   <a href="https://www.antigravity.google/docs/cli/headless/"><kbd><img src="https://www.google.com/s2/favicons?domain=antigravity.google&sz=64" alt="Antigravity logo" width="16" valign="middle" /> Antigravity</kbd></a> &nbsp;
   <a href="https://opencode.ai/docs/"><kbd><img src="https://www.google.com/s2/favicons?domain=opencode.ai&sz=64" alt="OpenCode logo" width="16" valign="middle" /> OpenCode</kbd></a> &nbsp;
-  <a href="https://docs.qoder.com/en/cli/using-cli"><kbd><img src="https://www.google.com/s2/favicons?domain=qoder.com&sz=64" alt="Qoder logo" width="16" valign="middle" /> Qoder</kbd></a> &nbsp;
+  <a href="https://docs.qoder.com/zh/cli/using-cli"><kbd><img src="https://www.google.com/s2/favicons?domain=qoder.com&sz=64" alt="Qoder logo" width="16" valign="middle" /> Qoder</kbd></a> &nbsp;
   <a href="https://agent.minimax.cn/docs/cli/quick-start"><kbd><img src="./src/assets/model-icons/minimax-code.png" alt="MiniMax Code logo" width="16" valign="middle" /> MiniMax Code</kbd></a>
 </p>
 
-### Feature compatibility matrix
+### 功能兼容矩阵
 
-Legend: ✅ Supported · ⚠️ Partial · ❌ Not yet supported · 🔁 Not supported by the CLI, but MireAI has a GUI equivalent · ➖ N/A
+图例:✅ 支持 · ⚠️ 部分支持 · ❌ 暂不支持 · 🔁 CLI 不支持但 MireAI 有等价 GUI · ➖ 不适用
 
-| Feature | <kbd><img src="https://www.google.com/s2/favicons?domain=anthropic.com&sz=64" width="16" valign="middle" /> Claude Code</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=openai.com&sz=64" width="16" valign="middle" /> Codex CLI</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=moonshot.cn&sz=64" width="16" valign="middle" /> Kimi CLI</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=x.ai&sz=64" width="16" valign="middle" /> Grok CLI</kbd> | <kbd><img src="https://pi.dev/favicon.svg" width="16" valign="middle" /> Pi CLI</kbd> | <kbd><img src="https://omp.sh/favicon.svg" width="16" valign="middle" /> OMP CLI</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=deepseek.com&sz=64" width="16" valign="middle" /> DSH</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=antigravity.google&sz=64" width="16" valign="middle" /> Antigravity</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=opencode.ai&sz=64" width="16" valign="middle" /> OpenCode</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=qoder.com&sz=64" width="16" valign="middle" /> Qoder (Global/CN)</kbd> | <kbd><img src="./src/assets/model-icons/minimax-code.png" width="16" valign="middle" /> MiniMax Code</kbd> |
+| 功能 | <kbd><img src="https://www.google.com/s2/favicons?domain=anthropic.com&sz=64" width="16" valign="middle" /> Claude Code</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=openai.com&sz=64" width="16" valign="middle" /> Codex CLI</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=moonshot.cn&sz=64" width="16" valign="middle" /> Kimi CLI</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=x.ai&sz=64" width="16" valign="middle" /> Grok CLI</kbd> | <kbd><img src="https://pi.dev/favicon.svg" width="16" valign="middle" /> Pi CLI</kbd> | <kbd><img src="https://omp.sh/favicon.svg" width="16" valign="middle" /> OMP CLI</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=deepseek.com&sz=64" width="16" valign="middle" /> DSH</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=antigravity.google&sz=64" width="16" valign="middle" /> Antigravity</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=opencode.ai&sz=64" width="16" valign="middle" /> OpenCode</kbd> | <kbd><img src="https://www.google.com/s2/favicons?domain=qoder.com&sz=64" width="16" valign="middle" /> Qoder(全球/国内)</kbd> | <kbd><img src="./src/assets/model-icons/minimax-code.png" width="16" valign="middle" /> MiniMax Code</kbd> |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Streaming output (per-token) | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Session history & resume | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Interrupt (Stop) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Message queue | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Image attachments | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
-| Permission modes | auto·manual·plan·bypass | auto·manual·bypass | auto·plan·bypass | bypass only | auto only | auto·plan·bypass | auto only | auto·plan·bypass | auto·plan | bypass only | auto·manual·plan·bypass |
-| Model picker | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Reasoning effort | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | ⚠️ | ❌ | ✅ | ⚠️ |
-| Token usage & context window | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ |
-| Todo list rendering | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Sub-agent display (dispatch panel) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ❌ |
-| Team mode (multi-agent orchestration) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| `/` slash commands & skills (picker) | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ | ⚠️ | ❌ |
-| `@` file mentions | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Provider/channel switching | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ |
-| CC Switch import | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Fast mode (service tier) | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Session rename | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Native command `/new` (new session) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Native command `/clear` (clear context) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Native command `/compact` (compact context) | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
-| Native command `ask` (question cards) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
-| Native command `/mcp` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| Native command `/plugins` | ➖ | ➖ | ➖ | ➖ | ❌ | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ |
-| Native command `/goal` (persistent goal) | ➖ | ➖ | ➖ | ➖ | ➖ | ❌ | ➖ | ➖ | ➖ | ➖ | ➖ |
+| 流式输出(逐 token) | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 会话历史与恢复 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 中断(Stop) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 消息排队 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 图片附件 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
+| 权限模式 | 自动·手动·计划·绕过 | 自动·手动·绕过 | 自动·计划·绕过 | 仅绕过 | 仅自动 | 自动·计划·绕过 | 仅自动 | 自动·计划·绕过 | 自动·计划 | 仅绕过 | 自动·手动·计划·绕过 |
+| 模型选择 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 推理强度(Effort) | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ❌ | ⚠️ | ❌ | ✅ | ⚠️ |
+| Token 用量与上下文窗口 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ | ✅ | ✅ |
+| Todo 列表渲染 | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 子代理展示(任务分发面板) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ❌ |
+| 团队模式(多代理编排) | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| `/` 斜杠命令与技能(选择器) | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ | ⚠️ | ⚠️ | ❌ |
+| `@` 文件引用 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 渠道/供应商切换 | ✅ | ✅ | ✅ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ❌ |
+| CC Switch 渠道导入 | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| Fast 模式(service tier) | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 会话重命名 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 原生命令 `/new`(新会话) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 原生命令 `/clear`(清空上下文) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| 原生命令 `/compact`(压缩上下文) | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ✅ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
+| 原生命令 `ask`(提问卡片) | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ✅ |
+| 原生命令 `/mcp` | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| 原生命令 `/plugins` | ➖ | ➖ | ➖ | ➖ | ❌ | ✅ | ➖ | ➖ | ➖ | ➖ | ➖ |
+| 原生命令 `/goal`(持久目标) | ➖ | ➖ | ➖ | ➖ | ➖ | ❌ | ➖ | ➖ | ➖ | ➖ | ➖ |
 
-Kimi question cards use the local CLI's ACP form channel (verified with Kimi 2.0.2), including multiple questions, multiple selections, dismissal, and interruption. Kimi currently accepts declared options only, so these cards do not offer a free-text “Other” answer. WSL workspaces retain the non-interactive CLI fallback and do not support Kimi question cards or plan mode; prompt-mode launches never add incompatible interactive permission flags.
+MiniMax Code（命令 `mcode`）走它的原生 ACP 传输（`mcode acp`）：逐 token 流式、权限提问卡片（ACP `session/request_permission`）、会话恢复均为原生接入，并已对 mcode 0.5.1 实测。模型列表来自对会话握手的实时探针，你在 mcode 里自己添加的渠道（如 GLM）会自动出现。mcode 的 ACP 不接受内联图片块，图片以绝对路径注入、由 agent 用自己的文件工具读取。推理强度折叠进 mcode 的模型变体，没有独立旋钮。WSL 工作区回退到 headless `mcode exec --output-format stream-json` 子进程（仅支持自动/绕过，无提问卡与计划模式）。渠道管理与应用的 MCP/Skills 同步暂未覆盖该引擎；认证用 `mcode login`。
 
-MiniMax Code (command `mcode`) runs through its native ACP transport (`mcode acp`): per-token streaming, permission question cards (ACP `session/request_permission`), and session resume are wired natively and verified against mcode 0.5.1. The model picker is probed live from the session handshake, so providers you add to mcode itself (e.g. a GLM channel) appear automatically. mcode's ACP does not accept inline image blocks, so pictures travel as absolute file paths the agent reads with its own tools. Reasoning effort folds into mcode's model variants rather than a separate knob. WSL workspaces fall back to the headless `mcode exec --output-format stream-json` child (auto/bypass only there — no question cards or plan mode). Provider channels and the app's MCP/Skills sync do not cover this engine yet; sign in with `mcode login`.
-
-The **MireAI runtime** (engine `mireai`, command `mr`) is this app's own agent runtime: the fork under `cli/`, staged inside the installed bundle — a fresh download needs no separate CLI install and no vendor account. It runs over the same native ACP transport: per-token streaming, permission question cards, session resume, a model list probed live from the handshake, and the slash commands and skills the runtime advertises for the session. It is **bring-your-own-key only** — add a channel (base URL, API key, model, wire protocol) in Settings and the app writes it into the runtime's own provider store, with the key passed only through the child process environment, never on the command line. MiniMax sign-in, daily check-in, feedback upload, crash-diagnostics upload and the cloud permission classifier were deleted from this build rather than left as buttons that do nothing. Its state lives in `~/.mireai`, kept separate from an official MiniMax Code install in `~/.minimax`. Reasoning effort is per channel: the runtime advertises effort levels only for models whose channel declares them, so declare the levels your provider actually accepts.
+**MireAI 自带 runtime**（引擎 `mireai`，命令 `mr`）是本应用自己的 agent runtime——就是仓库 `cli/` 下这份分叉，构建时打进安装包，所以下载即用，不需要再单独装 CLI，也不依赖任何厂商账号。它同样走原生 ACP：逐 token 流式、权限提问卡片、会话恢复、模型列表来自会话握手的实时探针，输入框 `/` 里的命令与技能由 runtime 按会话自己广播。它**只支持自带密钥（BYOK）**：在设置里填渠道（API 地址、密钥、模型、接口协议），应用把它写进 runtime 自己的 provider 存储，密钥只经子进程环境变量传递、绝不进命令行；MiniMax 登录、每日签到、反馈上传、错误诊断上传、云端权限分类这几条账号链路在本构建里是整块删除，而不是留一个按下去没反应的开关。它的运行数据在 `~/.mireai`，与用户自装的官方 MiniMax Code（`~/.minimax`）互不共用。推理强度按渠道给出：只有渠道声明过档位的模型，runtime 才会广播可选档位，所以请填写你的服务商真正接受的那些档位。
 
 ---
-## What can MireAI do?
+## MireAI 能干什么
 
-### One client, thirteen engine adapters
+### 一个客户端，装下十三个引擎适配
 
-- Registers runtime adapters for **Claude Code**, **Codex CLI**, **Kimi CLI**, **Grok CLI**, **Pi CLI**, **OMP CLI**, **DeepSeek Harness**, **Antigravity**, **OpenCode**, **Qoder** (global and CN distributions), **MiniMax Code**, and the **bundled MireAI runtime** — pick the engine per session from the composer.
-- **Provider channels** are written to each CLI's own native config files (no parallel credential store), with curated presets for GLM, Kimi, DeepSeek, MiniMax, MiMo, Bailian, LongCat, OpenCode Go, OpenRouter, Requesty, [API Route](https://www.api-route.com), and more. Claude / Codex / Grok channels can be imported from [CC Switch](https://github.com/farion1231/cc-switch).
+- 注册了 **Claude Code**、**Codex CLI**、**Kimi CLI**、**Grok CLI**、**Pi CLI**、**OMP CLI**、**DeepSeek Harness**、**Antigravity**、**OpenCode**、**Qoder**（全球版与国内版）、**MiniMax Code**，以及**随应用打包的 MireAI 自带 runtime** 的 runtime adapter——在输入框里按会话切换引擎。
+- **供应商渠道**直接写入各 CLI 自己的原生配置文件（不搞平行的凭证存储），内置 GLM、Kimi、DeepSeek、MiniMax、MiMo、百炼、LongCat、OpenCode Go、OpenRouter、Requesty、[API Route](https://www.api-route.com) 等精选预设；Claude / Codex / Grok 的渠道还能从 [CC Switch](https://github.com/farion1231/cc-switch) 一键导入。
 
-  To use API Route, create an API key in its dashboard and select the **API Route** preset in Settings for Claude or Codex. Claude uses the Anthropic-compatible root endpoint; Codex uses `/v1` with the Responses protocol. Adjust the preset's model names to models available to your key; see the [API Route setup guide](https://www.api-route.com/docs/quickstart).
-- Pi-family engines (Pi / OMP) support API-key and OAuth sign-in flows from inside Settings.
-- Per-tab **model and effort overrides**: different tabs in the same window can run different models or thinking levels.
-- Session history survives restarts; the history scanner reads each CLI's native session files and keeps titles in sync.
+  使用 API Route 时，在其控制台创建 API Key，然后在设置中的 Claude 或 Codex 渠道选择 **API Route** 预设。Claude 使用兼容 Anthropic 的根地址，Codex 使用 `/v1` 与 Responses 协议。模型名称可按密钥可用的模型调整，详见 [API Route 接入指南](https://www.api-route.com/zh/docs/quickstart)。
+- Pi 系引擎（Pi / OMP）支持在设置页内完成 API Key 与 OAuth 登录。
+- 支持**按标签页覆盖模型与 effort 档位**：同一个窗口里，不同标签页可以跑不同模型或思考强度。
+- 会话历史不丢：历史扫描器直接读取各 CLI 的原生会话文件并保持标题同步，关掉应用再打开还能接着聊。
 
-### A chat box designed for coding
+### 聊天框是为写代码设计的
 
-- Streaming replies are revealed per animation frame with cached syntax highlighting — long outputs stay smooth instead of re-parsing markdown on every token.
-- **Thinking streams** merge with the reply text, auto-fold when they settle, and expand to full text on demand.
-- Tool calls show as live rows with expandable parameters and results, including beautified **Git Diff** and **Bash** viewers and per-run completion metadata.
-- A **Run Status Strip** mirrors the engine's live progress (including todo snapshots), and a message **anchor rail** lets you jump between user messages.
-- Pasted images become attachments; file mentions are backed by a `.gitignore`-aware project file index; file links in replies handle URL-encoded paths and have a right-click menu.
-- Permission denials can be resolved inline by granting the engine extra directories; prompt history and an optional **Codex Fast** toggle live in the composer.
+- 流式回复按动画帧逐步展示，配合语法高亮缓存——长输出也保持流畅，不会每来一个 token 就重排一遍 markdown。
+- **思考流**与正文合并展示，结束后自动折叠，需要时一键展开看全文。
+- 工具调用以实时行呈现，参数与结果可展开查看，内置美化的 **Git Diff**、**Bash** 查看器和每次运行的完成元数据。
+- **运行状态条**实时镜像引擎进度（含 todo 快照），消息**锚点导航栏**让你在用户消息之间快速跳转。
+- 粘贴图片自动转附件；`@` 文件引用基于感知 `.gitignore` 的项目文件索引；回复中的文件链接能处理 URL 编码路径，并支持右键菜单。
+- 权限被拒时可以在对话内直接为引擎追加授权目录；输入框还内置提示词历史与可选的 **Codex Fast** 开关。
 
-### Not just chat — a full set of dev panels
+### 不只是聊天，是一整套开发面板
 
-- **File tree**: virtualized, with Git status colors, nested-repository badges, context menus, and drag-and-drop — plus a built-in CodeMirror editor pane with Markdown preview.
-- **Built-in terminal**: a real PTY-backed terminal dock (xterm + WebGL), no need to switch windows.
-- **Git panel**: stage, commit, search branches, inspect diffs and history.
-- **Command palette**: one keyboard-driven box for the app's commands.
+- **文件树**：虚拟化渲染，带 Git 状态颜色、嵌套仓库徽标、右键菜单与拖拽——内置 CodeMirror 编辑器面板，支持 Markdown 预览。
+- **内置终端**：真正的 PTY 终端坞（xterm + WebGL），不用切窗口。
+- **Git 面板**：暂存、提交、分支搜索、看 diff、翻提交历史。
+- **命令面板**：一个键盘驱动的入口，调起应用内所有命令。
 
-### Plugin system
+### 插件系统
 
-- First-party **plugin SDK** (`@ccgui/plugin-sdk`) plus an in-app runtime, manager UI, and trust boundary.
-- **Declarative plugins** can add settings sections and config-driven UI without shipping frontend code; builtin app surfaces (including the settings page itself) are registered through the same extension points.
-- See [docs/plugin-development-guide.zh-CN.md](./docs/plugin-development-guide.zh-CN.md) for the full authoring guide.
+- 自研 **插件 SDK**（`@ccgui/plugin-sdk`），配套应用内运行时、管理界面与信任边界。
+- **声明式插件**无需编写前端代码即可新增设置区块与配置驱动的界面；应用内建界面（包括设置页本身）也走同一套扩展点注册。
+- 完整开发指南见 [docs/plugin-development-guide.zh-CN.md](./docs/plugin-development-guide.zh-CN.md)。
 
-### Settings, network, and updates
+### 设置、网络与更新
 
-- **Proxy settings** for the app and engine traffic.
-- **LAN web access**: serve the UI to other devices on your network over a token-authenticated WebSocket bridge, with a QR-code entry in Settings.
-- **Workspace management**: group projects and switch between them.
-- In-app **auto-update** (Tauri updater against GitHub Releases), a changelog dialog, and signed macOS builds.
-- Bilingual UI: **Chinese and English**.
+- **代理设置**：为应用与引擎流量配置代理。
+- **局域网网页访问**：通过 token 鉴权的 WebSocket 桥接，把界面共享给局域网内其他设备，设置页提供二维码入口。
+- **工作区管理**：给项目分组，快速切换。
+- 应用内**自动更新**（Tauri updater，对接 GitHub Releases）、版本记录对话框、macOS 签名构建。
+- 中英双语界面。
 
 ---
 
-## Download
+## 下载安装
 
-**MireAI has no published installers yet.** Until the first release lands, build it from source with the three steps below.
+**MireAI 目前没有发布任何安装包。** 首个 Release 出来之前，请按下面三步自行构建。
 
-Once releases exist they will carry these artifacts:
+发布后将会提供这些产物：
 
-| Platform | Installer |
+| 平台 | 安装包 |
 | --- | --- |
-| macOS (Apple Silicon, signed) | `aarch64.dmg` |
-| Windows | `.exe` (NSIS) |
-| Linux | `.AppImage`, `.rpm` |
+| macOS（M 系列芯片，已签名） | `aarch64.dmg` |
+| Windows | `.exe`（NSIS）安装包 |
+| Linux | `.AppImage`、`.rpm` |
 
-The `.rpm` is zstd-compressed and requires rpm ≥ 4.14 (Fedora 28+, RHEL 8+); on older rpm-based systems use the AppImage instead.
+`.rpm` 采用 zstd 压缩，要求系统 rpm ≥ 4.14（Fedora 28+ / RHEL 8+）；更早的 rpm 系发行版请使用 AppImage。
 
-After installing, open Settings, configure a provider channel for the CLI you want (or sign in), add a project folder, and start chatting.
+装好之后，打开设置，为要用的 CLI 配置供应商渠道（或直接登录），添加一个项目文件夹，就可以开始聊了。
 
-> Two identifiers still carry the origin project's name and are deliberately not renamed yet: the bundle identifier `com.zhukunpenglinyutong.ccgui` and the updater feed `…/desktop-cc-gui/releases/latest/download/latest.json`. Renaming the bundle identifier is irreversible for existing installs, and moving the updater feed breaks auto-update for anyone already installed — both need a deliberate release decision, plus the company domain for the new identifier.
+> 有两个标识仍带着来源项目的名字，且是**有意暂未改**的：bundle identifier `com.zhukunpenglinyutong.ccgui`，以及更新源 `…/desktop-cc-gui/releases/latest/download/latest.json`。改 bundle identifier 对已安装用户不可逆，改更新源会直接断掉他们的自动更新——两者都需要一次明确的发布决策，新 identifier 还要用到公司域名。
 
-### Using DeepSeek Harness (DSH)
+### 使用 DeepSeek Harness（DSH）
 
-1. Install the DSH CLI on your machine and configure its models and API keys in DSH itself — not as a separate vendor preset inside MireAI.
-2. In Settings → DeepSeek Harness, MireAI can adopt a running local `dsh web` host or auto-start one.
-3. Select **DeepSeek Harness** in the composer engine picker. Chat runs through DSH's headless profile; models and credentials stay in DSH.
-4. Image attachments (paste, pick, or drop) are supported. For custom providers added in DSH (`llm-pi-ai` routes), MireAI declares image input on the route before sending — no manual DSH settings edit needed; official adapters report their own capabilities.
+1. 在本机安装 DSH CLI，并在 DSH 自身中配置模型与 API key——不要把它当成 MireAI 里的另一套 vendor preset。
+2. 在设置 → DeepSeek Harness 中，MireAI 可以接管本机已运行的 `dsh web` host，也可以自动拉起一个。
+3. 在输入框引擎选择器中选中 **DeepSeek Harness**。对话走 DSH 的 headless profile；模型与凭证仍归 DSH 管理。
+4. 支持图片附件（粘贴、选择或拖入）。对于在 DSH 中添加的自定义供应商（`llm-pi-ai` 路由），MireAI 会在发送前自动为该路由声明图片输入能力——无需手动修改 DSH 设置；官方适配器会自行上报能力。
 
 ---
 
-## Getting it running (setup guide)
+## 把项目跑起来（启动教程）
 
-Want to build it yourself or contribute? Three steps.
+想自己编译、或者参与开发？跟着下面三步走。
 
-### Step 1: Prepare your environment
+### 第一步：准备环境
 
-| Tool | Version | What for |
+| 工具 | 版本要求 | 用来干嘛 |
 | --- | --- | --- |
-| [Node.js](https://nodejs.org/) | 20 or newer | Runs the frontend toolchain |
-| [pnpm](https://pnpm.io/) | 10 (pinned via `packageManager`) | Installs dependencies |
-| [Rust](https://rustup.rs/) | stable (install via rustup) | Compiles the backend |
+| [Node.js](https://nodejs.org/) | 20 或更新 | 跑前端工具链 |
+| [pnpm](https://pnpm.io/) | 10（`packageManager` 字段已锁定） | 安装依赖 |
+| [Rust](https://rustup.rs/) | stable（用 rustup 装） | 编译后端 |
 
-Each OS also needs the standard Tauri prerequisites — see the [official Tauri guide](https://v2.tauri.app/start/prerequisites/):
+不同系统还需要一点额外准备（这是 Tauri 框架的要求，详见 [Tauri 官方环境文档](https://v2.tauri.app/start/prerequisites/)）：
 
-- **macOS**: `xcode-select --install`.
-- **Windows**: Microsoft C++ Build Tools and WebView2 (Windows 11 ships with WebView2).
-- **Linux**: `webkit2gtk` and friends — copy the commands from the Tauri docs.
+- **macOS**：装 Xcode 命令行工具：`xcode-select --install`。
+- **Windows**：装 Microsoft C++ Build Tools 和 WebView2（Win 11 自带 WebView2）。
+- **Linux**：装 `webkit2gtk` 等系统库，照着 Tauri 官方文档抄命令就行。
 
-### Step 2: Install dependencies
+### 第二步：装依赖
 
 ```bash
 git clone https://github.com/mumujie10/mr-ai.git
@@ -172,115 +168,117 @@ cd mr-ai
 pnpm install
 ```
 
-Note: this is a **pnpm workspace** (the plugin SDK lives in `packages/plugin-sdk`); the lockfile is `pnpm-lock.yaml`. `cli/` deliberately keeps its **own pnpm workspace and lockfile**: pnpm treats `overrides`, `onlyBuiltDependencies` and `node-linker` as workspace-global, and the CLI pins vite 7 / vitest 4, so a single shared lockfile would force the desktop client onto those majors too. Run `pnpm install:all` to install both.
+注意：这是一个 **pnpm workspace**（插件 SDK 在 `packages/plugin-sdk`），锁定文件是 `pnpm-lock.yaml`。`cli/` 刻意保留**自己的 pnpm workspace 与 lockfile**：pnpm 的 `overrides`、`onlyBuiltDependencies`、`node-linker` 都是 workspace 全局设置，而 CLI 锁的是 vite 7 / vitest 4，合一份 lock 会把桌面端一起拽过去。装两边请用 `pnpm install:all`。
 
-### Step 3: Start it
+### 第三步：启动
 
 ```bash
 pnpm dev
 ```
 
-A few tips:
+几个小提示：
 
-- **The first launch compiles the entire Rust backend and can take a few minutes** — go grab a coffee. Later launches use incremental builds and are fast.
-- The frontend dev server runs on port `1420`.
+- **第一次启动要编译整个 Rust 后端，可能等上几分钟**，去倒杯水。之后是增量编译，很快。
+- 前端开发服务器跑在 `1420` 端口。
 
-### Building installers
+### 打安装包
 
 ```bash
-pnpm build:mac                 # macOS signed build (scripts/build-signed-macos.sh)
-pnpm build:mac:skip-notarize   # same, skipping notarization
+pnpm build:mac                 # macOS 签名构建（scripts/build-signed-macos.sh）
+pnpm build:mac:skip-notarize   # 同上，但跳过公证
 ```
 
-Windows and Linux installers are meant to come from the CI workflows that live next to this file (`.github/workflows/release.yml`, `build-windows-artifact.yml`).
+Windows 与 Linux 安装包由本文件旁边的 CI 工作流产出（`.github/workflows/release.yml`、`build-windows-artifact.yml`）。
 
-These workflows sit at the repository root and are therefore visible to GitHub again. They are **not ready to produce a MireAI artifact yet**: none of them builds or stages `cli/`, so a bundle built by CI today would contain no built-in runtime, and `cli/.github/` (8 further workflows plus its own `dependabot`/`CODEOWNERS`) is still inert inside a subdirectory.
+`release.yml` 的 macOS 与 Linux 两个 job 现在会在打包前构建并 staged `cli/`（`pnpm --dir cli install` + `pnpm runtime:build`），所以 CI 产物开始带上内置 runtime；发布前还有一道门：`preflight` 跑前端两套测试，Linux job 跑 `cargo test --lib`。**这段还没在 GitHub 上真跑过一次**——上面的说法描述的是工作流文件现在的写法，不是已验证的产物。
+
+仍然成立的两条限制：`scripts/stage-runtime.mjs` 拒绝 win32，所以 **Windows 安装包不带内置 runtime**（那个平台的自带引擎会显示未安装，直到 Windows staging 实现）；`cli/.github/` 里那 8 个工作流（连同它自己的 `dependabot`、`CODEOWNERS`）仍处于失效状态，GitHub 只读仓库根的 `.github/`。
 
 ---
 
-## How to work on the code (development guide)
+## 怎么改代码（开发教程）
 
-### Tech stack at a glance
+### 技术栈一览
 
-| Part | Technology |
+| 部分 | 用的什么 |
 | --- | --- |
-| UI | React 18 + TypeScript + Tailwind CSS 4 + zustand |
-| Build | Vite 6 |
-| Desktop shell | Tauri 2 (Rust backend: git2, rusqlite, portable-pty, axum) |
-| Tests | Vitest (frontend) + cargo test (Rust) |
+| 界面 | React 18 + TypeScript + Tailwind CSS 4 + zustand |
+| 构建 | Vite 6 |
+| 桌面框架 | Tauri 2（Rust 后端：git2、rusqlite、portable-pty、axum） |
+| 测试 | Vitest（前端）+ cargo test（Rust） |
 
-### Directory layout
+### 目录结构
 
 ```text
-mr-ai/                      # repository root = the MireAI desktop client
-├── src/                    # Frontend code
-│   ├── features/           # ★ Feature modules: chat / files / git / terminal /
+mr-ai/                      # 仓库根 = MireAI 桌面客户端本体
+├── src/                    # 前端代码
+│   ├── features/           # ★ 功能模块：chat / files / git / terminal /
 │   │                       #   settings / plugins / commands / update / open-app
-│   ├── components/         # Shared UI components (incl. engine brand icons)
-│   ├── i18n/               # zh + en locale bundles
-│   ├── styles/             # Global styles
-│   └── lib/ utils/         # Utility functions
-├── src-tauri/              # Rust backend
-│   └── src/                # engine/ (one module per CLI), history/, plugins/,
-│                           # git.rs, terminal.rs, web.rs (LAN bridge), ...
-├── packages/plugin-sdk/    # @ccgui/plugin-sdk — plugin authoring kit
-├── tests/                  # Frontend integration-style tests (Vitest)
-├── scripts/                # Build, packaging and runtime-staging scripts
-├── docs/                   # Plugin development guide, engine mode notes
-└── cli/                    # the MR CLI agent runtime (own package.json + lockfile)
+│   ├── components/         # 跨功能共享的通用 UI 组件（含引擎品牌图标）
+│   ├── i18n/               # zh + en 两套 locale bundle
+│   ├── styles/             # 全局样式
+│   └── lib/ utils/         # 工具函数
+├── src-tauri/              # Rust 后端
+│   └── src/                # engine/（每个 CLI 一个模块）、history/、plugins/、
+│                           # git.rs、terminal.rs、web.rs（局域网桥接）……
+├── packages/plugin-sdk/    # @ccgui/plugin-sdk —— 插件开发套件
+├── tests/                  # 前端集成向测试（Vitest + 浏览器夹具）
+├── scripts/                # 构建、打包与 runtime staging 脚本
+├── docs/                   # 插件开发指南、界面规范、方案文档
+└── cli/                    # 随应用打包的 agent runtime（自带 package.json 与 lockfile）
 ```
 
-`cli/` is the agent runtime this client drives over ACP. It keeps its **own pnpm workspace and lockfile** on purpose: its toolchain pins (vite 7, vitest 4, `node-linker=hoisted`, `onlyBuiltDependencies` for `better-sqlite3`) are global in pnpm, so sharing one lockfile would drag the desktop client onto a different vite/vitest major. One repo, two installs — `pnpm install:all` does both, and `pnpm runtime:build` builds the CLI and stages it into `src-tauri/resources/runtime/` for the app to launch.
+`cli/` 是本项目通过 ACP 驱动的 agent runtime，它是独立的 pnpm workspace，有自己的文档与命令。
 
-### The typical workflow for changing a feature
+### 改一个功能的套路
 
-1. **UI-only change**: find the matching module under `src/features/` and edit there. New components live inside that feature's own folder.
-2. **Needs backend support**: add a `#[tauri::command]` in the matching `src-tauri/src/` module and call it from the frontend via the Tauri API.
-3. **Changed any UI text**: route it through i18n and keep both bundles (`src/i18n/zh.ts`, `src/i18n/en.ts`) synchronized — hardcoded UI text is not allowed.
+1. **只改界面**：找到 `src/features/` 下对应的模块改就行。新组件直接放在该模块自己的目录里。
+2. **需要后端配合**：在 `src-tauri/src/` 对应模块里加 `#[tauri::command]`，前端通过 Tauri API 调用。
+3. **改了界面文字**：必须走 i18n，并同步两套 bundle（`src/i18n/zh.ts`、`src/i18n/en.ts`）；界面文字不允许硬编码。
 
-### Everyday commands
+### 常用命令
 
-| Command | What it does |
+| 命令 | 干嘛的 |
 | --- | --- |
-| `pnpm dev` | Start the full app (Tauri dev mode) |
-| `pnpm build` | TypeScript check + frontend production build |
-| `pnpm test` | Run the Vitest suite |
-| `pnpm preview` | Preview the production frontend build |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | Run Rust tests |
+| `pnpm dev` | 启动完整应用（Tauri 开发模式） |
+| `pnpm build` | TypeScript 类型检查 + 前端生产构建 |
+| `pnpm test` | 跑 Vitest 测试套件 |
+| `pnpm preview` | 预览生产构建的前端 |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | 跑 Rust 测试 |
 
-### Writing tests
+### 测试怎么写
 
-- Frontend tests use [Vitest](https://vitest.dev/) — colocated `xxx.test.ts(x)` files next to the source, plus heavier suites under `tests/`.
-- Rust tests live in their modules as usual and run with `cargo test --manifest-path src-tauri/Cargo.toml`.
+- 前端测试用 [Vitest](https://vitest.dev/)——源码旁边放 `xxx.test.ts(x)` 同位测试，较重的套件统一放 `tests/` 目录。
+- Rust 端测试照常写在模块里，用 `cargo test --manifest-path src-tauri/Cargo.toml` 跑。
 
 ---
 
-## Coding rules
+## 开发规范
 
-Not many rules, but each exists for a reason:
+规矩不多，但都有原因，提交前过一遍：
 
-1. **Run the big three before opening a PR**: `pnpm build` (typecheck) and `pnpm test` green locally, plus `cargo test` if you touched Rust.
-2. **UI text must go through i18n**: every user-visible string comes from `src/i18n/`, and both shipped locale bundles must stay synchronized.
-3. **Keep components close to home**: new components start inside their own feature folder; promote to `src/components/` only once they're genuinely reused across features.
-4. **TypeScript strict**: don't paper over things with `any`; write real types.
-5. **Extend through the plugin SDK where possible**: new settings sections and surfaces should register through the same extension points the builtin ones use.
-6. **Never commit secrets**: API keys and tokens must never appear in code or commit history.
+1. **提 PR 前跑通本地验证**：`pnpm build`（类型检查）和 `pnpm test` 全绿；动了 Rust 再加 `cargo test`。
+2. **界面文字必须走 i18n**：所有用户可见文案都从 `src/i18n/` 取，并保持两套 locale bundle 同步，不许硬编码。
+3. **组件就近放**：新组件先放自己 feature 的目录里；确实被多个功能复用了，再挪到 `src/components/`。
+4. **TypeScript 严格模式**：别用 `any` 糊弄，类型写明白。
+5. **优先通过插件 SDK 扩展**：新增设置区块与界面，尽量走内建界面同款扩展点注册。
+6. **永远不要提交密钥**：API Key、token 这类东西绝对不能进代码和提交记录。
 
-### Writing commit messages
+### Commit 信息怎么写
 
-Use [Conventional Commits](https://www.conventionalcommits.org/) with a Chinese action phrase by default: `type(scope): 中文动宾短句`.
+默认使用中文主体的 [Conventional Commits](https://www.conventionalcommits.org/)：`type(scope): 中文动宾短句`。
 
-| type | When to use |
+| type | 什么时候用 |
 | --- | --- |
-| `feat` | New feature |
-| `fix` | Bug fix |
-| `refactor` | Refactoring (no behavior change) |
-| `docs` | Documentation |
-| `test` | Adding/updating tests |
-| `chore` | Housekeeping (version bumps, deps, scripts) |
-| `perf` / `style` / `ci` | Performance / formatting / CI |
+| `feat` | 加新功能 |
+| `fix` | 修 Bug |
+| `refactor` | 重构（行为不变） |
+| `docs` | 改文档 |
+| `test` | 加/改测试 |
+| `chore` | 杂活（版本号、依赖、脚本） |
+| `perf` / `style` / `ci` | 性能优化 / 格式 / CI |
 
-Real examples from this repo:
+仓库里的真实例子：
 
 ```text
 feat(chat): 支持工具调用参数与结果展开、Git Diff/Bash美化及完成元数据展示
@@ -288,24 +286,24 @@ fix(codex): Windows .cmd shim 下多行提示词只送达第一行
 perf(chat): reveal streamed text per frame without reparsing markdown
 ```
 
-No emoji in commit messages, and no AI-generated signatures.
+不要在 commit 信息里写 emoji，也不要带 AI 生成署名。
 
 ---
 
-## Submitting your code (contribution flow)
+## 怎么提交你的代码（贡献流程）
 
-1. **Fork** the repo and clone it locally.
-2. Branch off `main`, named like `feat/xxx` or `fix/xxx`.
-3. Make your changes and get `pnpm build` + `pnpm test` green locally.
-4. Open a PR against this repo's **`main` branch**. Title in commit format; in the description, explain what changed, why, and how you verified it.
+1. **Fork** 本仓库，clone 到本地。
+2. 从 `main` 切一个分支，名字按 `feat/xxx`、`fix/xxx` 这种风格起。
+3. 改代码，本地把 `pnpm build` + `pnpm test` 跑绿。
+4. 提 PR 到本仓库的 **`main` 分支**。标题按 commit 格式写，描述里说清楚：改了什么、为什么改、怎么验证的。
 
-Not sure where to start? Browse the [Issues](https://github.com/mumujie10/mr-ai/issues) and pick one that interests you. Found a bug or have an idea? Open an issue and let's talk.
+不知道从哪下手？看看 [Issues](https://github.com/mumujie10/mr-ai/issues)，挑一个感兴趣的开干。发现 Bug 或有新点子，也欢迎直接开 Issue 聊。
 
-### Want to dig deeper?
+### 想深入了解项目内部？
 
-- [Plugin development guide (中文)](docs/plugin-development-guide.zh-CN.md) — SDK, manifest, permissions, and the trust boundary.
-- [UI/UX spec (中文)](docs/ui-ux-spec.zh-CN.md) — design tokens, states, action feedback, and the refresh-button inventory.
-- [docs/omp-fast-mode.md](docs/omp-fast-mode.md) — notes on the Codex Fast / OMP fast mode.
+- [插件开发指南](docs/plugin-development-guide.zh-CN.md) — SDK、manifest、权限模型与信任边界。
+- [界面与交互规范](docs/ui-ux-spec.zh-CN.md) — 设计 token、状态与动作反馈、刷新入口清单。
+- [docs/omp-fast-mode.md](docs/omp-fast-mode.md) — Codex Fast / OMP 快速模式说明。
 
 ---
 
@@ -313,14 +311,12 @@ Not sure where to start? Browse the [Issues](https://github.com/mumujie10/mr-ai/
 
 [MIT](https://opensource.org/license/mit)
 
-The agent runtime in `cli/` keeps its own license and attribution files, which ship with the app.
-
 ---
 
-## Origin & credits
+## 来源与致谢
 
-This client continues **[ccgui](https://github.com/zhukunpenglinyutong/desktop-cc-gui)**, the open-source multi-engine AI coding client by 朱昆鹏, under a new product name. Credit for all work before this repository belongs to [ccgui's contributors](https://github.com/zhukunpenglinyutong/desktop-cc-gui/graphs/contributors).
+本客户端是开源项目 **[ccgui](https://github.com/zhukunpenglinyutong/desktop-cc-gui)**（作者朱昆鹏的多引擎 AI 编程客户端）换新品牌后的延续。本仓库建立之前的全部工作，功劳属于 [ccgui 的贡献者们](https://github.com/zhukunpenglinyutong/desktop-cc-gui/graphs/contributors)。
 
-Earlier still, the project started from [CodexMonitor](https://github.com/Dimillian/CodexMonitor). Since v1.0.0 the codebase has been rewritten from scratch — no CodexMonitor code remains, but the original inspiration is gratefully acknowledged.
+更早一些，本项目最初源自 [CodexMonitor](https://github.com/Dimillian/CodexMonitor)。自 v1.0.0 起代码库已从零完全重写，不再包含 CodexMonitor 的任何代码，但仍感谢它最初带来的启发。
 
-The agent runtime under `cli/` is a fork of **MiniMax Code**; its license and third-party attribution files stay in that directory and ship inside the app.
+`cli/` 下的 agent runtime 是 **MiniMax Code** 的分叉，它的许可与第三方署名文件留在该目录内，并随应用一起打包分发。

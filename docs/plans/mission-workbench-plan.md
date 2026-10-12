@@ -1,7 +1,7 @@
 # 任务工作台（Mission Workbench）执行方案
 
 > 来源：Codex 会话 `01a0c7e5-0761-7130-8f6b-2c3e508c4a13`（2026-09-22）的讨论结论整理。
-> 概念稿：`docs/concepts/mission-native.html`（最终版，含 26 项交互测试 `mission-native.test.mjs`）。
+> 概念稿：交互原型 `mission-native.html`（含 26 项交互测试）**不在本仓库内**，历史上只存在于当时的会话工作目录。本文档是唯一的实施依据；界面取舍以本文第 2、5、6 节为准，不要去找那份 HTML。
 > 本文档面向新窗口直接实施，写清范围、架构、接口、步骤与验收标准。
 
 ## 1. 产品目标
@@ -94,7 +94,7 @@
 
 **已知缺口**：现有 agent 接口没有逐节点工具白名单。若要求"某节点只读"，需要在原生层为每次 agent 调用加能力约束——这是本方案的一个明确技术任务，不允许用"节点名叫只读"来假装实现。
 
-## 5. 界面结构（对齐 mission-native.html）
+## 5. 界面结构（判据就是本节列出的入口与面板）
 
 中心页签内三个一级入口：
 
@@ -117,7 +117,7 @@
 ### M2 — 画布与收件箱 UI
 - React Flow 自定义节点（6 种类型对应固定组件），流程定义/运行画布双视图，节点详情面板。
 - 收件箱完整交互：筛选、就地审批/重试/补充信息、跳转节点。
-- 验收：对齐 `mission-native.html` 的交互行为；补 `tests/` 下回归测试（参照 `node --experimental-strip-types --test tests/*.test.ts` 的方式）。
+- 验收：逐项核对上面三条交互（概念稿 HTML 不在仓库内，以本节与第 6 节的文字判据为准）；补 `tests/` 下回归测试（参照 `node --experimental-strip-types --test tests/*.test.ts` 的方式）。
 
 ### M3 — AI 编排接入
 - 对话区接入宿主 agent 管线；能力目录 + 结构化提案 + 两级校验；增量修改与变更摘要；自动布局。
@@ -148,7 +148,7 @@ node --experimental-strip-types --test tests/*.test.ts  # 回归测试（需支�
 
 ```
 请按照 docs/plans/mission-workbench-plan.md 实施「任务工作台」功能。
-先读方案全文和概念稿 docs/concepts/mission-native.html，从 M0 开始，
+先读方案全文（概念稿 HTML 不在仓库内，界面判据就是本文第 5、6 节），从 M0 开始，
 按里程碑顺序实施，每个里程碑完成后按方案第 7 节验证并汇报实际结果。
 关键决策（方案第 2 节）不要再翻案；遇到方案未覆盖的取舍先问我。
 ```

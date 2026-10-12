@@ -1,4 +1,4 @@
-//! Marketplace channel (plan §6 / Phase 3): the GitHub central index is
+//! Marketplace channel (/ Phase 3): the GitHub central index is
 //! fetched over raw.githubusercontent.com with a 1h cache; install downloads
 //! the release assets the index pins, verifies each SHA-256, and feeds the
 //! verified tree to the same staging/backup transaction local installs use
@@ -6,7 +6,7 @@
 //! (proxy.rs), so market traffic honors the configured system proxy like
 //! every other outbound call.
 //!
-//! Trust chain (plan §4.4): the index repository pins every file's SHA-256;
+//! Trust chain: the index repository pins every file's SHA-256;
 //! a tampered release asset or a poisoned redirect fails the digest check
 //! before anything touches the plugins directory. minisign signatures stay
 //! an optional "verified" badge, not a gate.
@@ -24,7 +24,7 @@ use super::fs::MAX_FILE_BYTES;
 use super::manifest::semver_triple;
 use super::state::{PluginInfo, PluginRecord};
 
-/// The central index repository (plan ADR-4, Obsidian-style). Plain raw
+/// The central index repository (Obsidian-style). Plain raw
 /// file reads: no API rate limits, no self-hosted server.
 const INDEX_RAW_BASE: &str =
     "https://raw.githubusercontent.com/zhukunpenglinyutong/ccgui-plugins/main";
@@ -333,7 +333,7 @@ async fn fetch_index_entries() -> Result<Vec<CachedEntry>, String> {
     Ok(merged)
 }
 
-/// 1h in-memory cache (plan ADR-4). `force` bypasses it (手动刷新).
+/// 1h in-memory cache. `force` bypasses it (手动刷新).
 async fn index_entries(force: bool) -> Result<Arc<Vec<CachedEntry>>, String> {
     if !force {
         if let Some(cache) = &*INDEX_CACHE.lock() {

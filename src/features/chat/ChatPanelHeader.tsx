@@ -32,7 +32,7 @@ export function ChatPanelHeader({
 }) {
   const { t } = useTranslation();
   // Builtin tabs (files/changes) register at module scope in ./panel-tabs;
-  // plugin tabs arrive via ctx.ui.registerPanelTab (plan §4.2 #4).
+  // plugin tabs arrive via ctx.ui.registerPanelTab.
   const panelTabs = useSortedPanelTabs();
   // Persisted tab may point at an unloaded plugin tab; fall back to the
   // first tab (read-side only, see resolveActivePanelTab).

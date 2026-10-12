@@ -257,7 +257,7 @@ export default memo(function Markdown({
     }),
     [workspacePath, controller],
   );
-  // Plugin pipeline contributions (plan §4.2 #5): host defaults first, then
+  // Plugin pipeline contributions: host defaults first, then
   // each plugin's in registration order. Plugin halves arrive as `unknown[]`
   // — blob bundles can't share the host's unified/react-markdown type
   // identities — so the merged lists are asserted back to ReactMarkdown's

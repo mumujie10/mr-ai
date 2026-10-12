@@ -66,7 +66,7 @@ const TimelineRowView = memo(function TimelineRowView({
   seenTools: Set<string>;
   searchTarget?: ProcessSearchTarget;
 }) {
-  // Plugin-defined row kinds (plan §4.2 #5) dispatch to the registered
+  // Plugin-defined row kinds dispatch to the registered
   // renderer before the builtin switch below; builtin kinds never hit this
   // unless a plugin deliberately shadows one.
   const customRenderers = useRegistry(timelineRowRegistry);

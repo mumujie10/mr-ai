@@ -10,6 +10,7 @@ import {
   buildMemoryNoteBlock,
   buildMemorySummaryBlock,
   buildMemoryTailBlock,
+  buildProjectMemoryBlock,
   buildUserProfileBlock,
   type MemoryPromptBlockOptions,
   type MemoryPromptSource,
@@ -18,6 +19,8 @@ import {
 export interface LocalPromptMemoryReader {
   /** Shared user.md is not Agent-local and remains available to Custom Agents. */
   getUserMemory?(): Promise<{ readonly content: string }>;
+  /** Per-workspace MEMORY.md; throws when the host disabled project memory. */
+  getProjectMemory?(workspacePath: string): Promise<{ readonly content: string }>;
   collectReminderMemory(agentName: string): Promise<{
     readonly main: string;
     readonly mainPath: string;
@@ -51,6 +54,7 @@ export async function collectMemoryBlocks(
   nowMs: () => number,
   options: {
     readonly includeAgentMemory: boolean;
+    readonly workspacePath?: string;
     readonly prompt?: MemoryPromptBlockOptions;
   },
 ): Promise<readonly string[]> {
@@ -60,6 +64,12 @@ export async function collectMemoryBlocks(
       blocks,
       reader,
       sources,
+      prompt: options.prompt,
+    });
+    await appendProjectMemoryBlock({
+      blocks,
+      reader,
+      workspacePath: options.workspacePath,
       prompt: options.prompt,
     });
     return blocks;
@@ -78,10 +88,45 @@ export async function collectMemoryBlocks(
   }
 
   appendUserMemorySnapshot(blocks, snapshots, options.prompt);
+  await appendProjectMemoryBlock({
+    blocks,
+    reader,
+    workspacePath: options.workspacePath,
+    prompt: options.prompt,
+  });
   appendCanonicalMemorySnapshots(blocks, snapshots, options.prompt);
   appendLegacyMemorySnapshots(blocks, snapshots, options.prompt);
   await appendDailyMemoryBlock(blocks, reader, sources, nowMs);
   return blocks;
+}
+
+/**
+ * Project memory is independent of the Agent-memory gates (same precedence as
+ * the user profile block); a disabled host gate surfaces as a thrown read,
+ * which simply leaves no block behind.
+ */
+async function appendProjectMemoryBlock(input: {
+  readonly blocks: string[];
+  readonly reader: LocalPromptMemoryReader;
+  readonly workspacePath: string | undefined;
+  readonly prompt?: MemoryPromptBlockOptions;
+}): Promise<void> {
+  const workspacePath = input.workspacePath?.trim();
+  if (!workspacePath || !input.reader.getProjectMemory) return;
+  let raw: string;
+  try {
+    raw = (await input.reader.getProjectMemory(workspacePath)).content;
+  } catch {
+    return;
+  }
+  const project = raw.trim();
+  if (!project) return;
+  const capped = project.length > MEMORY_TAIL_INJECTION_CAP_CHARS;
+  const capNote = capped
+    ? `\n> Content truncated — ${project.length.toLocaleString()} chars, showing latest ${MEMORY_TAIL_INJECTION_CAP_CHARS.toLocaleString()} chars.`
+    : '';
+  const content = capped ? project.slice(-MEMORY_TAIL_INJECTION_CAP_CHARS) : project;
+  input.blocks.push(buildProjectMemoryBlock(content, workspacePath, capNote, input.prompt));
 }
 
 function appendUserMemorySnapshot(

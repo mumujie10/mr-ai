@@ -143,19 +143,30 @@ fn remove_args(provider_id: &str) -> Vec<String> {
     ]
 }
 
-/// Picks the CLI provider id that carries this display name. The slug is the
-/// CLI's to mint, so it is read back from `provider list --json` rather than
-/// guessed here.
-fn provider_id_for_name(list_json: &str, name: &str) -> Option<String> {
-    let document: Value = serde_json::from_str(list_json).ok()?;
+/// Every CLI provider id carrying this display name, in the CLI's own order.
+/// The slug is the CLI's to mint, so ids are read back from
+/// `provider list --json` rather than guessed here; the plural covers the
+/// duplicates a same-name re-add forks (`llm` → `llm-2`).
+fn provider_ids_for_name(list_json: &str, name: &str) -> Vec<String> {
+    let Ok(document) = serde_json::from_str::<Value>(list_json) else {
+        return Vec::new();
+    };
     document
-        .get("providers")?
-        .as_array()?
-        .iter()
-        .find(|provider| provider.get("name").and_then(Value::as_str) == Some(name))
-        .and_then(|provider| provider.get("providerId"))
-        .and_then(Value::as_str)
-        .map(str::to_string)
+        .get("providers")
+        .and_then(Value::as_array)
+        .map(|providers| {
+            providers
+                .iter()
+                .filter(|provider| provider.get("name").and_then(Value::as_str) == Some(name))
+                .filter_map(|provider| {
+                    provider
+                        .get("providerId")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 struct Invocation {
@@ -185,30 +196,63 @@ fn invoke(bin: &str, args: &[String], envs: &[(&str, &str)]) -> Result<Invocatio
 }
 
 /// Save the channel, then make it the default model — the CLI's own words for
-/// "this is the channel we answer with". Saving deliberately performs no
-/// connectivity probe: a save must not fail because a relay is briefly
-/// unreachable, and 验证 a draft is what [`test_draft`] is for. A user choosing
-/// 当前渠道 is already the explicit act.
+/// "this is the channel we answer with".
+///
+/// A re-save replaces the CLI provider carrying this display name instead of
+/// forking a second one: `provider add` mints a fresh slug for a known name
+/// (`llm` → `llm-2`), so without the cleanup a re-declared effort level would
+/// land on the fork while the selection — read back by name — stayed on the
+/// old, undeclared provider and the effort knob never appeared. The add runs
+/// before any removal so a failed save leaves the previous channel intact;
+/// stale providers are retired only after the fresh one is already selected.
+///
+/// Saving deliberately performs no connectivity probe: a save must not fail
+/// because a relay is briefly unreachable, and 验证 a draft is what
+/// [`test_draft`] is for. A user choosing 当前渠道 is already the explicit act.
 pub(crate) fn upsert_and_select(bin: &str, channel: &MrChannel<'_>) -> Result<(), String> {
+    let before = invoke(bin, &list_args(), &[])?;
+    if before.status != 0 {
+        return Err(failure("读取渠道", &before));
+    }
+    let stale = provider_ids_for_name(&before.stdout, channel.name);
+
     let added = invoke(bin, &add_args(channel), &[(API_KEY_ENV, channel.api_key)])?;
     if added.status != 0 {
         return Err(failure("保存渠道", &added));
     }
+
     let listed = invoke(bin, &list_args(), &[])?;
     if listed.status != 0 {
         return Err(failure("读取渠道", &listed));
     }
-    let provider_id = provider_id_for_name(&listed.stdout, channel.name).ok_or_else(|| {
-        format!(
-            "CLI 没有保存名为 {} 的渠道（读取到：{}）",
-            channel.name,
-            listed.stdout.trim()
-        )
-    })?;
-    let model_key = format!("{}/{}", provider_id, channel.model);
+    let matches = provider_ids_for_name(&listed.stdout, channel.name);
+    // The provider minted for this save is the id the CLI did not hold before;
+    // the fallback covers an update-in-place CLI that reuses the existing id.
+    let target = matches
+        .iter()
+        .find(|id| !stale.contains(id))
+        .or_else(|| matches.first())
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "CLI 没有保存名为 {} 的渠道（读取到：{}）",
+                channel.name,
+                listed.stdout.trim()
+            )
+        })?;
+    let model_key = format!("{}/{}", target, channel.model);
     let selected = invoke(bin, &select_args(&model_key), &[])?;
     if selected.status != 0 {
         return Err(failure("设为当前模型", &selected));
+    }
+    for id in &matches {
+        if id == &target {
+            continue;
+        }
+        let removed = invoke(bin, &remove_args(id), &[])?;
+        if removed.status != 0 {
+            return Err(failure("清理旧渠道", &removed));
+        }
     }
     Ok(())
 }
@@ -235,7 +279,7 @@ pub(crate) fn sync_missing_channels(
     }
     let mut added = 0;
     for channel in channels {
-        if provider_id_for_name(&listed.stdout, channel.name).is_some() {
+        if !provider_ids_for_name(&listed.stdout, channel.name).is_empty() {
             continue;
         }
         let saved = invoke(bin, &add_args(channel), &[(API_KEY_ENV, channel.api_key)])?;
@@ -248,18 +292,23 @@ pub(crate) fn sync_missing_channels(
 }
 
 /// Drop the channel from the CLI too, so a deleted relay cannot stay selected.
+/// Every provider carrying the name goes: earlier saves could fork same-name
+/// duplicates (`llm` and `llm-2`) that all belong to this one channel.
 pub(crate) fn remove(bin: &str, name: &str) -> Result<(), String> {
     let listed = invoke(bin, &list_args(), &[])?;
     if listed.status != 0 {
         return Err(failure("读取渠道", &listed));
     }
-    let Some(provider_id) = provider_id_for_name(&listed.stdout, name) else {
+    let provider_ids = provider_ids_for_name(&listed.stdout, name);
+    if provider_ids.is_empty() {
         // Never saved (or already gone): nothing to do.
         return Ok(());
-    };
-    let removed = invoke(bin, &remove_args(&provider_id), &[])?;
-    if removed.status != 0 {
-        return Err(failure("删除渠道", &removed));
+    }
+    for provider_id in &provider_ids {
+        let removed = invoke(bin, &remove_args(provider_id), &[])?;
+        if removed.status != 0 {
+            return Err(failure("删除渠道", &removed));
+        }
     }
     Ok(())
 }
@@ -271,7 +320,9 @@ pub(crate) fn select_current(bin: &str, channel: &MrChannel<'_>) -> Result<(), S
     if listed.status != 0 {
         return Err(failure("读取渠道", &listed));
     }
-    let provider_id = provider_id_for_name(&listed.stdout, channel.name)
+    let provider_id = provider_ids_for_name(&listed.stdout, channel.name)
+        .into_iter()
+        .next()
         .ok_or_else(|| format!("CLI 中没有名为 {} 的渠道", channel.name))?;
     let selected = invoke(
         bin,
@@ -347,7 +398,9 @@ pub(crate) fn test_draft(bin: &str, channel: &MrChannel<'_>) -> Result<Value, St
     if listed.status != 0 {
         return Err(failure("读取测试渠道", &listed));
     }
-    let provider_id = provider_id_for_name(&listed.stdout, channel.name)
+    let provider_id = provider_ids_for_name(&listed.stdout, channel.name)
+        .into_iter()
+        .next()
         .ok_or_else(|| format!("CLI 没有接受名为 {} 的测试渠道", channel.name))?;
     let tested = invoke(bin, &test_args(&provider_id, channel.model), &envs)?;
     if tested.status != 0 {
@@ -521,19 +574,22 @@ mod tests {
     }
 
     #[test]
-    fn provider_id_is_read_back_from_the_cli_not_guessed() {
+    fn provider_ids_are_read_back_from_the_cli_not_guessed() {
         let document = serde_json::json!({
             "providers": [
                 { "providerId": "minimax_oauth", "kind": "minimax-oauth", "name": "MiniMax" },
-                { "providerId": "custom_provider:my-relay", "kind": "custom", "name": "My Relay" }
+                { "providerId": "custom_provider:my-relay", "kind": "custom", "name": "My Relay" },
+                { "providerId": "custom_provider:my-relay-2", "kind": "custom", "name": "My Relay" }
             ]
         });
+        // A re-add with a known display name forks a second provider carrying
+        // the same name; both ids have to come back, in the CLI's own order.
         assert_eq!(
-            provider_id_for_name(&document.to_string(), "My Relay").as_deref(),
-            Some("custom_provider:my-relay")
+            provider_ids_for_name(&document.to_string(), "My Relay"),
+            vec!["custom_provider:my-relay", "custom_provider:my-relay-2"]
         );
-        assert_eq!(provider_id_for_name(&document.to_string(), "Gone"), None);
-        assert_eq!(provider_id_for_name("not json", "My Relay"), None);
+        assert!(provider_ids_for_name(&document.to_string(), "Gone").is_empty());
+        assert!(provider_ids_for_name("not json", "My Relay").is_empty());
     }
 
     #[test]
@@ -608,6 +664,88 @@ exit 0
         assert!(
             recorded.contains("provider select custom_provider:my-relay/gpt-x"),
             "selection never used the id the CLI reported back:\n{recorded}"
+        );
+    }
+
+    /// A re-save of a channel the CLI already holds must REPLACE that provider:
+    /// `provider add` mints a fresh slug (`llm` → `llm-2`) for a known display
+    /// name, so the fresh provider is the new id and the pre-existing one is
+    /// retired only after selection has already moved. Without this, a newly
+    /// declared effort level lands on the fork while selection — read back by
+    /// name — stays on the old, undeclared provider.
+    #[cfg(unix)]
+    #[test]
+    fn resaving_a_channel_replaces_the_cli_provider_instead_of_forking() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("mr-resave-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let log = dir.join("calls.log");
+        let log_path = log.display().to_string();
+        let counter = dir.join("lists.count");
+        let counter_path = counter.display().to_string();
+        let stub = dir.join("mr");
+        let script = format!(
+            r#"#!/bin/sh
+printf '%s\n' "ARGV:$*" "ENV:${{MCODE_PROVIDER_API_KEY:-unset}}" >> '{log_path}'
+case "$*" in
+  *provider*list*)
+    n=$(cat '{counter_path}' 2>/dev/null || echo 0)
+    n=$((n+1))
+    echo "$n" > '{counter_path}'
+    if [ "$n" -eq 1 ]; then
+      printf '%s\n' '{{"providers":[{{"providerId":"custom_provider:llm","name":"llm"}}]}}'
+    else
+      printf '%s\n' '{{"providers":[{{"providerId":"custom_provider:llm","name":"llm"}},{{"providerId":"custom_provider:llm-2","name":"llm"}}]}}'
+    fi ;;
+  *)
+    printf '%s\n' 'ok' ;;
+esac
+exit 0
+"#
+        );
+        std::fs::write(&stub, script).expect("write stub");
+        let mut permissions = std::fs::metadata(&stub).expect("metadata").permissions();
+        permissions.set_mode(0o755);
+        std::fs::set_permissions(&stub, permissions).expect("chmod");
+        std::fs::write(&log, "").expect("clear log");
+
+        let channel = MrChannel {
+            name: "llm",
+            base_url: "https://relay.example/v1",
+            api_key: "sk-secret-value",
+            model: "MiniMax-M3",
+            api_format: "openai-completions",
+            effort_levels: vec!["low".into(), "high".into()],
+        };
+        if let Err(error) = upsert_and_select(stub.to_str().expect("stub path"), &channel) {
+            let recorded = std::fs::read_to_string(&log).unwrap_or_default();
+            panic!("resave flow failed: {error}\nstub saw:\n{recorded}");
+        }
+
+        let recorded = std::fs::read_to_string(&log).expect("read log");
+        std::fs::remove_dir_all(&dir).ok();
+
+        let select = recorded
+            .find("provider select custom_provider:llm-2/MiniMax-M3")
+            .unwrap_or_else(|| {
+                panic!("selection never moved to the freshly minted provider:\n{recorded}")
+            });
+        let remove = recorded
+            .find("provider remove custom_provider:llm --yes")
+            .unwrap_or_else(|| panic!("the stale provider was never retired:\n{recorded}"));
+        assert!(
+            select < remove,
+            "the old provider must be retired only after selection moved:\n{recorded}"
+        );
+        for line in recorded.lines().filter(|line| line.starts_with("ARGV:")) {
+            assert!(
+                !line.contains("sk-secret-value"),
+                "the key leaked into argv: {line}"
+            );
+        }
+        assert!(
+            recorded.contains("ENV:sk-secret-value"),
+            "the CLI never received the key via env:\n{recorded}"
         );
     }
 

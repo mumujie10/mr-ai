@@ -24,12 +24,12 @@ import {
 } from "@ccgui/plugin-sdk";
 
 /**
- * Plugin loader (plan §4.1 runtime/loader.ts + ADR-5 state machine).
+ * Plugin loader (runtime/loader.ts — the load-state machine is below).
  * Loads every enabled, non-quarantined plugin at bootstrap; external bundles
  * are fetched via plugin_read_file and dynamically imported from a blob URL
  * (Phase 0 loading decision for Phase 1: blob works under WKWebView/WebView2
  * module semantics with `script-src … blob:`; the custom `plugin://` protocol
- * remains the documented fallback, plan §7 P0-1).
+ * remains the documented fallback, P0-1).
  */
 
 export type PluginRuntimeState =
@@ -232,7 +232,7 @@ export interface LoadablePlugin {
    *  Builtins ship compiled with the host but run through the exact same
    *  PluginContext pipeline. (None currently: usage-stats ships as a real
    *  external plugin in its own repo — plugins must stay decoupled from the
-   *  host tree, plan ADR-2/ADR-4.) */
+   *  host tree.) */
   builtinActivate?: (ctx: PluginHandle["ctx"]) => void | Disposer;
 }
 
@@ -274,7 +274,7 @@ export async function loadPlugin(
       }
       const problems = validateManifest(manifest);
       if (problems.length > 0) throw new Error(`invalid manifest: ${problems.join("; ")}`);
-      // SDK version handshake (plan §5.1 sdkVersion): a plugin built against an
+      // SDK version handshake (sdkVersion): a plugin built against an
       // incompatible contract range is disabled, never loaded — same treatment
       // as minAppVersion, one layer down (contract vs app).
       if (!satisfiesSdkRange(manifest.sdkVersion, SDK_VERSION)) {
@@ -401,7 +401,7 @@ export function pluginsBootstrapped(): boolean {
 }
 
 /**
- * Bootstrap the loader (plan §4.1): one-time hardening + event bridge, then
+ * Bootstrap the loader: one-time hardening + event bridge, then
  * activate every enabled builtin/installed plugin.
  *
  * Retry contract: `bootstrapped` flips only after the backend list

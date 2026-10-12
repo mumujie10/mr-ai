@@ -27,6 +27,7 @@ import {
   formatTs,
   formatTopic,
   parseTopic,
+  projectMemorySlug,
   safeRead,
   safeReaddir,
   searchLines,
@@ -56,6 +57,11 @@ export class FsLocalMemoryStore {
     if (target.scope === 'user') {
       const memoryDir = join(dataDir, 'memory');
       return { scope: 'user', memoryDir, mainPath: join(memoryDir, USER_MEMORY_FILE) };
+    }
+    if (target.scope === 'project') {
+      const slug = projectMemorySlug(target.workspacePath);
+      const memoryDir = join(dataDir, 'memory', 'projects', slug);
+      return { scope: 'project', memoryDir, mainPath: join(memoryDir, MAIN_MEMORY_FILE) };
     }
     const agentName = assertSafeAgentName(target.agentName);
     const memoryDir = join(dataDir, 'agents', agentName, 'memory');

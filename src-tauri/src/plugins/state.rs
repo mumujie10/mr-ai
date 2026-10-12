@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Uninstalled-plugin KV retention window (plan §9.1: 保留 30 天).
+/// Uninstalled-plugin KV retention window (保留 30 天).
 pub const KV_TOMBSTONE_TTL_SECS: i64 = 30 * 24 * 3600;
 
 /// Serializes plugin state read→mutate→write and document root selection across

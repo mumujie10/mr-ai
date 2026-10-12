@@ -113,7 +113,7 @@ function MainApp() {
             modal overlay on top, so opening/closing settings never rebuilds
             the chat tree. */}
         <ChatPage />
-        {/* ⌘K command palette (plan §4.2 #9); a pure projection of
+        {/* ⌘K command palette; a pure projection of
             commandRegistry, mounted once for the whole app. */}
         <CommandPalette />
         <Routes>
@@ -125,7 +125,7 @@ function MainApp() {
               </Suspense>
             }
           />
-          {/* Plugin overlay pages (plan §4.2 #10); ChatPage stays mounted
+          {/* Plugin overlay pages; ChatPage stays mounted
               underneath, same as the /settings overlay. */}
           <Route path="/p/:pageId" element={<PluginPageHost />} />
         </Routes>

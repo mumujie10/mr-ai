@@ -284,7 +284,7 @@ describe('local native turn tools', () => {
 
     expect(memory).toBeDefined();
     expect(memory?.def.description).toBe(
-      'Read and search local memory. Supports target=user|main|topic.',
+      'Read and search local memory. Supports target=user|project|main|topic.',
     );
     const schema = memory?.def.schema as {
       properties: {
@@ -294,6 +294,7 @@ describe('local native turn tools', () => {
     };
     expect(schema.properties.target.anyOf.map(({ const: value }) => value)).toEqual([
       'user',
+      'project',
       'main',
       'topic',
     ]);

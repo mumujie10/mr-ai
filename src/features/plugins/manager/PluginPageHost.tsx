@@ -6,7 +6,7 @@ import { pageRegistry, pluginIdFromRegistryKey, useRegistry } from "@ccgui/plugi
 import { PluginBoundary } from "../boundary/PluginBoundary";
 
 /**
- * Plugin overlay page host (plan §4.2 #10): renders the pageRegistry entry
+ * Plugin overlay page host: renders the pageRegistry entry
  * whose id matches the `/p/:pageId` route — the /settings overlay pattern
  * generalized. ChatPage stays mounted underneath (App mounts it on every
  * route), so closing the overlay never rebuilds the chat tree.

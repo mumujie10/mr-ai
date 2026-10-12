@@ -55,7 +55,6 @@ export const OPEN_TABS_KEY = "ccgui-next.openTabs:v1";
 const ACTIVE_SESSION_KEY = "ccgui-next.activeSession:v1";
 const LEGACY_OPEN_TABS_KEY = "ccgui-next.openTabs";
 const LEGACY_ACTIVE_SESSION_KEY = "ccgui-next.activeSession";
-export const ENGINE_PREF_KEY = "ccgui-next.enginePref";
 export const PERMISSION_PREF_KEY = "ccgui-next.permissionPref";
 
 export function sameTab(

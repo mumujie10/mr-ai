@@ -5,7 +5,7 @@ import type { BotConfig } from "@/lib/ipc";
  * both the outgoing prompt (send path) and the editor's 拼装预览 drawer, so
  * what the user reads is what the model gets.
  *
- * Block order is fixed (plan §6.1); empty blocks are dropped whole, never
+ * Block order is fixed; empty blocks are dropped whole, never
  * emitted as an empty heading. Limits are advisory: the store never truncates
  * SOUL/AGENTS, it reports the overrun so the editor can say so.
  */
@@ -51,7 +51,7 @@ export function builtInBotShell(name: string, prompt: string): BotConfig {
 export const PROSE_LIMIT = 10_000;
 /** Skills *index* budget (name + description only, not the skill bodies). */
 export const SKILL_INDEX_LIMIT = 3_000;
-/** The global USER profile's budget (per plan §8.1). */
+/** The global USER profile's budget. */
 export const USER_LIMIT = 1_375;
 
 export type PromptBlockId =
@@ -130,7 +130,7 @@ export interface AssembleInput {
   collaborators?: CollaboratorEntry[];
 }
 
-/** The fixed 记忆使用说明 body injected when memory is on (plan §8.4). The
+/** The fixed 记忆使用说明 body injected when memory is on. The
  *  heading comes from the block title, so the constant must not carry one of
  *  its own — a duplicated `# 记忆使用说明` is a real tell that the model is
  *  being handed two competing instructions. */
@@ -217,7 +217,7 @@ function collaboratorsText(collaborators: CollaboratorEntry[]): string {
  * Assemble the bot's contribution to the system prompt.
  *
  * The host's own prompt is reported as an `external` block so the preview can
- * show the whole picture (plan §6.1 block 1) without pretending we author it.
+ * show the whole picture (block 1) without pretending we author it.
  */
 export function assembleBotPrompt(input: AssembleInput): AssembledPrompt {
   const { bot } = input;

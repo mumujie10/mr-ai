@@ -62,7 +62,7 @@ pub(crate) const CONFIRM_YES_LABEL: &str = "确认";
 /// 的 ask 降级链:单选一帧 select;多选是「选到 Done 为止」的循环;Other
 /// 哨兵转 input 收自由文本。运行时零导入(jiti 不需要解析任何依赖),
 /// parameters 直接给 JSON Schema(TypeBox schema 本就是 JSON Schema)。
-const PI_ASK_BRIDGE: &str = r#"// CC GUI ask bridge — pi sessions get their ask_user tool from this
+const PI_ASK_BRIDGE: &str = r#"// MireAI ask bridge — pi sessions get their ask_user tool from this
 // extension. One select/input dialog per question (pi's wire format has no
 // multi-select), mirroring omp's degraded ask chain so the host app renders
 // both engines with the same card.
@@ -303,7 +303,7 @@ impl Engine for PiFamilyEngine {
     /// `--auto-approve`); pi 0.85 has none of them, so it keeps the trait
     /// default. "plan" 由 OMP 原生 ACP 计划流程承接（plan_approval 的
     /// Typed 声明 + omp_acp 驱动）；`--plan-yolo` 自动批准流程已移除，
-    /// 永远不会再作为"人工计划审批"入口回来（PRD §5-OMP.7）。
+    /// 永远不会再作为"人工计划审批"入口回来。
     ///
     /// `always-ask`/`write` are deliberately absent: they leave write/exec
     /// tools on a `prompt` policy, and print mode has no UI to answer with —
@@ -322,7 +322,7 @@ impl Engine for PiFamilyEngine {
     /// elicitation.form 握手 + 计划文件全文，omp_acp 驱动）。pi 没有任何
     /// 计划能力，静默回退到 auto 是被禁止的降级。旧的 `--plan-yolo`
     /// 无头流程自动批准计划，永远不能再作为"人工计划审批"入口
-    /// （PRD §5-OMP.7）。
+    ///。
     fn plan_approval(&self) -> crate::engine::plan_review::PlanApproval {
         if self.id == "omp" {
             crate::engine::plan_review::PlanApproval::Typed {
@@ -362,7 +362,7 @@ impl Engine for PiFamilyEngine {
             }
             cmd.args(["--no-extensions", "--tools", &tools.join(",")]);
         }
-        // OMP 原生 ACP 计划流程（PRD §5-OMP 主方案）：显式 plan 请求改走
+        // OMP 原生 ACP 计划流程（主方案）：显式 plan 请求改走
         // ACP 传输，omp_acp 驱动接管子进程（stdio JSON-RPC + elicitation
         // 停车）。计划审批是用户决策——这条命令行绝不携带
         // --plan-yolo/--plan-yolo-into/--auto-approve。
@@ -1237,7 +1237,7 @@ mod tests {
         // ACP 入口 flag（flag-tables.ts:123-127），stdin 由驱动接管。
         let mode = args.iter().position(|arg| arg == "--mode").expect("--mode");
         assert_eq!(args[mode + 1], "acp");
-        // 自动批准参数绝不出现在计划命令行（PRD §5-OMP.5）。
+        // 自动批准参数绝不出现在计划命令行。
         assert!(!args.contains(&"--plan-yolo".to_string()), "{args:?}");
         assert!(!args.contains(&"--plan-yolo-into".to_string()), "{args:?}");
         assert!(!args.contains(&"--auto-approve".to_string()), "{args:?}");
@@ -1276,15 +1276,15 @@ mod tests {
 
     #[test]
     fn omp_plan_mounts_memory_and_restores_the_workspace_file() {
-        // app_home 走 HOME（paths::home_dir 的 cfg(test) 分支），与其它
-        // 改 HOME 的测试共用同一把锁。
-        let _guard = crate::paths::HOME_ENV_LOCK.lock();
+        // app_home 走 HOME（paths::home_dir 的 cfg(test) 分支）。HomeGuard 既
+        // 取 HOME_ENV_LOCK，也在 drop 时恢复 HOME/USERPROFILE——裸 set_var 会
+        // 把临时 HOME 漏给同进程里后面跑的所有用例。
         let home = std::env::temp_dir().join(format!(
             "ccgui-next-omp-plan-home-{}",
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&home).unwrap();
-        std::env::set_var("HOME", &home);
+        let _home_guard = crate::history::scanner::tests::HomeGuard::set(&home);
         let ws = std::env::temp_dir().join(format!(
             "ccgui-next-omp-plan-ws-{}",
             uuid::Uuid::new_v4()

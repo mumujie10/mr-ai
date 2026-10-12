@@ -22,6 +22,11 @@ const VALID = new Set([
   'topic:create',
   'topic:delete',
   'summary:write',
+  'project:read',
+  'project:search',
+  'project:append',
+  'project:edit',
+  'project:write',
 ]);
 
 const READ_OPERATIONS = new Set([
@@ -31,12 +36,16 @@ const READ_OPERATIONS = new Set([
   'main:search',
   'topic:read',
   'topic:search',
+  'project:read',
+  'project:search',
 ]);
 
 export interface LocalMemoryToolAccess {
   readEnabled?: boolean;
   writeEnabled?: boolean;
   agentScopeEnabled?: boolean;
+  /** Session workspace backing target=project; absent → project ops are refused. */
+  projectWorkspacePath?: string;
 }
 
 export async function executeLocalMemoryTool(
@@ -83,13 +92,20 @@ async function runLocalMemoryTool(
     const key = `${input.target}:${input.operation}`;
     if (!VALID.has(key))
       throw new LocalMemoryError('INVALID_OPERATION', `invalid memory operation ${key}`);
-    if (input.target !== 'user' && access?.agentScopeEnabled !== true) {
+    if (
+      (input.target === 'main' || input.target === 'topic' || input.target === 'summary') &&
+      access?.agentScopeEnabled !== true
+    ) {
       throw new LocalMemoryError(
         'AGENT_SCOPE_DISABLED',
         'Agent-scoped Memory is unavailable for this Agent profile.',
       );
     }
-    if (input.target !== 'user' && READ_OPERATIONS.has(key) && access?.readEnabled === false) {
+    if (
+      (input.target === 'main' || input.target === 'topic') &&
+      READ_OPERATIONS.has(key) &&
+      access?.readEnabled === false
+    ) {
       throw new LocalMemoryError(
         'MEMORY_READ_DISABLED',
         'Memory reads are disabled for this session.',
@@ -101,11 +117,15 @@ async function runLocalMemoryTool(
         'Memory writes are disabled for this session.',
       );
     }
-    // user target → user scope; main/topic/summary → agent scope addressed by the
-    // session's agent directory name. Local agents have no numeric id, so the
-    // schema's optional `agentId` is ignored here.
-    const scope: LocalMemoryScope = input.target === 'user' ? 'user' : 'agent';
+    // user target → user scope; project → the session's workspace store; main/
+    // topic/summary → agent scope addressed by the session's agent directory
+    // name. Local agents have no numeric id, so the schema's optional `agentId`
+    // is ignored here.
+    const scope: LocalMemoryScope =
+      input.target === 'user' ? 'user' : input.target === 'project' ? 'project' : 'agent';
     const agentName = scope === 'agent' ? requireAgentName(ctx.agentName) : '';
+    const workspacePath =
+      scope === 'project' ? requireWorkspacePath(access?.projectWorkspacePath) : '';
     const memoryReadNames =
       scope === 'agent' ? normalizeReadAgentNames(agentName, readAgentNames) : [];
     switch (key) {
@@ -113,6 +133,10 @@ async function runLocalMemoryTool(
         return ok((await facade.getUserMemory()).content, { target: input.target });
       case 'main:read':
         return await readMainMemory(facade, memoryReadNames, input.target);
+      case 'project:read':
+        return ok((await facade.getProjectMemory(workspacePath)).content, {
+          target: input.target,
+        });
       case 'user:search':
         return ok(
           JSON.stringify(
@@ -129,6 +153,17 @@ async function runLocalMemoryTool(
             2,
           ),
         );
+      case 'project:search':
+        return ok(
+          JSON.stringify(
+            await facade.searchProjectMemory(
+              workspacePath,
+              requireString(input.query, 'query'),
+            ),
+            null,
+            2,
+          ),
+        );
       case 'user:append':
         return ok(
           `Appended user memory (${(await facade.appendUserMemory(requireString(input.content, 'content'), input.reason)).sizeBytes} bytes).`,
@@ -137,6 +172,11 @@ async function runLocalMemoryTool(
         return mark(
           scope,
           `Appended memory (${(await facade.appendMemory(agentName, requireString(input.content, 'content'))).sizeBytes} bytes).`,
+        );
+      case 'project:append':
+        return mark(
+          scope,
+          `Appended project memory (${(await facade.appendProjectMemory(workspacePath, requireString(input.content, 'content'))).sizeBytes} bytes).`,
         );
       case 'main:edit': {
         const result = await facade.editMemory(
@@ -147,10 +187,24 @@ async function runLocalMemoryTool(
         );
         return mark(scope, `Edited memory: ${result.replacements} replacement(s).`);
       }
+      case 'project:edit': {
+        const result = await facade.editProjectMemory(
+          workspacePath,
+          requireString(input.oldString, 'oldString'),
+          requireString(input.newString, 'newString'),
+          input.replaceAll,
+        );
+        return mark(scope, `Edited project memory: ${result.replacements} replacement(s).`);
+      }
       case 'main:write':
         return mark(
           scope,
           `Wrote memory (${(await facade.writeMemory(agentName, requireString(input.content, 'content'))).sizeBytes} bytes).`,
+        );
+      case 'project:write':
+        return mark(
+          scope,
+          `Wrote project memory (${(await facade.writeProjectMemory(workspacePath, requireString(input.content, 'content'))).sizeBytes} bytes).`,
         );
       case 'topic:read':
         return await readTopicMemory(
@@ -357,6 +411,17 @@ async function readSources<T>(
 function requireAgentName(agentName: string | undefined): string {
   const normalized = agentName?.trim();
   if (!normalized) throw new LocalMemoryError('AGENT_NAME_REQUIRED', 'agent_name is required');
+  return normalized;
+}
+
+function requireWorkspacePath(workspacePath: string | undefined): string {
+  const normalized = workspacePath?.trim();
+  if (!normalized) {
+    throw new LocalMemoryError(
+      'PROJECT_CONTEXT_REQUIRED',
+      'project memory requires the session workspace path',
+    );
+  }
   return normalized;
 }
 

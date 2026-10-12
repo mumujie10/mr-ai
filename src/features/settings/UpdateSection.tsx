@@ -60,7 +60,7 @@ export function UpdateSection() {
       <div className="flex w-full flex-col gap-2">
         <SettingsSectionLabel>{t("settings.checkUpdates")}</SettingsSectionLabel>
         <SettingsCard>
-          <SettingsRow anchor="appVersion" label="CC GUI" description={t("settings.aboutDesc")}>
+          <SettingsRow anchor="appVersion" label="MireAI" description={t("settings.aboutDesc")}>
             <span className="text-body-regular text-text-secondary">
               {version ? `v${version}` : "…"}
             </span>

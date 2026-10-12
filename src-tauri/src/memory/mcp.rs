@@ -60,7 +60,7 @@ struct ToolResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
     /// On a capacity refusal the current entries are handed back so the model
-    /// can merge or remove and retry in the same turn (plan §8.2). Never
+    /// can merge or remove and retry in the same turn. Never
     /// truncated, never silently dropped.
     #[serde(skip_serializing_if = "Option::is_none")]
     current_entries: Option<Vec<String>>,

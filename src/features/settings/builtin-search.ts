@@ -307,11 +307,37 @@ export const builtinSearchEntries: SettingsSearchEntry[] = [
     sectionKey: "settings.proxy",
   },
 
+  // 记忆：记忆行为的两个开关 + 存放位置的两个文件夹指引行。
+  {
+    page: "memory",
+    anchor: "memoryGlobal",
+    labelKey: "settings.memoryGlobal",
+    sectionKey: "settings.memoryBehavior",
+  },
+  {
+    page: "memory",
+    anchor: "memoryProject",
+    labelKey: "settings.memoryProject",
+    sectionKey: "settings.memoryBehavior",
+  },
+  {
+    page: "memory",
+    anchor: "memoryGlobalFolder",
+    labelKey: "settings.memoryGlobalFolder",
+    sectionKey: "settings.memoryStorage",
+  },
+  {
+    page: "memory",
+    anchor: "memoryProjectsFolder",
+    labelKey: "settings.memoryProjectsFolder",
+    sectionKey: "settings.memoryStorage",
+  },
+
   ...shortcutEntries,
 
   // 检查更新：品牌行没有译文（labelText），检查动作行与页标题同名，不再重复
   // 一层面包屑。
-  { page: "update", anchor: "appVersion", labelText: "CC GUI" },
+  { page: "update", anchor: "appVersion", labelText: "MireAI" },
   {
     page: "update",
     anchor: "checkUpdates",

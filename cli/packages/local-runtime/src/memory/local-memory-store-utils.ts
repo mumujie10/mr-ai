@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readdir, readFile, unlink } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 import { LocalMemoryError, type LocalMemorySearchResult } from './types.js';
 
@@ -86,6 +87,25 @@ export function assertSafeAgentName(agentName: string | undefined): string {
 export function assertDate(date: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new LocalMemoryError('INVALID_DATE', 'invalid date');
   return date;
+}
+
+/**
+ * Injective workspace-path → folder-name encoding for `memory/projects/`:
+ * '-' maps to '--' and every other non-alphanumeric character maps to '-',
+ * so distinct paths never collapse onto one project folder and the name
+ * still reads like the path it came from.
+ */
+export function projectMemorySlug(workspacePath: string): string {
+  const trimmed = workspacePath.trim();
+  if (!trimmed) throw new LocalMemoryError('INVALID_WORKSPACE', 'workspace path is required');
+  const abs = resolve(trimmed);
+  let slug = '';
+  for (const char of abs) {
+    if (/[a-zA-Z0-9]/.test(char)) slug += char;
+    else if (char === '-') slug += '--';
+    else slug += '-';
+  }
+  return slug;
 }
 
 export function today(): string {

@@ -1,4 +1,4 @@
-//! OMP 18.0.11 的 ACP 计划会话驱动（PRD §5-OMP 主方案，最高优先级引擎）。
+//! OMP 18.0.11 的 ACP 计划会话驱动（主方案，最高优先级引擎）。
 //!
 //! 协议事实全部来自本机安装源码
 //! （/Users/zhukunpeng/node_modules/@oh-my-pi/pi-coding-agent）与
@@ -35,7 +35,7 @@
 //! session-manager.ts:109-112 + session-paths.ts:62-95 + dirs.ts:567-574,
 //! 871-874），拒绝符号链接逃逸，大小上限 1 MiB，读后算 content_hash。
 //! 计划文件的最终选择以「文件前 12 行 == elicitation 预览」绑定本次提案
-//! 与正文版本，对不上就 fail-closed（PRD §5-OMP.3）。
+//! 与正文版本，对不上就 fail-closed。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -718,7 +718,7 @@ fn read_plan_candidate(local_root: &Path, name: &str) -> Result<Option<String>, 
 
 /// 定位并核验本次提案的计划文件：elicitation 只带前 12 行预览，全文必须
 /// 从计划文件读；「前 12 行 == 预览」把提案与正文版本绑在一起，对不上
-/// 绝不批准（PRD §5-OMP.3）。返回 (全文, elicitation 标题)。
+/// 绝不批准。返回 (全文, elicitation 标题)。
 fn load_verified_plan(local_roots: &[PathBuf], params: &Value) -> Result<(String, String), String> {
     let message = params
         .get("message")
@@ -834,7 +834,7 @@ fn build_review(
         review_kind: PlanReviewKind::NativeRequest,
         native_plan_id: Some(jsonrpc_id_key(rpc_id).unwrap_or_else(|| rpc_id.to_string())),
         // 批准后同一 turn 继续执行，沿用本次启动的非 bypass 工具策略
-        // （命令行没有 --auto-approve；PRD §1 不变量 4：批准不改变权限）。
+        // （命令行没有 --auto-approve； 不变量 4：批准不改变权限）。
         exec_permission: "auto".to_string(),
         status: PlanStatus::AwaitingReview,
         execution: PlanExecution::NotStarted,

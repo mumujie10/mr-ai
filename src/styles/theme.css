@@ -7,7 +7,9 @@
  *   .dark { ... }      semantic overrides (dark mode) — landed when designed
  *   @theme inline {..} re-export of semantic tokens so they become utilities
  *
- * See docs/FIGMA_WORKFLOW.md for how tokens get added (Figma is source of truth).
+ * Token 的新增就是直接改本文件：Figma 是设计来源，落地面是这里的 @theme
+ * 原始色阶 + :root/.dark 语义 token + @theme inline 的 utility 再导出。
+ * 仓库内没有单独的 token 工作流文档，别去找。
  * --------------------------------------------------------------------------- */
 
 @theme {

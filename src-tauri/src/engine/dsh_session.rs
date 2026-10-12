@@ -127,7 +127,7 @@ pub(crate) async fn run_host_turn(
         for request_id in core.registry.take_questions(&key) {
             core.dispatch_event(&mut state, EngineEvent::QuestionSettled { request_id });
         }
-        // 停住的计划审批随运行消亡即过期（P1 收尾义务，PRD §8 防线 3）。
+        // 停住的计划审批随运行消亡即过期（P1 收尾义务， 防线 3）。
         super::reader::expire_parked_plans(&core, &mut state, &key);
     }
     if let Err(error) = result {
@@ -198,7 +198,7 @@ async fn turn_inner(
         .map(str::to_string)
         .ok_or("session/create 未返回 sessionId")?;
     core.dispatch_event(state, EngineEvent::SessionId(session_id.clone()));
-    // 计划审批模式（PRD §5-DSH.2）：先经 commands/list 探测 host 是否组合了
+    // 计划审批模式：先经 commands/list 探测 host 是否组合了
     // plan-mode 插件，缺失即受控报错——HTTP 200 不等于命令存在，绝不降级
     // auto 执行。
     let plan_mode = req.permission.as_deref() == Some("plan");
@@ -356,7 +356,7 @@ async fn turn_inner(
 
 // ==================== plan mode entry ====================
 
-/// 前置探测（PRD §5-DSH.1/2）：commands/list 确认 plan 命令存在。缺插件
+/// 前置探测（/2）：commands/list 确认 plan 命令存在。缺插件
 /// （列表无 plan）或探测失败都受控报错，不降级 auto。
 async fn ensure_plan_command(origin: &str, session_id: &str) -> Result<(), String> {
     let listed = host_call(origin, "commands/list", json!({ "agentId": session_id }))
@@ -403,7 +403,7 @@ fn plan_execute_outcome(result: &Value) -> Result<(), String> {
     Ok(())
 }
 
-/// plan 权限的进入序列（PRD §5-DSH.2，P0 取证 DSH 节）：commands/execute
+/// plan 权限的进入序列（P0 取证 DSH 节）：commands/execute
 /// {agentId, line:"/plan", submittedAttachments:[]}，然后等 follow 流回读
 /// plan/mode{active:true} 才返回。任何一步失败都受控报错，不降级 auto。
 async fn enter_plan_mode(
@@ -568,7 +568,7 @@ fn handle_session_event(
             }
         }
         // 计划审批的配套状态事件：批准后的 plan/mode:false 与 pending
-        // inactive 投影都是正常会话日志事件（PRD §5-DSH.6/7）——既不是
+        // inactive 投影都是正常会话日志事件（/7）——既不是
         // 审批退出路径（/plan off 不实现为退出捷径），也不是错误。
         "plan/mode" => {}
         _ => {} // user/message / step/* / system/message / title: UI noise here
@@ -717,7 +717,7 @@ async fn park_question(
     event_id: &str,
 ) {
     let request = value.get("request").cloned().unwrap_or(Value::Null);
-    // plan-review presentation intent（PRD §5-DSH.6：仅以 intent.kind 识别
+    // plan-review presentation intent（仅以 intent.kind 识别
     // 计划）走类型化审批主干，不再折叠进普通问题卡。
     if let Some(question) = plan_review_question(&request) {
         park_plan_review(core, state, view, &question, origin, client_id, event_id).await;
@@ -778,7 +778,7 @@ async fn reject_waterfall(origin: &str, client_id: &str, event_id: &str, message
     .await;
 }
 
-/// plan-review intent 识别（PRD §5-DSH.6：仅以 intent.kind=="plan-review"
+/// plan-review intent 识别（仅以 intent.kind=="plan-review"
 /// 识别计划；P0 取证的结构里它是 questions[0]）。
 fn plan_review_question(request: &Value) -> Option<Value> {
     request

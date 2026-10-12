@@ -68,7 +68,7 @@ export function useChatShortcutHandlers(
   );
 }
 
-/** Layout toggles registered as palette commands (plan §4.2 #9): the toggles
+/** Layout toggles registered as palette commands: the toggles
  * live in the ChatPage hook instance, so registration happens where they're
  * in scope. ChatPage stays mounted for the app's lifetime; the cleanup keeps
  * the registry honest under HMR. */

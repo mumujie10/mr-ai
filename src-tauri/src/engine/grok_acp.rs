@@ -133,7 +133,7 @@ pub(super) async fn run_acp_turn(
 /// Shared settle contract for every key this run was registered under
 /// (native session id, run id, preassigned alias): pending question cards are
 /// settled first, then parked plan reviews expire with the run (P1 收尾义务,
-/// PRD §8 防线 3). kimi never parks plan events, so the expiry is always a
+/// 防线 3). kimi never parks plan events, so the expiry is always a
 /// no-op on that path; calling it unconditionally keeps the shared driver
 /// honest if either engine ever parks a plan.
 fn settle_parked(core: &TurnCore, state: &mut TurnState, keys: [Option<String>; 3]) {
@@ -761,7 +761,7 @@ mod tests {
 
     /// A parked plan review must expire when its run settles: the native
     /// exit_plan_mode request is gone with the child, so the record flips to
-    /// `expired` and the frontend is told (P1 收尾义务, PRD §8 防线 3).
+    /// `expired` and the frontend is told (P1 收尾义务, 防线 3).
     #[tokio::test]
     async fn settle_parked_expires_plan_reviews_under_every_run_key() {
         let dir = std::env::temp_dir().join(format!(

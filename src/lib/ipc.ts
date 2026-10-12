@@ -538,6 +538,12 @@ export interface AppSettings {
   /** Thinking-process row behavior once its thinking settles: true/absent =
    *  auto-fold (default), false = stay expanded until the user folds it. */
   thinkingAutoCollapse?: boolean | null;
+  /** 记忆行为 (设置 → 记忆): true/absent = 全局记忆可用 (default),
+   *  false = 内置引擎不读取也不更新用户级长期记忆。 */
+  memoryGlobalEnabled?: boolean | null;
+  /** 记忆行为 (设置 → 记忆): true/absent = 项目记忆可用 (default),
+   *  false = 内置引擎不读取也不更新当前工作区的项目记忆。 */
+  memoryProjectEnabled?: boolean | null;
   /** Beta entry points (设置 → 其他 → 内测功能): feature id -> enabled.
    *  Missing/false = the entry stays hidden (default off). */
   betaFeatures?: Record<string, boolean> | null;
@@ -968,6 +974,14 @@ export interface PromptDirs {
   global: string;
 }
 
+/** 内置引擎长期记忆目录（`memory_dirs`，设置 → 记忆）。 */
+export interface MemoryDirs {
+  /** 全局记忆文件夹（内含 user.md）。 */
+  globalDir: string;
+  /** 项目记忆根文件夹，按项目 slug 分组。 */
+  projectsDir: string;
+}
+
 export interface GitFileEntry {
   path: string;
   status: string;
@@ -1206,7 +1220,7 @@ export interface PiFamilyModelsConfigReadResult {
   parseError: string | null;
 }
 
-// ==================== Plugins (Phase 1 runtime, plan §4.3) ====================
+// ==================== Plugins (phase 1 runtime) ====================
 
 export interface PluginInfo {
   id: string;
@@ -1251,7 +1265,7 @@ export interface CreatorSkillReport {
   source: string | null;
   targets: CreatorSkillTarget[];
 }
-/** Marketplace listing row (plan §6.1): community-plugins.json merged with
+/** Marketplace listing row: community-plugins.json merged with
  *  plugins/<id>.json — the fields the market UI renders. */
 export interface MarketPlugin {
   id: string;
@@ -1478,6 +1492,9 @@ export const ipc = {
     /** 记忆：把 memory MCP 工具挂给本次会话并绑定到这个 Bot（仅当这个 Bot
      *  开启了记忆、引擎支持挂载时传）。 */
     memoryBot?: string | null;
+    /** GUI 界面语言（"en" | "zh"）：mireai/minimax 引擎据此决定 CLI 默认
+     *  用哪种语言回复与思考（MAVIS_ELECTRON_LOCALE → appLocale）。 */
+    uiLanguage?: string;
   }) => invoke<SendResult>("send_message", args),
   interruptSession: (sessionId: string) =>
     invoke<boolean>("interrupt_session", { sessionId }),
@@ -1868,6 +1885,8 @@ export const ipc = {
     invoke<string | null>("get_program_icon", { executablePath }),
   revealInFileManager: (path: string) =>
     invoke<void>("reveal_in_file_manager", { path }),
+  /** 内置引擎长期记忆目录（设置 → 记忆）；不存在时后端会先建好。 */
+  memoryDirs: () => invoke<MemoryDirs>("memory_dirs"),
   // metrics
   appMetrics: () => invoke<AppMetrics>("app_metrics"),
   performanceDiagnostics: () => invoke<NativePerformanceDiagnostics>("performance_diagnostics"),
@@ -1941,7 +1960,7 @@ export const ipc = {
     }),
   pluginDocumentStorageList: (pluginId: string, prefix?: string) =>
     invoke<string[]>("plugin_document_storage_list", { pluginId, prefix: prefix ?? null }),
-  // plugin marketplace (Phase 3, plan §6) — install is desktop-only on the
+  // plugin marketplace (phase 3) — install is desktop-only on the
   // web bridge; fetch/checkUpdates ride the read-only whitelist.
   pluginFetchIndex: (force = false) =>
     invoke<MarketPlugin[]>("plugin_fetch_index", { force }),

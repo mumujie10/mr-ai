@@ -43,7 +43,7 @@ export interface SettingsSearchCoordinates {
 }
 
 /** Row label: an i18n key (the common case), or literal text for a row that
- *  is genuinely not translated — brand names like 「CC GUI」. */
+ *  is genuinely not translated — brand names like 「MireAI」. */
 type SettingsSearchLabel =
   | { labelKey: string; labelText?: never }
   | { labelKey?: never; labelText: string };

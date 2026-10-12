@@ -311,7 +311,7 @@ pub fn run() {
                 "main",
                 tauri::WebviewUrl::App("index.html".into()),
             )
-            .title("CC GUI")
+            .title("MireAI")
             .inner_size(1400.0, 900.0)
             .min_inner_size(900.0, 600.0);
             #[cfg(target_os = "macos")]
@@ -443,7 +443,7 @@ pub fn run() {
             plugin_host::plugin_list_engines,
             plugin_host::plugin_list_engine_models,
             plugin_host::plugin_model_catalog,
-            // plugin marketplace (Phase 3, plan §6)
+            // plugin marketplace (Phase 3,)
             plugins::market::plugin_fetch_index,
             plugins::market::plugin_fetch_market_readme,
             plugins::market::plugin_install_from_marketplace,
@@ -533,6 +533,8 @@ pub fn run() {
             memory::commands::memory_pending_approve,
             memory::commands::memory_pending_reject,
             memory::commands::memory_review,
+            // 设置 → 记忆：内置引擎长期记忆目录指引
+            memory::cli_memory::memory_dirs,
             // built-in agent catalog (agency-agents pack)
             agent_catalog::list_built_in_agents,
             agent_catalog::set_built_in_agent_enabled,

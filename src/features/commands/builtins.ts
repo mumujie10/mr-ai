@@ -7,7 +7,7 @@ import { useReleaseNotesTabStore } from "@/features/update/notes-tab";
 
 /**
  * Builtin palette commands, registered through the same commandRegistry the
- * plugins use (plan §4.2 #9 dogfood). Module-scope side effect, imported once
+ * plugins use (dogfood). Module-scope side effect, imported once
  * by CommandPalette; the registry's upsert semantics make HMR re-runs
  * harmless.
  *

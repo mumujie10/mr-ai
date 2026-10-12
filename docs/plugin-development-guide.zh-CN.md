@@ -2,7 +2,7 @@
 
 > **版本**：v0.1（规范草案，随插件系统 Phase 1 落地生效）
 > **适用对象**：社区插件开发者、AI 生成插件的使用者、市场审核人员
-> **关联文档**：[插件化系统总体计划](../.omx/plans/plugin-system-plan.md)
+> **关联文档**：[界面与交互规范](./ui-ux-spec.zh-CN.md)；机器可读的 API 与权限全集见 `packages/plugin-sdk`（`spec/permissions.json` 为权限单一事实源），插件作者视角的派生参考见内置 skill 的 `src-tauri/resources/skills/ccgui-plugin-creator/references/sdk-api.md`（由 `pnpm plugin-skill:docs` 生成）
 
 本文档是向 MireAI 插件市场提交插件的**唯一权威规范**。插件从开发、打包、发版到上架的全部要求都在这里。
 

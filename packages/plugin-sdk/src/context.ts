@@ -265,7 +265,7 @@ export interface PluginAssets {
 
 
 /**
- * PluginContext（plan §5.2）：插件唯一能力门面。宿主 runtime/context.ts
+ * PluginContext：插件唯一能力门面。宿主 runtime/context.ts
  * 实现本接口；插件侧的类型镜像见包根 plugin.d.ts（双向漂移由
  * contract-check.ts 在类型层面把守）。
  */
@@ -445,8 +445,8 @@ export interface PluginContext {
       icon?: ComponentType<{ className?: string }>;
       onSelect: () => void;
     }): Disposer;
-    /** Extra control rendered beside a composer slot's builtin control
-     *  (plan §4.2 #2). Permission `ui:composer-status` (shared with
+    /** Extra control rendered beside a composer slot's builtin control.
+     *  Permission `ui:composer-status` (shared with
      *  registerComposerStatusItem — both gate on the same composer-area
      *  grant; there is no separate `ui:composer` permission). */
     registerComposerSlot(def: {
@@ -455,7 +455,7 @@ export interface PluginContext {
       component: ComponentType;
       order?: number;
     }): Disposer;
-    /** Chat right-panel tab (plan §4.2 #4); renders with the active
+    /** Chat right-panel tab; renders with the active
      *  workspace path. The strip renders plugin tabs icon-only, so `icon` is
      *  the visible identity — without one the tab falls back to the plugin's
      *  artwork / letter tile, and the label stays a title/accessible name. */
@@ -466,7 +466,7 @@ export interface PluginContext {
       component: ComponentType<{ workspacePath: string }>;
       order?: number;
     }): Disposer;
-    /** App status-bar chip (plan §4.2 #8). */
+    /** App status-bar chip. */
     registerStatusBarItem(def: {
       key?: string;
       component: ComponentType;
@@ -490,7 +490,7 @@ export interface PluginContext {
       component: ComponentType;
       order?: number;
     }): Disposer;
-    /** Command palette entry (plan §4.2 #9). */
+    /** Command palette entry. */
     registerCommand(def: {
       key: string;
       title: () => string;
@@ -510,20 +510,20 @@ export interface PluginContext {
      *  `key` 对应 registerSettingsSection 的子 key，省略时打开主 section；
      *  供状态栏 chip、面板按钮等做深链入口。 */
     openSettings(key?: string): void;
-    /** Markdown pipeline additions, merged over host defaults (plan §4.2 #5). */
+    /** Markdown pipeline additions, merged over host defaults. */
     registerMarkdownRenderer(def: {
       key?: string;
       remarkPlugins?: unknown[];
       rehypePlugins?: unknown[];
       components?: Record<string, unknown>;
     }): Disposer;
-    /** Overlay page at `#/p/<id>` (plan §4.2 #10). */
+    /** Overlay page at `#/p/<id>`. */
     registerPage(def: {
       key?: string;
       title: () => string;
       component: ComponentType;
     }): Disposer;
-        /** Renderer for a plugin-defined chat timeline row kind (plan §4.2 #5).
+        /** Renderer for a plugin-defined chat timeline row kind.
      * The row payload is plugin-defined and typed loosely — blob bundles
      * can't share the host's TimelineRow type identity. */
     registerTimelineRowRenderer(def: {
@@ -568,7 +568,7 @@ export interface PluginContext {
   theme: {
     /** Inject a stylesheet scoped to this plugin; removed on unload.
      *  Rejects remote references (`@import`, `url(http…)`): plugins must be
-     *  self-contained (plan §8 gate rules). */
+     *  self-contained (gate rules). */
     injectCss(css: string): Disposer;
     /** Shorthand for BoardUI token overrides: keys must be `--*` custom
      *  properties; emits `:root {…}` and `.dark {…}` blocks. */

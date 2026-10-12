@@ -3,14 +3,14 @@ import { listenEngineEvents, type EngineEventPayload } from "@/lib/events";
 import type { Disposer } from "@ccgui/plugin-sdk";
 
 /**
- * Plugin event bus (plan §5.2 ctx.events). Carries host→plugin topics (e.g.
+ * Plugin event bus (ctx.events). Carries host→plugin topics (e.g.
  * `usage://updated`, bridged from engine events below) and plugin↔plugin
  * topics. Delivery is synchronous; listener errors are isolated so one bad
  * plugin can't break the bus for others.
  */
 type Listener = (data: unknown) => void;
 
-/** Topic plugins subscribe to for live token-usage snapshots (plan §5.2). */
+/** Topic plugins subscribe to for live token-usage snapshots. */
 export const USAGE_UPDATED_TOPIC = "usage://updated";
 
 /** Engine `done` events (SDK 0.3.8): `data.usage` carries the turn's final
@@ -23,7 +23,7 @@ export const USAGE_DONE_TOPIC = "usage://done";
  *  tab reports sessionId null, clearing all tabs reports both null. */
 export const SESSION_ACTIVATED_TOPIC = "session://activated";
 
-/** Host→plugin topic carrying the composer's in-progress draft (plan §5.2). */
+/** Host→plugin topic carrying the composer's in-progress draft. */
 export const COMPOSER_DRAFT_TOPIC = "composer://draft";
 
 /**
@@ -86,7 +86,7 @@ export function resetPluginBusForTests(): void {
 }
 
 /**
- * Emit-side topic namespace guard (plan §5.2): a plugin may emit only its own
+ * Emit-side topic namespace guard: a plugin may emit only its own
  * `plugin:<id>:*` topics and shared `plugin-`-prefixed topics (e.g.
  * plugin-config://changed). Host topics (usage://updated, composer://draft)
  * and other plugins' `plugin:<otherId>:*` namespaces throw, because emit is

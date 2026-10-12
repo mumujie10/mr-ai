@@ -5,6 +5,7 @@ import {
   LocalMemoryError,
   type LocalMemoryConfig,
   type LocalMemoryEventEmitter,
+  type LocalMemoryScopeGates,
   type LocalMemoryTarget,
 } from './types.js';
 
@@ -22,14 +23,23 @@ function agentTarget(agentName: string | undefined): LocalMemoryTarget {
   return { scope: 'agent', agentName: agentName ?? '' };
 }
 
-function scopeKey(target: LocalMemoryTarget): string {
-  return target.scope === 'agent' ? target.agentName : USER_SCOPE_KEY;
+function projectTarget(workspacePath: string): LocalMemoryTarget {
+  return { scope: 'project', workspacePath };
 }
+
+function scopeKey(target: LocalMemoryTarget): string {
+  if (target.scope === 'agent') return target.agentName;
+  return target.scope === 'project' ? target.workspacePath : USER_SCOPE_KEY;
+}
+
+const ALL_SCOPES_ENABLED: LocalMemoryScopeGates = { userEnabled: true, projectEnabled: true };
 
 export interface LocalMemoryFacadeOptions {
   config: () => LocalMemoryConfig;
   nowMs?: () => number;
   emitBusEvent?: LocalMemoryEventEmitter;
+  /** Host-owned scope switches (GUI env gates); omit for all-enabled CLI defaults. */
+  scopeGates?: () => LocalMemoryScopeGates;
 }
 
 export class LocalMemoryFacade {
@@ -45,12 +55,40 @@ export class LocalMemoryFacade {
     return this.store;
   }
 
+  private scopeGates(): LocalMemoryScopeGates {
+    return this.options.scopeGates?.() ?? ALL_SCOPES_ENABLED;
+  }
+
+  private assertUserScopeEnabled(): void {
+    if (!this.scopeGates().userEnabled) {
+      throw new LocalMemoryError(
+        'MEMORY_GLOBAL_DISABLED',
+        'global memory is disabled for this session',
+      );
+    }
+  }
+
+  private assertProjectScopeEnabled(): void {
+    if (!this.scopeGates().projectEnabled) {
+      throw new LocalMemoryError(
+        'MEMORY_PROJECT_DISABLED',
+        'project memory is disabled for this session',
+      );
+    }
+  }
+
   async getAgentMemory(agentName: string) {
     return this.store.readMain(agentTarget(agentName));
   }
 
   async getUserMemory() {
+    this.assertUserScopeEnabled();
     return this.store.readMain(USER_TARGET);
+  }
+
+  async getProjectMemory(workspacePath: string) {
+    this.assertProjectScopeEnabled();
+    return this.store.readMain(projectTarget(workspacePath));
   }
 
   async appendMemory(agentName: string, content: string) {
@@ -61,6 +99,7 @@ export class LocalMemoryFacade {
   }
 
   async appendUserMemory(content: string, reason: string | undefined) {
+    this.assertUserScopeEnabled();
     if (!reason?.trim())
       throw new LocalMemoryError('REASON_REQUIRED', 'user memory append requires reason');
     if (content.length > USER_APPEND_MAX_CHARS) {
@@ -74,6 +113,14 @@ export class LocalMemoryFacade {
       `<!-- mem-append-reason: ${reason.trim()} -->\n${content}`,
     );
     this.emitSaved(USER_TARGET, 'main');
+    return result;
+  }
+
+  async appendProjectMemory(workspacePath: string, content: string) {
+    this.assertProjectScopeEnabled();
+    const target = projectTarget(workspacePath);
+    const result = await this.store.appendMain(target, content);
+    this.emitSaved(target, 'main');
     return result;
   }
 
@@ -92,14 +139,24 @@ export class LocalMemoryFacade {
   }
 
   async writeUserMemory(content: string) {
+    this.assertUserScopeEnabled();
     const result = await this.store.writeMain(USER_TARGET, content);
     this.emitSaved(USER_TARGET, 'main');
     return result;
   }
 
   async writeUserMemoryForManagement(content: string) {
+    this.assertUserScopeEnabled();
     const result = await this.store.writeMainForManagement(USER_TARGET, content);
     this.emitSaved(USER_TARGET, 'main');
+    return result;
+  }
+
+  async writeProjectMemory(workspacePath: string, content: string) {
+    this.assertProjectScopeEnabled();
+    const target = projectTarget(workspacePath);
+    const result = await this.store.writeMain(target, content);
+    this.emitSaved(target, 'main');
     return result;
   }
 
@@ -110,12 +167,31 @@ export class LocalMemoryFacade {
     return result;
   }
 
+  async editProjectMemory(
+    workspacePath: string,
+    oldString: string,
+    newString: string,
+    replaceAll = false,
+  ) {
+    this.assertProjectScopeEnabled();
+    const target = projectTarget(workspacePath);
+    const result = await this.store.editMain(target, oldString, newString, replaceAll);
+    this.emitSaved(target, 'main');
+    return result;
+  }
+
   searchMemory(agentName: string, query: string) {
     return this.store.searchMain(agentTarget(agentName), query);
   }
 
   searchUserMemory(query: string) {
+    this.assertUserScopeEnabled();
     return this.store.searchMain(USER_TARGET, query);
+  }
+
+  searchProjectMemory(workspacePath: string, query: string) {
+    this.assertProjectScopeEnabled();
+    return this.store.searchMain(projectTarget(workspacePath), query);
   }
 
   listTopics(agentName: string) {
@@ -248,7 +324,9 @@ export class LocalMemoryFacade {
   async collectReminderMemory(agentName: string) {
     const target = agentTarget(agentName);
     const main = await this.store.readMain(target);
-    const user = await this.store.readMain(USER_TARGET);
+    // Global-memory-off hosts must not even read user.md into the reminder
+    // snapshot; the composer renders whatever reaches it.
+    const user = this.scopeGates().userEnabled ? await this.store.readMain(USER_TARGET) : undefined;
     const summary = await this.store.readSummary(target);
     const topics = await this.store.listTopics(target).catch(() => []);
     const location = this.store.resolve(target);
@@ -257,7 +335,7 @@ export class LocalMemoryFacade {
       mainPath: location.mainPath,
       mainLines: main.content ? main.content.split('\n').length : 0,
       mainSizeBytes: main.sizeBytes,
-      user: user.content,
+      user: user?.content ?? '',
       userPath: this.store.resolve(USER_TARGET).mainPath,
       summary,
       topics: topics.map((topic) => ({

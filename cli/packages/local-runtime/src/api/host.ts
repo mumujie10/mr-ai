@@ -68,6 +68,7 @@ import { LegacyOpencodeMigrator } from "../legacy-opencode/legacy-opencode-migra
 import { LegacyHistoryReader } from "../legacy-opencode/legacy-history-reader.js";
 import { LegacyOpencodeStore } from "../legacy-opencode/legacy-opencode-store.js";
 import type { LocalDataCollector } from "../memory/local-data-collector.js";
+import { resolveLocalMemoryScopeGates } from "../memory/local-memory-env-gates.js";
 import type { LocalMemoryFacade } from "../memory/local-memory-facade.js";
 import { handleMemoryBusEvent } from "../memory/local-memory-orchestration.js";
 import type {
@@ -616,6 +617,7 @@ export class LocalRuntimeApiHost {
       cronEnabled: () => this.isCronCapabilityAvailable(),
       // TUI has no user-scoped Memory surface; keep CLI and other hosts unchanged.
       userMemoryEnabled: () => this.isUserMemoryCapabilityAvailable(),
+      memoryScopeGates: resolveLocalMemoryScopeGates,
       cliSunsetNotice: options.cliSunsetNotice,
       agentFacts: () => this.agentRuntimePort,
       userConfiguredName: () => this.authContextGetter?.()?.subUserName,

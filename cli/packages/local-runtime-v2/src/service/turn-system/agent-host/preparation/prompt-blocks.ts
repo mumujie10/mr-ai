@@ -13,8 +13,9 @@ export const TOOL_CALL_PREAMBLE_REMINDER =
   'Thinking or reasoning content does not count as the preamble.';
 
 export const LANGUAGE_RULES =
-  'Follow explicit user language instructions. Otherwise, match the current conversation language; ' +
-  'use appLocale when no language preference is established.';
+  'Follow explicit user language instructions. Otherwise, respond and reason (visible thinking included) ' +
+  'in the language the user writes their own messages in; when the user has not established a language yet, ' +
+  'use the appLocale language. Code, logs, and quoted content do not count as the user writing a language.';
 
 export const ENVIRONMENT_RULES = [
   'Use the working directory unless the user specifies another path.',
@@ -70,6 +71,31 @@ export function buildUserProfileBlock(
         ]
       : []),
     '</user_profile>',
+  ].join('\n');
+}
+
+export function buildProjectMemoryBlock(
+  content: string,
+  workspacePath: string,
+  capNote = '',
+  options?: MemoryPromptBlockOptions,
+): string {
+  const writeGuidance = includeMemoryWriteGuidance(options);
+  return [
+    '<project_memory>',
+    `What you know about this project workspace so far (${workspacePath}):`,
+    '',
+    content + capNote,
+    '',
+    '---',
+    'This memory belongs to this project only and is stored under the runtime data directory, not inside the workspace.',
+    ...(writeGuidance
+      ? [
+          'Use the native `memory` tool (target=project) for updates; do not edit this injected block directly.',
+          'Do NOT store: secrets or credentials, transient task status, routine recaps, or anything that belongs in repo docs instead.',
+        ]
+      : []),
+    '</project_memory>',
   ].join('\n');
 }
 

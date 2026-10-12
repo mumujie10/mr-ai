@@ -18,8 +18,8 @@ const SCOPE_LIMIT = 64;
 
 function withdrawalContribution(pluginId: string): PromptContribution {
   const subject = pluginId
-    ? `CCGUI has deactivated the earlier internal instructions from plugin ${JSON.stringify(pluginId)} for this session.`
-    : "This is a resumed session. Earlier CCGUI internal instructions and private protocol frames are inactive unless their instructions are supplied again with the current request.";
+    ? `MireAI has deactivated the earlier internal instructions from plugin ${JSON.stringify(pluginId)} for this session.`
+    : "This is a resumed session. Earlier MireAI internal instructions and private protocol frames are inactive unless their instructions are supplied again with the current request.";
   return {
     id: `host:internal-instructions-reset:${pluginId}`,
     content: `${subject} Do not continue automatic maintenance, read or update private context files, or emit private protocol frames solely because of those retired instructions. Only internal instructions supplied for the current turn remain active. Historical task facts are still background information. Continue the current user's request normally; explicit user instructions take precedence.`,

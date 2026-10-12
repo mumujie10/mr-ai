@@ -280,7 +280,7 @@ pub trait Engine: Send + Sync {
     /// 自身的原生计划入口保持既有行为。返回 Unavailable 时,显式 plan 请求
     /// 必须在发送前受控拒绝——计划审批是用户决策,auto/bypass、静默回退
     /// 和自动批准参数都不能代替(OMP/Codex/DSH/Grok/Qoder 在各自适配器
-    /// 接通前都是 Unavailable;PRD §1 原则 1/4)。
+    /// 接通前都是 Unavailable)。
     fn plan_approval(&self) -> PlanApproval {
         PlanApproval::Legacy
     }
@@ -502,7 +502,7 @@ fn list_engines_blocking() -> Vec<EngineInfo> {
 const MAX_CONCURRENT_RUNS: usize = 64;
 /// 显式计划请求的能力门禁:计划审批是用户决策,能力不足必须报错,禁止
 /// 降级——auto/bypass、resolve_permission 的静默回退和自动批准参数
-/// (如 --plan-yolo)都不能代替用户批准(PRD §1 原则 1/4、§3.1)。
+/// (如 --plan-yolo)都不能代替用户批准。
 /// prepare_launch 在构建命令与 spawn 之前调用;Typed/Legacy 路径放行。
 fn ensure_plan_approval(
     engine: &str,
@@ -542,6 +542,9 @@ fn prepare_launch(
     computer_use: Option<bool>,
     memory_bot: Option<String>,
     allowed_tools: Option<Vec<String>>,
+    // GUI 界面语言（"en" | "zh"）：决定 CLI 默认用哪种语言回复与思考。
+    // 只有 mcode 协议引擎消费（MAVIS_ELECTRON_LOCALE），其余引擎忽略。
+    ui_language: Option<String>,
     wsl: bool,
 ) -> Result<Launch, String> {
     let engine_impl = engine_by_id(engine).ok_or_else(|| format!("unknown engine: {engine}"))?;
@@ -655,6 +658,19 @@ fn prepare_launch(
     for (key, value) in &channel_env {
         built.command.env(key, value);
     }
+    if matches!(engine, "mireai" | "minimax") {
+        mcode::McodeEngine::apply_ui_language(&mut built, ui_language.as_deref());
+    }
+    // 记忆行为开关（设置 → 记忆）只约束内置引擎：不注入 mcode，
+    // 免得 GUI 的偏好悄悄改写官方 MiniMax Code 的本机行为。
+    if engine == "mireai" {
+        if settings.memory_global_enabled == Some(false) {
+            built.command.env("MAVIS_MEMORY_GLOBAL", "0");
+        }
+        if settings.memory_project_enabled == Some(false) {
+            built.command.env("MAVIS_MEMORY_PROJECT", "0");
+        }
+    }
     if engine == "codex" && codex_read_only::requested(&req) {
         codex_read_only::stage(
             &req,
@@ -706,6 +722,7 @@ pub async fn send_message(
     run_id: Option<String>,
     computer_use: Option<bool>,
     memory_bot: Option<String>,
+    ui_language: Option<String>,
 ) -> Result<SendResult, String> {
     send_message_inner(
         &state,
@@ -723,6 +740,7 @@ pub async fn send_message(
         run_id,
         computer_use,
         memory_bot,
+        ui_language,
     )
     .await
 }
@@ -769,6 +787,7 @@ pub(crate) async fn plugin_agent_send(
         None,
         None,
         allowed_tools,
+        None,
     )
     .await
 }
@@ -831,6 +850,7 @@ pub(crate) async fn mission_agent_send(
         None,
         None,
         allowed_tools,
+        None,
     )
     .await
 }
@@ -852,6 +872,7 @@ pub async fn send_message_inner(
     run_id: Option<String>,
     computer_use: Option<bool>,
     memory_bot: Option<String>,
+    ui_language: Option<String>,
 ) -> Result<SendResult, String> {
     send_message_inner_with_sink(
         state,
@@ -871,6 +892,7 @@ pub async fn send_message_inner(
         computer_use,
         memory_bot,
         None,
+        ui_language,
     )
     .await
 }
@@ -894,6 +916,7 @@ async fn send_message_inner_with_sink(
     computer_use: Option<bool>,
     memory_bot: Option<String>,
     allowed_tools: Option<Vec<String>>,
+    ui_language: Option<String>,
 ) -> Result<SendResult, String> {
     let run_id = run_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     if run_id.is_empty()
@@ -959,6 +982,7 @@ async fn send_message_inner_with_sink(
         computer_use,
         memory_bot,
         allowed_tools,
+        ui_language,
     )
     .await;
     if result.is_err() {
@@ -991,6 +1015,7 @@ async fn send_reserved(
     computer_use: Option<bool>,
     memory_bot: Option<String>,
     allowed_tools: Option<Vec<String>>,
+    ui_language: Option<String>,
 ) -> Result<SendResult, String> {
     // WSL 远程工作区:引擎进程经 ssh 在发行版内执行(见 wsl_transport)。
     let wsl_tp = wsl_transport::transport_for_workspace(&state.db, &workspace_path);
@@ -1013,6 +1038,7 @@ async fn send_reserved(
         computer_use,
         memory_bot,
         allowed_tools,
+        ui_language,
         wsl_tp.is_some(),
     )?;
     // Host-stream engines drive their own transport: no child process — the
@@ -1563,7 +1589,7 @@ pub async fn answer_question(
 
 /// respond_plan_review 的结果:决策已生效,或冲突(当前状态原样返回,供
 /// UI 呈现"已被另一窗口/新版本取代"而不是重复执行)。重复点击返回相同
-/// 结果或明确冲突——PRD §4.2。
+/// 结果或明确冲突。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase", tag = "outcome")]
 pub enum PlanRespondOutcome {
@@ -3108,7 +3134,7 @@ mod plan_respond_tests {
         plan_review::record_review(&db, &review("plan-d", "sess-d")).unwrap();
         let (_child, stdin, _out) = spawn_frame_sink("stale-body");
         // 停车上下文记录的正文哈希与落盘记录不一致:审批期间正文已变,
-        // 先失效再要求重新审阅,绝不带着旧正文执行(PRD §4.2 末条)。
+        // 先失效再要求重新审阅,绝不带着旧正文执行。
         park(
             &app,
             "sess-d",

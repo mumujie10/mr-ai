@@ -237,6 +237,7 @@ describe("SettingsPage system rail", () => {
       i18n.t("settings.agents"),
       i18n.t("settings.prompts"),
       i18n.t("settings.proxy"),
+      i18n.t("settings.memory"),
     ]);
 
     // 其他 holds the release/feedback pages, the 性能诊断 entry, the

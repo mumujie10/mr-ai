@@ -545,7 +545,7 @@ describe("createPluginContext", () => {
     dispose();
   });
 
-  it("injectCss rejects remote references (plan §8 gate rule)", () => {
+  it("injectCss rejects remote references (gate rule)", () => {
     const { ctx } = createPluginContext(manifest(["theme"]), fakeStorage(), {
       appVersion: "1.0.0",
     });

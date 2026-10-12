@@ -124,7 +124,7 @@ fn create_window() -> Result<tauri::WebviewWindow, String> {
     // lets the overlay briefly boot MainApp, which installs unrelated
     // listeners and can leave the transparent window in a blank state.
     .initialization_script("window.location.hash = '#/pet-overlay';")
-    .title("CC GUI Pet")
+    .title("MireAI Pet")
     .transparent(true)
     .decorations(false)
     .always_on_top(true)

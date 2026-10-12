@@ -6,7 +6,7 @@ import { useMarketplaceStore } from "./marketplace/store";
 let started = false;
 
 /**
- * Plugin system entry (plan §4.1): bootstraps the loader — hardening,
+ * Plugin system entry: bootstraps the loader — hardening,
  * usage-event bridge, builtin + installed plugins. Called once from App on
  * mount; idempotent.
  *
@@ -19,7 +19,7 @@ export function startPluginSystem(): void {
   started = true;
   void bootstrapWithRetry()
     .then(() => usePluginsStore.getState().refresh())
-    // Update hints (plan ADR-4): check at startup and once every 24h.
+    // Update hints: check at startup and once every 24h.
     .then(() => {
       const check = () => void useMarketplaceStore.getState().checkUpdates();
       check();

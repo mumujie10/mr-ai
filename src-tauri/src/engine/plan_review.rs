@@ -1,4 +1,4 @@
-//! 计划预览与人工审批的最小类型化契约（PRD §4）。
+//! 计划预览与人工审批的最小类型化契约。
 //!
 //! 审批事实源是 `plan_reviews` 表与后端注册表里停住的原生回复上下文；
 //! CLI transcript 与 session_messages 搜索索引都不承担审批语义。前端只提交
@@ -21,7 +21,7 @@ use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// 计划审批能力声明（PRD §4.1：是否支持、证据、reviewKind、限制说明）。
+/// 计划审批能力声明（是否支持、证据、reviewKind、限制说明）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum PlanApproval {
@@ -42,7 +42,7 @@ pub enum PlanApproval {
     Unavailable { reason: &'static str },
 }
 
-/// 两种原生生命周期（PRD §4.3）。
+/// 两种原生生命周期。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PlanReviewKind {
@@ -180,7 +180,7 @@ impl PlanDecision {
 }
 
 /// 计划审批记录（审批事实源）。身份 = workspace + engine + session +
-/// run/turn + planId + revision（PRD §3.3）。
+/// run/turn + planId + revision。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanReview {
@@ -194,14 +194,14 @@ pub struct PlanReview {
     /// 用户看到并复制的最终 Markdown；必须与原生最终正文逐字一致。
     pub content: String,
     /// 正文变化检测（非安全哈希；submit 前重核，文件型来源 TOCTOU 限制按
-    /// PRD §5-OMP.3 记录在能力声明里）。
+    /// 记录在能力声明里）。
     pub content_hash: String,
     /// false = 草稿/来源不确定：任何批准路径都必须拒绝。
     pub complete: bool,
     pub review_kind: PlanReviewKind,
     /// 原生 plan/item ID（引擎自己的标识，原样保存）。
     pub native_plan_id: Option<String>,
-    /// 批准将沿用的执行权限快照；批准不得改变它（PRD §1 不变量 4）。
+    /// 批准将沿用的执行权限快照；批准不得改变它（不变量 4）。
     pub exec_permission: String,
     pub status: PlanStatus,
     pub execution: PlanExecution,
@@ -362,7 +362,7 @@ pub(crate) fn list_reviews(db: &Db, engine: &str, session_id: &str) -> Result<Ve
 }
 
 /// CAS 结果：要么本次调用抢占了提交权，要么原样返回当前状态供调用方
-/// 呈现冲突（重复点击返回相同结果或明确冲突——PRD §4.2）。
+/// 呈现冲突（重复点击返回相同结果或明确冲突——）。
 #[derive(Debug)]
 pub(crate) enum SubmitOutcome {
     /// 抢占成功：记录已进入 submitting，决策意图已落盘。
@@ -492,7 +492,7 @@ pub(crate) fn mark_execution(
 }
 
 /// 运行结束时这批停住的计划全部过期：原生请求随进程消失，历史 UI 不得
-/// 假装还能批准（PRD §8 防线 3）。next_turn 计划没有停住的上下文，不会
+/// 假装还能批准（防线 3）。next_turn 计划没有停住的上下文，不会
 /// 出现在这里。返回 (plan_id, revision, 原状态)。
 pub(crate) fn expire_reviews(
     db: &Db,
@@ -536,7 +536,7 @@ pub(crate) fn expire_reviews(
     Ok(expired)
 }
 
-/// 会话删除/工作区移除时随现有生命周期清理（PRD §4.4：删除会话后无幽灵
+/// 会话删除/工作区移除时随现有生命周期清理（删除会话后无幽灵
 /// 计划；sessions 行可能晚于计划记录创建，故不用 FK 而由删除点显式清理）。
 /// 调用方在既有事务/锁内传入连接（Transaction 解引用为 Connection）。
 pub(crate) fn delete_reviews_for_session(

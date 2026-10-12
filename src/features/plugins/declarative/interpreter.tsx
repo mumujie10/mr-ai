@@ -2,7 +2,7 @@ import type { PluginHandle } from "../runtime/context";
 import { PluginConfigForm } from "./PluginConfigForm";
 
 /**
- * Tier-0 declarative interpreter (plan §4.1 declarative/interpreter.ts):
+ * Tier-0 declarative interpreter (declarative/interpreter.ts):
  * applies a zero-JS plugin through the same PluginContext surface JS plugins
  * use — theme token overrides, i18n bundles, and a configSchema-driven
  * settings page. (The bundle's styles.css is NOT applied here: the loader

@@ -247,7 +247,7 @@ export function useCrashReport(): CrashReport | null {
 /** Human-readable dump for the "copy details" action. */
 export function formatCrashReport(report: CrashReport): string {
   const lines = [
-    "CC GUI crash report",
+    "MireAI crash report",
     `time:    ${report.time}`,
     `source:  ${report.source}`,
     `version: ${report.appVersion ?? "unknown"}`,

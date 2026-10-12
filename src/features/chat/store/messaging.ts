@@ -444,6 +444,9 @@ export function createMessagingActions(
         providerId: provider,
         computerUse: options?.computerUse === true,
         memoryBot: memoryToolAvailable ? pinnedBot.id : null,
+        // GUI 语言是 CLI 回复/思考语言的权威默认值（对话内用户明确
+        // 指定语言时仍以用户指令为准，CLI 的 LANGUAGE_RULES 处理）。
+        uiLanguage: i18n.language,
       });
       confirmPromptContributions(promptContributions);
       if (switchEvent) {

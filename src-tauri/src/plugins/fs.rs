@@ -12,7 +12,7 @@ use super::state::{lock_state, mutate_record, read_state, write_state, PluginInf
 // the wrong directory (a folder of videos must not hang the loader), not to
 // police bundle size — real dashboards (react + motion + charts, single-file
 // ESM) legitimately run multi-MB. Marketplace CI enforces the stricter
-// 512KB-warning / 2MB hygiene rule for community submissions (plan §6.1).
+// 512KB-warning / 2MB hygiene rule for community submissions.
 pub(crate) const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Directories that are never plugin bundle content: a bundle is plain files
@@ -218,7 +218,7 @@ pub(crate) fn artwork_data_url(plugins_dir: &Path, id: &str, rel: &str) -> Resul
     Ok(format!("data:{mime};base64,{encoded}"))
 }
 
-/// Install transaction (plan §4.4): copy into `.staging-<id>/` next to the
+/// Install transaction: copy into `.staging-<id>/` next to the
 /// target, validate there, then swap with rename and roll the backup back in
 /// on failure. Renames within one directory are atomic, so a crash leaves at
 /// worst a stale `.staging-`/`.backup-` dir, never a half-copied plugin —

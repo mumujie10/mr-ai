@@ -32,7 +32,7 @@ import { useComposerBridge } from "./split/composer-bridge";
 import { resolvePanelLayout } from "./panel-layout";
 import { useConversationMode } from "./conversation-mode";
 // Side-effect import: registers the builtin files/changes tabs into
-// panelTabRegistry (plan §4.2 #4).
+// panelTabRegistry.
 import "./panel-tabs";
 
 // Windows keeps its native titlebar (titleBarStyle Overlay is macOS-only), so

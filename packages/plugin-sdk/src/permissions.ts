@@ -1,7 +1,7 @@
 import spec from "../spec/permissions.json";
 
 /**
- * 权限（plan §4.1 permissions.ts）。零运行时依赖（纯 JSON + 字符串逻辑），
+ * 权限（permissions.ts）。零运行时依赖（纯 JSON + 字符串逻辑），
  * 宿主前端、插件模板校验脚本（Node）均可直接 import。
  *
  * 单一事实源是包内 spec/permissions.json：KNOWN_PERMISSIONS 与测试向量

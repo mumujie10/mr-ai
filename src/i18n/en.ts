@@ -796,6 +796,26 @@ export const en: Messages = {
     proxyEnabledSuccess: "Network proxy enabled and applied.",
     proxyDisabledSuccess:
       "Network proxy disabled; new requests will connect directly.",
+    memory: "Memory",
+    memoryDesc: "View and manage long-term memory saved on this machine.",
+    memoryBehavior: "Memory behavior",
+    memoryGlobal: "Global memory",
+    memoryGlobalDesc:
+      "When enabled, the app reads and updates your personal preferences, habits and long-term context across all projects; when disabled, global memory is neither used nor updated.",
+    memoryProject: "Project memory",
+    memoryProjectDesc:
+      "When enabled, the app reads and updates codebase rules, experience and long-term context per project; when disabled, no project memory is used or updated.",
+    memoryStorage: "Storage location",
+    memoryGlobalFolder: "Global memory folder",
+    memoryGlobalFolderDesc:
+      "Memory shared across all projects; use the button to reveal it in your file manager.",
+    memoryProjectsFolder: "Project memory folders",
+    memoryProjectsFolderDesc:
+      "Memory grouped by project; use the button to reveal it in your file manager.",
+    memoryReveal: "Reveal",
+    memoryHint:
+      "Toggles are saved immediately and apply to newly started sessions; running sessions are unaffected.",
+    memorySaved: "Memory settings saved.",
     workspaces: "Workspaces",
     archivedSessions: "Archive Management",
     archivedSessionsDesc:
@@ -1566,7 +1586,7 @@ export const en: Messages = {
       categoryFilter: "Filter by category",
       sortLabel: "Sort & filter",
       sortSmart: "Best match",
-      sortOfficial: "CCGUI Official",
+      sortOfficial: "MireAI Official",
       sortThirdParty: "Community plugins",
       sortDownloads: "Installs",
       tableName: "Name",
@@ -1609,7 +1629,7 @@ export const en: Messages = {
       openSettings: "Open plugin settings",
       author: "Developer",
       authorGithub: "Open {{login}} on GitHub",
-      official: "CCGUI Official",
+      official: "MireAI Official",
       version: "Version",
       tier: "Type",
       tierJs: "Full plugin",
@@ -1620,7 +1640,7 @@ export const en: Messages = {
       compatibility: "Compatibility",
       sdkVersion: "SDK",
       updatedAt: "Last updated",
-      permissionsTitle: "Permissions (CCGUI)",
+      permissionsTitle: "Permissions (MireAI)",
       permissionsEmpty: "No extra permissions needed",
       permissionsCount: "{{n}}",
       permissionsExpand: "Show all {{n}}",

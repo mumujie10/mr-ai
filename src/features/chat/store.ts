@@ -11,11 +11,7 @@ import {
   type ReviewContext,
 } from "@/features/bots/memory-review";
 import { noteSessionTurnSettled, titleSeed, type TitleContext } from "./session-title";
-import {
-  ENGINE_PREF_KEY,
-  persistTabs,
-  sessionKey,
-} from "./store/persistence";
+import { persistTabs, sessionKey } from "./store/persistence";
 import { patchSession, resolveSessionModel } from "./store/stream";
 import { readPermissionPref } from "./store/permissions";
 import { createTabActions } from "./store/tabs";
@@ -212,11 +208,12 @@ export const useChatStore = create<ChatStore>((set, get) => {
     engines: [],
     active: null,
     openTabs: [],
-    // The bundled MireAI CLI is the one engine every install can run (BYOK
-    // channels are written into it, nothing has to be installed first), so a
-    // fresh profile starts there. `ensureUsableEngine` moves a dead pref back
-    // to it too.
-    activeEngine: localStorage.getItem(ENGINE_PREF_KEY) ?? BUNDLED_ENGINE_ID,
+    // The bundled MireAI CLI is the default engine on every launch: it is the
+    // one engine every install can run (BYOK channels are written into it,
+    // nothing has to be installed first). Last launch's CLI choice does not
+    // carry over; `ensureUsableEngine` re-routes when the bundled CLI is
+    // disabled or missing, and a restored tab still follows its own engine.
+    activeEngine: BUNDLED_ENGINE_ID,
     permission: readPermissionPref(),
     efforts: {},
     ompServiceTier: null,

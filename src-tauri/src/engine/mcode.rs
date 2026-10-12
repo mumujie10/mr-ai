@@ -72,6 +72,23 @@ impl McodeEngine {
 
     const PERMISSIONS: &'static [&'static str] = &["auto", "manual", "plan", "bypass"];
 
+    /// GUI 语言设定 → 两个 CLI 都读的 appLocale 覆盖（`MAVIS_ELECTRON_LOCALE`）：
+    /// 回复与思考默认用 GUI 设置的语言。运行时只认 `en`/`zh`，GUI 本身也只有
+    /// 这两档，所以其余取值一律按默认 zh。
+    pub(crate) fn apply_ui_language(built: &mut BuiltCommand, ui_language: Option<&str>) {
+        let Some(lang) = ui_language.map(str::trim).filter(|l| !l.is_empty()) else {
+            return;
+        };
+        built.command.env(
+            "MAVIS_ELECTRON_LOCALE",
+            if lang.eq_ignore_ascii_case("en") {
+                "en"
+            } else {
+                "zh"
+            },
+        );
+    }
+
     /// Effective mode for a one-shot headless launch. Also what the ACP driver
     /// applies for a session, so the two entry points resolve identically.
     pub(crate) fn resolve_permission_mode(requested: Option<&str>) -> &'static str {
@@ -321,6 +338,33 @@ mod tests {
         let built = McodeEngine::MIREAI.host_command(&request(), "mr").unwrap();
         assert_eq!(argv(&built), ["acp"]);
         assert!(built.keep_stdin_open);
+    }
+
+    #[test]
+    fn ui_language_lands_as_the_mavis_locale_env() {
+        let env_value = |built: &BuiltCommand| {
+            built.command.as_std().get_envs().find_map(|(key, value)| {
+                (key == "MAVIS_ELECTRON_LOCALE")
+                    .then(|| value.map(|v| v.to_string_lossy().into_owned()))
+            })
+        };
+
+        let mut built = McodeEngine::MIREAI.host_command(&request(), "mr").unwrap();
+        assert_eq!(env_value(&built), None);
+        McodeEngine::apply_ui_language(&mut built, None);
+        assert_eq!(env_value(&built), None);
+
+        McodeEngine::apply_ui_language(&mut built, Some("en"));
+        assert_eq!(env_value(&built), Some(Some("en".to_string())));
+        McodeEngine::apply_ui_language(&mut built, Some("ZH"));
+        assert_eq!(env_value(&built), Some(Some("zh".to_string())));
+        // GUI 只有 en/zh 两档；未知取值按默认 zh，而不是漏给 CLI 猜。
+        McodeEngine::apply_ui_language(&mut built, Some("fr"));
+        assert_eq!(env_value(&built), Some(Some("zh".to_string())));
+        McodeEngine::apply_ui_language(&mut built, Some("  "));
+        assert_eq!(env_value(&built), Some(Some("zh".to_string())));
+        McodeEngine::apply_ui_language(&mut built, None);
+        assert_eq!(env_value(&built), Some(Some("zh".to_string())));
     }
 
     #[test]

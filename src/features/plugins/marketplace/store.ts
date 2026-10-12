@@ -5,7 +5,7 @@ import { reloadPlugin } from "../runtime/loader";
 import { usePluginsStore } from "../manager/usePlugins";
 
 /**
- * Marketplace state (plan §6.3): the GitHub index listing, the update check
+ * Marketplace state: the GitHub index listing, the update check
  * result, and the one-at-a-time install/update flow. Installed-state merging
  * happens in the components against usePluginsStore — this store only owns
  * market-side data, so the two never drift on who wins a field.

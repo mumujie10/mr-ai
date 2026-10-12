@@ -10,7 +10,7 @@ import { registerShortcutHandler } from "@/features/shortcuts/runtime";
 import { isModalDialogOpen, hideModalDialog, showModalDialog } from "@/lib/engine-compat";
 
 /**
- * Command palette (plan §4.2 #9). ⌘K / Ctrl+K toggles it from anywhere
+ * Command palette. ⌘K / Ctrl+K toggles it from anywhere
  * (window-level keydown, so it works in the web build and the desktop shell);
  * Esc or a backdrop click closes it.
  *

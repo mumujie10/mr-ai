@@ -773,7 +773,7 @@ fn render_codex(base: &str, provider: &Value) -> Result<String, String> {
         }
     } else {
         if let Some(base_url) = channel_field("codex", provider, "baseUrl") {
-            let name = non_empty_str(provider.get("name")).unwrap_or_else(|| "CC GUI".into());
+            let name = non_empty_str(provider.get("name")).unwrap_or_else(|| "MireAI".into());
             let mut table = existing_table(&doc, &["model_providers", "ccgui"])
                 .unwrap_or_else(|| Item::Table(Table::new()));
             upsert_str(&mut table, "name", &name);

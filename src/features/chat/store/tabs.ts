@@ -1,6 +1,4 @@
-import { writeStored } from "@/lib/storage";
 import {
-  ENGINE_PREF_KEY,
   persistTabs,
   sameTab,
   sessionKey,
@@ -79,7 +77,6 @@ export function createTabActions(
       // A pending tab sends with its own engine, so the picker must follow it
       // — otherwise the chip shows one CLI while sends go to another.
       const syncEngine = tab.engine !== get().activeEngine;
-      if (syncEngine) writeStored(ENGINE_PREF_KEY, tab.engine);
       set(
         syncEngine
           ? { active: tab, activeEngine: tab.engine }
@@ -261,7 +258,6 @@ export function createTabActions(
       if (current && getConversationModeState().isTabCloseBlocked(
         sessionKey(current.engine, current.sessionId, current.workspacePath), current.workspacePath,
       )) return;
-      writeStored(ENGINE_PREF_KEY, engine);
       // Plugins follow the active engine through `session://activated`; the
       // picker is one of the ways it changes. Only the retarget below actually
       // changes what the active tab runs (a tab with a real session keeps its

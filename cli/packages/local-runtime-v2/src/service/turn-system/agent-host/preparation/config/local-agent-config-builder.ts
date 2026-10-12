@@ -708,6 +708,7 @@ function loadMemoryBlocks(input: {
   );
   return collectMemoryBlocks(options.memory, sources, nowMs, {
     includeAgentMemory: config.memory?.enabled !== false && recallEnabled && sources.length > 0,
+    workspacePath: session.workspaceDir,
     prompt: {
       includeWriteGuidance:
         config.memory?.enabled !== false && writeEnabled && profile?.surface !== 'task-child',

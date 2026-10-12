@@ -5,14 +5,26 @@ export interface LocalMemoryConfig {
   enabled?: boolean;
 }
 
-export type LocalMemoryScope = 'user' | 'agent';
+export interface LocalMemoryScopeGates {
+  /** Global (user.md) memory: read + update across every project. */
+  readonly userEnabled: boolean;
+  /** Per-project memory under memory/projects/<slug>/. */
+  readonly projectEnabled: boolean;
+}
+
+export type LocalMemoryScope = 'user' | 'agent' | 'project';
 
 /**
  * How a local-runtime memory call is addressed. Local agents have no i64
  * snowflake — only their on-disk directory name — so agent scope is keyed by
  * `agentName` (the `agents/<agentName>/` directory) rather than a numeric id.
+ * Project scope is keyed by the session's absolute workspace path and stores
+ * one MEMORY.md per project under `memory/projects/<slug>/`.
  */
-export type LocalMemoryTarget = { scope: 'user' } | { scope: 'agent'; agentName: string };
+export type LocalMemoryTarget =
+  | { scope: 'user' }
+  | { scope: 'agent'; agentName: string }
+  | { scope: 'project'; workspacePath: string };
 
 export interface LocalMemoryLocation {
   scope: LocalMemoryScope;

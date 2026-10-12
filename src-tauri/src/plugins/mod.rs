@@ -3,7 +3,7 @@
 //! (db.rs `plugin_kv`). State lives in `~/.ccgui-next/plugins.json`; the
 //! plugins themselves in `~/.ccgui-next/plugins/<id>/`.
 //!
-//! Uninstall data policy (plan §9.1): `delete_data=false` keeps the KV rows
+//! Uninstall data policy: `delete_data=false` keeps the KV rows
 //! and records a tombstone; `plugin_list` purges rows whose tombstone is
 //! older than KV_TOMBSTONE_TTL_SECS.
 //!

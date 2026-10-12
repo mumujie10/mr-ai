@@ -6,7 +6,7 @@ import type { AppSettings } from "@/lib/ipc";
 
 // Pages read their settings (and the pet page its package list) on mount; the
 // proxy keeps every other method inert for the module tree they pull in.
-const { getAppSettings, listPets, webDevices, dshHostStatus, listGrantedRoots } =
+const { getAppSettings, listPets, webDevices, dshHostStatus, listGrantedRoots, memoryDirs } =
   vi.hoisted(() => ({
     getAppSettings: vi.fn(),
     listPets: vi.fn(async () => []),
@@ -26,10 +26,15 @@ const { getAppSettings, listPets, webDevices, dshHostStatus, listGrantedRoots } 
       ownership: null,
       describe: null,
     })),
+    // 记忆 resolves its CLI-owned folders on mount.
+    memoryDirs: vi.fn(async () => ({
+      globalDir: "/tmp/mireai/memory",
+      projectsDir: "/tmp/mireai/memory/projects",
+    })),
   }));
 vi.mock("@/lib/ipc", () => ({
   ipc: new Proxy(
-    { getAppSettings, listPets, webDevices, listGrantedRoots, dshHostStatus },
+    { getAppSettings, listPets, webDevices, listGrantedRoots, dshHostStatus, memoryDirs },
     {
       get: (target, prop) =>
         prop in target ? Reflect.get(target, prop) : async () => null,
@@ -52,6 +57,7 @@ import { BetaFeaturesSection } from "./BetaFeaturesSection";
 import { builtinSearchEntries } from "./builtin-search";
 import { CliConfigBody } from "./CliConfigBody";
 import { GeneralSection } from "./GeneralSection";
+import { MemorySection } from "./MemorySection";
 import { PerformanceDiagnosticsSection } from "./PerformanceDiagnostics";
 import { PetSection } from "./PetSection";
 import { ProxySection } from "./ProxySection";
@@ -152,6 +158,7 @@ const PAGES: PageSpec[] = [
   { page: "general", render: () => <GeneralSection /> },
   { page: "pet", render: () => <PetSection /> },
   { page: "proxy", render: () => <ProxySection /> },
+  { page: "memory", render: () => <MemorySection /> },
   { page: "shortcuts", render: () => <ShortcutsSection /> },
   { page: "update", render: () => <UpdateSection /> },
   { page: "betaFeatures", render: () => <BetaFeaturesSection /> },

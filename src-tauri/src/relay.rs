@@ -482,26 +482,26 @@ tag = "v1"
 new_sqlite_classes = ["Relay"]
 
 [vars]
-# 与 CC GUI「中转密钥」保持一致 / must match the key field in CC GUI.
+# 与 MireAI「中转密钥」保持一致 / must match the key field in MireAI.
 # 部署后也可在控制台 Variables 里修改，改完无需重新部署。
 RELAY_KEY = "{key}"
 "#
     );
-    let readme = r#"CC GUI 外网穿透 · 中继部署包
-CC GUI relay deploy pack
+    let readme = r#"MireAI 外网穿透 · 中继部署包
+MireAI relay deploy pack
 
 【部署步骤 / Steps】
 1. 装 Node ≥ 16.17（只为拿 npx wrangler）。
    Install Node ≥ 16.17 (only to get npx wrangler).
 2. npx wrangler login      # 浏览器授权一次 / authorize once in the browser
 3. npx wrangler deploy     # 输出 https://ccgui-relay.<你的子域>.workers.dev
-4. CC GUI → 设置 → 远程访问 → 外网访问：
+4. MireAI → 设置 → 远程访问 → 外网访问：
    中转地址 = 上一步的 URL，中转密钥 = 本包 wrangler.toml 里的 RELAY_KEY。
-   CC GUI → Settings → Remote access → Outbound: relay URL = the URL above,
+   MireAI → Settings → Remote access → Outbound: relay URL = the URL above,
    relay key = RELAY_KEY from this pack's wrangler.toml.
-5. 点「连接中转」；手机打开该 URL → 授权页 → 输入 CC GUI 上的 8 位配对密钥。
+5. 点「连接中转」；手机打开该 URL → 授权页 → 输入 MireAI 上的 8 位配对密钥。
    Click Connect relay; open that URL on the phone → authorization page →
-   enter the 8-character pairing key shown in CC GUI.
+   enter the 8-character pairing key shown in MireAI.
 
 【包里有什么 / What's inside】
 - src/index.js    Worker 源码 / the Worker source
@@ -514,11 +514,11 @@ CC GUI relay deploy pack
   RELAY_KEY is the shared secret between the desktop and the Worker — keep it
   private. It also namespaces the phone's path, so a new key needs re-pairing.
 - 部分地区无法直连 *.workers.dev：给这个 Worker 绑定自定义域名
-  （Settings → Domains & Routes → Add custom domain），再把该域名填进 CC GUI 的
+  （Settings → Domains & Routes → Add custom domain），再把该域名填进 MireAI 的
   「中转地址」—— 地址栏始终可手改。
   If *.workers.dev is unreachable where you are, bind a custom domain to this
   Worker (Settings → Domains & Routes → Add custom domain) and use it as the
-  relay URL in CC GUI; that field stays editable.
+  relay URL in MireAI; that field stays editable.
 "#;
     zip_store(&[
         ("ccgui-relay/README.txt", readme.as_bytes()),

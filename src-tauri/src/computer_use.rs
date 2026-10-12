@@ -85,7 +85,7 @@ fn require_accessibility() -> Result<(), String> {
     if accessibility_granted() {
         Ok(())
     } else {
-        Err("Accessibility permission is not granted to this app. Tell the user to enable it in CC GUI → Settings → Computer Use.".into())
+        Err("Accessibility permission is not granted to this app. Tell the user to enable it in MireAI → Settings → Computer Use.".into())
     }
 }
 
@@ -93,7 +93,7 @@ fn require_screen_recording() -> Result<(), String> {
     if screen_recording_granted() {
         Ok(())
     } else {
-        Err("Screen Recording permission is not granted to this app. Tell the user to enable it in CC GUI → Settings → Computer Use.".into())
+        Err("Screen Recording permission is not granted to this app. Tell the user to enable it in MireAI → Settings → Computer Use.".into())
     }
 }
 
@@ -1393,8 +1393,8 @@ pub mod mcp {
                  previous step's visual result — stop the batch there and look at the returned \
                  screenshot first. \
                  If a tool reports a missing OS permission, stop and tell the user to grant it \
-                 in CC GUI → Settings → Computer Use. \
-                 A visible pointer follows every action target on screen: it is drawn by CC GUI \
+                 in MireAI → Settings → Computer Use. \
+                 A visible pointer follows every action target on screen: it is drawn by MireAI \
                  itself, is always on while these tools run, and cannot be hidden or disabled \
                  through the tool surface. Do not call attention to it or treat it as page content; \
                  never try to click it, move it away, or work around it."
@@ -1432,6 +1432,7 @@ pub mod mcp {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::history::scanner::tests::HomeGuard;
 
     fn display(width: u32, height: u32, scale: f64) -> DisplayInfo {
         DisplayInfo {
@@ -1520,12 +1521,15 @@ mod tests {
     }
     // ---- omp MCP injection ----
 
-    fn steer_home(tag: &str) -> PathBuf {
+    /// Steer HOME (and USERPROFILE, which `engine_home` falls back to on
+    /// Windows) at a scratch home for this test. The returned guard also holds
+    /// HOME_ENV_LOCK and restores both on drop — a test must never leak a
+    /// steered HOME into the rest of the suite, which runs in one process.
+    fn steer_home(tag: &str) -> HomeGuard {
         let home = std::env::temp_dir().join(format!("ccgui-cu-home-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
         std::fs::create_dir_all(&home).unwrap();
-        std::env::set_var("HOME", &home);
-        home
+        HomeGuard::set(&home)
     }
 
     fn temp_workspace(tag: &str) -> PathBuf {
@@ -1563,8 +1567,7 @@ mod tests {
 
     #[test]
     fn inject_creates_then_restore_deletes_workspace_file() {
-        let _guard = crate::paths::HOME_ENV_LOCK.lock();
-        steer_home("create");
+        let _home = steer_home("create");
         let ws = temp_workspace("create");
         let restore = inject_workspace_mcp(&ws, &[test_spec()])
             .unwrap()
@@ -1580,8 +1583,7 @@ mod tests {
 
     #[test]
     fn inject_merges_and_restore_preserves_user_servers() {
-        let _guard = crate::paths::HOME_ENV_LOCK.lock();
-        steer_home("merge");
+        let _home = steer_home("merge");
         let ws = temp_workspace("merge");
         std::fs::create_dir_all(ws.join(".omp")).unwrap();
         std::fs::write(
@@ -1603,8 +1605,7 @@ mod tests {
 
     #[test]
     fn user_defined_server_entry_wins_untouched() {
-        let _guard = crate::paths::HOME_ENV_LOCK.lock();
-        steer_home("win");
+        let _home = steer_home("win");
         let ws = temp_workspace("win");
         std::fs::create_dir_all(ws.join(".omp")).unwrap();
         let original = r#"{"mcpServers":{"ccgui-computer":{"type":"stdio","command":"mine"}}}"#;
@@ -1619,8 +1620,7 @@ mod tests {
 
     #[test]
     fn concurrent_runs_share_one_injection_by_refcount() {
-        let _guard = crate::paths::HOME_ENV_LOCK.lock();
-        steer_home("shared");
+        let _home = steer_home("shared");
         let ws = temp_workspace("shared");
         let first = inject_workspace_mcp(&ws, &[test_spec()]).unwrap().unwrap();
         let second = inject_workspace_mcp(&ws, &[test_spec()]).unwrap().unwrap();
@@ -1635,8 +1635,7 @@ mod tests {
 
     #[test]
     fn sweep_restores_crash_leftovers() {
-        let _guard = crate::paths::HOME_ENV_LOCK.lock();
-        steer_home("sweep");
+        let _home = steer_home("sweep");
         let ws = temp_workspace("sweep");
         let _restore = inject_workspace_mcp(&ws, &[test_spec()]).unwrap().unwrap();
         // 模拟崩溃:不 restore 直接扫尾。
@@ -1647,8 +1646,7 @@ mod tests {
 
     #[test]
     fn two_tools_share_one_file_and_restore_independently() {
-        let _guard = crate::paths::HOME_ENV_LOCK.lock();
-        steer_home("two-tools");
+        let _home = steer_home("two-tools");
         let ws = temp_workspace("two-tools");
         // 两个工具先后注入同一工作区文件：两个条目、两条记录，各自持有。
         let computer = inject_workspace_mcp(&ws, &[test_spec()]).unwrap().unwrap();
@@ -1673,8 +1671,7 @@ mod tests {
 
     #[test]
     fn same_tool_twice_counts_as_one_entry() {
-        let _guard = crate::paths::HOME_ENV_LOCK.lock();
-        steer_home("two-runs");
+        let _home = steer_home("two-runs");
         let ws = temp_workspace("two-runs");
         // 同一次运行同时挂电脑操控与记忆：一个文件两个条目、两条记录。
         let both = inject_workspace_mcp(&ws, &[test_spec(), memory_spec()])

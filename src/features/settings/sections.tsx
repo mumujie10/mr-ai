@@ -16,6 +16,7 @@ import Smartphone from "lucide-react/dist/esm/icons/smartphone";
 import ChartColumn from "lucide-react/dist/esm/icons/chart-column";
 import Sparkles from "lucide-react/dist/esm/icons/sparkles";
 import Plug from "lucide-react/dist/esm/icons/plug";
+import Brain from "lucide-react/dist/esm/icons/brain";
 // 电脑操控入口：暂时隐藏，恢复时取消注释。
 // import MousePointer2 from "lucide-react/dist/esm/icons/mouse-pointer-2";
 import i18n from "@/lib/i18n";
@@ -27,6 +28,7 @@ import { cx } from "@/utils/cx";
 import { GeneralSection } from "./GeneralSection";
 import { PetSection } from "./PetSection";
 import { ProxySection } from "./ProxySection";
+import { MemorySection } from "./MemorySection";
 import { WorkspacesSection } from "./WorkspacesSection";
 import { ArchivedSessionsSection } from "./ArchivedSessionsSection";
 import { BotsPane } from "./agents-prompts/BotsPane";
@@ -45,7 +47,7 @@ import { registerSettingsSearchEntries } from "./settings-search";
 
 /**
  * Builtin settings sections, registered through the same extension-point
- * registry plugins use (plan §4.2 #1 — the settings page is the dogfood
+ * registry plugins use (the settings page is the dogfood
  * surface). Module-scope side effect, imported once by SettingsPage; the
  * registry's upsert semantics make HMR re-runs harmless.
  */
@@ -87,6 +89,15 @@ settingsRegistry.register({
   group: "system",
   order: 5,
   component: ProxySection,
+});
+settingsRegistry.register({
+  id: "memory",
+  key: "memory",
+  label: () => i18n.t("settings.memory"),
+  icon: Brain,
+  group: "system",
+  order: 6,
+  component: MemorySection,
 });
 settingsRegistry.register({
   id: "workspaces",

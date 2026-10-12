@@ -36,7 +36,7 @@ async function renderMarkdown(text: string) {
   });
 }
 
-describe("Markdown markdownRegistry merge (plan §4.2 #5)", () => {
+describe("Markdown markdownRegistry merge", () => {
   it("publishes parsed live text and preserves the full body when settling", async () => {
     vi.useFakeTimers();
     try {

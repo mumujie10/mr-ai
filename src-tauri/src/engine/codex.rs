@@ -143,7 +143,7 @@ pub(super) fn apply_channel(
     if !config.contains_key("model_provider") && (base_url.is_some() || api_key.is_some()) {
         config.insert("model_provider".into(), Toml::String("ccgui".into()));
         let table = toml::Table::from_iter([
-            ("name".into(), Toml::String("CC GUI".into())),
+            ("name".into(), Toml::String("MireAI".into())),
             (
                 "base_url".into(),
                 Toml::String(

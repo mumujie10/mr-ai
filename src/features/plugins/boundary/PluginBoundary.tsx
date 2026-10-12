@@ -3,7 +3,7 @@ import i18n from "@/lib/i18n";
 import { notePluginRenderOk, reportPluginCrash } from "../runtime/loader";
 
 /**
- * Per-plugin ErrorBoundary (plan §4.1 boundary/ + acceptance 1b): every
+ * Per-plugin ErrorBoundary (boundary/ + acceptance 1b): every
  * plugin-owned UI mount point renders inside one of these. A render crash
  * unmounts only the plugin's subtree — the host chat UI is never taken down.
  * Crash counting is cumulative across mount points (the loader keeps one

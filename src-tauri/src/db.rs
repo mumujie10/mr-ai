@@ -975,7 +975,8 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         -- Conversation vs work: which composer mode a session was created
         -- from. The first send that reaches a session names it (later sends
         -- in the other mode do not re-brand it); a session with no row predates
-        -- the split and every client shows it as 对话.
+        -- the split, when only 工作 existed, so clients count it as 工作
+        -- (features/chat/thread-scope.ts is the single place that decides).
         CREATE TABLE IF NOT EXISTS session_scopes(
             engine TEXT NOT NULL,
             session_id TEXT NOT NULL,

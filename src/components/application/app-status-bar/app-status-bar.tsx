@@ -31,7 +31,7 @@ function formatMb(bytes: number): number {
  * The builtin items stay hand-wired here and are intentionally NOT migrated
  * into statusBarRegistry: they are deeply coupled to ipc/listen hooks, so
  * registration would buy little. The registry is the plugin extension point
- * (plan §4.2 #8): entries registered via ctx.ui.registerStatusBarItem render
+ *: entries registered via ctx.ui.registerStatusBarItem render
  * after the sync status, before the version, each inside a PluginBoundary.
  * zone:"start" entries (SDK 0.3.8) render left-aligned ahead of the cluster.
  */
@@ -222,7 +222,7 @@ export function AppStatusBar() {
             </span>
           </>
         )}
-        {/* Plugin status-bar chips (plan §4.2 #8), placed right-aligned after
+        {/* Plugin status-bar chips, placed right-aligned after
          *  the sync status and before the version. Each chip renders in its
          *  own PluginBoundary so a render crash unmounts only that chip; the
          *  plugin owns the chip's look — the host provides placement and the

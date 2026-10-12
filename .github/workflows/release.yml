@@ -49,6 +49,27 @@ jobs:
           fi
           echo "version check ok: v${INPUT_VERSION}"
 
+      # Gate the release on the front-end suites here, before three platform
+      # jobs each spend tens of minutes building. Node 22 is required: the
+      # second command uses --experimental-strip-types, which Node 20 lacks.
+      # cargo test is gated in the linux job below, which already sets up Rust.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Front-end tests
+        run: |
+          pnpm test
+          node --experimental-strip-types --test tests/*.test.ts
+
   build_macos:
     name: macos (${{ matrix.arch }})
     runs-on: ${{ matrix.platform }}
@@ -97,6 +118,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      # The installer has to carry this app's own agent runtime: bundle.resources
+      # maps resources/runtime, and that directory only exists once
+      # scripts/stage-runtime.mjs has run. Skip this step and the shipped .app
+      # shows its own engine as 未安装 — or launches whatever `mr` happens to be
+      # on PATH, whose protocol expectations are different.
+      - name: Build and stage the bundled runtime
+        env:
+          NODE_OPTIONS: "--max-old-space-size=8192"
+        run: |
+          pnpm --dir cli install --frozen-lockfile
+          pnpm runtime:build
+
       - name: Import signing certificate
         env:
           APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
@@ -133,7 +166,8 @@ jobs:
       # Single-binary app (openssl vendored, no daemon subcomponent), so Tauri
       # can codesign mid-bundle — unlike the 0.9.x flow that re-signed after.
       # With TAURI_SIGNING_PRIVATE_KEY set, `createUpdaterArtifacts` also emits
-      # "CC GUI.app.tar.gz" + .sig for the updater channel.
+      # "MireAI.app.tar.gz" + .sig for the updater channel (the file name follows
+      # tauri.conf.json productName, not the old bundle name).
       - name: Build app bundle (signed)
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
@@ -181,9 +215,9 @@ jobs:
 
           mv src-tauri/target/release/bundle/dmg/*.dmg \
             "release-artifacts/ccgui_${VERSION}_${ARCH}.dmg"
-          mv "src-tauri/target/release/bundle/macos/CC GUI.app.tar.gz" \
+          mv "src-tauri/target/release/bundle/macos/MireAI.app.tar.gz" \
             "release-artifacts/ccgui_${ARCH}.app.tar.gz"
-          mv "src-tauri/target/release/bundle/macos/CC GUI.app.tar.gz.sig" \
+          mv "src-tauri/target/release/bundle/macos/MireAI.app.tar.gz.sig" \
             "release-artifacts/ccgui_${ARCH}.app.tar.gz.sig"
 
       - name: Upload macOS artifacts
@@ -231,6 +265,21 @@ jobs:
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Same contract as the macOS job: the AppImage/RPM have to ship this app's
+      # own agent runtime, and resources/runtime only exists after staging.
+      - name: Build and stage the bundled runtime
+        env:
+          NODE_OPTIONS: "--max-old-space-size=8192"
+        run: |
+          pnpm --dir cli install --frozen-lockfile
+          pnpm runtime:build
+
+      # The lib suite is order-safe now (tests that steer HOME restore it on
+      # drop, the npm probe cases no longer grade runner speed), so this blocks
+      # the release instead of shrugging at it.
+      - name: Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
 
       # Compile once, unbundled, so a cold Rust build is never killed by the
       # bundling timeouts below.
@@ -365,6 +414,13 @@ jobs:
       # matching what 0.9.x installers shipped. The NSIS upgrade code derives
       # from the bundle identifier, which is unchanged — installed 0.9.x
       # copies are replaced in place by this installer and by the updater.
+      #
+      # Known gap, deliberately not papered over: scripts/stage-runtime.mjs
+      # refuses win32 ("Windows staging is not implemented yet"), so this
+      # installer does NOT carry the bundled runtime and the Windows build shows
+      # its own engine as 未安装 until staging gains a Windows path. Do not add
+      # a `pnpm runtime:build` step here before that is implemented — it would
+      # only fail the job.
       - name: Build Windows installer
         shell: pwsh
         env:
@@ -506,8 +562,8 @@ jobs:
           appimages = list(artifacts_dir.rglob("*.AppImage"))
 
           # GitHub sanitizes uploaded asset names (spaces become dots — e.g.
-          # "CC GUI_1.0.1_x64-setup.exe" is stored as "CC.GUI_..."), while
-          # tauri emits bundles with the literal productName ("CC GUI").
+          # "MireAI 1.1.2 x64-setup.exe" is stored as "MireAI.1.1.2_..."), while
+          # tauri emits bundles with the literal productName.
           # latest.json must point at the sanitized name or the updater's
           # download step 404s (v1.0.0/v1.0.1 Windows+Linux hit this).
           def asset_name(name):

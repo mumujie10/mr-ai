@@ -2,7 +2,7 @@ import { LocalMemoryToolDef, type LocalRuntimeTool } from '@mavis/agent-tools/de
 
 const READ_OPERATIONS = new Set(['read', 'search']);
 const WRITE_OPERATIONS = new Set(['append', 'edit', 'create', 'delete', 'write']);
-const READ_TARGETS = new Set(['user', 'main', 'topic']);
+const READ_TARGETS = new Set(['user', 'project', 'main', 'topic']);
 
 interface MutableSchemaNode {
   anyOf?: MutableSchemaNode[];
@@ -64,10 +64,10 @@ function memorySchemaForPolicy(
 
 function memoryDescriptionForPolicy(policy: LocalMemoryPolicy): string {
   if (!policy.writeEnabled) {
-    return 'Read and search local memory. Supports target=user|main|topic.';
+    return 'Read and search local memory. Supports target=user|project|main|topic.';
   }
   if (!policy.readEnabled) {
-    return 'Append, edit, create, delete, or write local memory. Supports target=user|main|topic|summary with validated operation combinations; user append requires reason and summary write requires confirmation.';
+    return 'Append, edit, create, delete, or write local memory. Supports target=user|project|main|topic|summary with validated operation combinations; user append requires reason and summary write requires confirmation.';
   }
   return LocalMemoryToolDef.description;
 }

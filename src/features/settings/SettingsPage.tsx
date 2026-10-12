@@ -77,7 +77,7 @@ const renderHeaderActions = (key: string) => {
  *
  * Nav groups and pages come from settingsRegistry: builtin sections register
  * in ./sections, plugin sections arrive via ctx.ui.registerSettingsSection
- * (plan §4.2 #1).
+ *.
  */
 export default function SettingsPage() {
   const { t, i18n } = useTranslation();

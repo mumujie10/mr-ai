@@ -331,7 +331,7 @@ mod imp {
             Err(AX_ERROR_API_DISABLED) => {
                 release(system as CFTypeRef);
                 return Err(
-                    "Accessibility API is disabled for this app (AXIsProcessTrusted may report a stale parent grant). Grant Accessibility to CC GUI in Settings → Computer Use."
+                    "Accessibility API is disabled for this app (AXIsProcessTrusted may report a stale parent grant). Grant Accessibility to MireAI in Settings → Computer Use."
                         .into(),
                 );
             }

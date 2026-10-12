@@ -296,10 +296,11 @@ export const LocalMemoryToolDef = {
   name: 'memory',
   executionMode: 'sequential',
   description:
-    'Read, search, append, edit, create, delete, or write local memory. Supports target=user|main|topic|summary with validated operation combinations; user append requires reason and summary write requires confirmation.',
+    'Read, search, append, edit, create, delete, or write local memory. Supports target=user|project|main|topic|summary with validated operation combinations; user append requires reason and summary write requires confirmation. target=project addresses the memory of the current session workspace and never takes topicName or agentId.',
   schema: Type.Object({
     target: Type.Union([
       Type.Literal('user'),
+      Type.Literal('project'),
       Type.Literal('main'),
       Type.Literal('topic'),
       Type.Literal('summary'),

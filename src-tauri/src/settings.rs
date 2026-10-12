@@ -185,6 +185,16 @@ pub struct AppSettings {
     /// until the user folds it (设置 → 通用 → 行为 → 思考过程).
     #[serde(default)]
     pub thinking_auto_collapse: Option<bool>,
+    /// 记忆行为 (设置 → 记忆): None/Some(true) = 全局记忆可用，Some(false) =
+    /// 关闭——内置引擎 (mireai) 启动时注入 MAVIS_MEMORY_GLOBAL=0，CLI 侧
+    /// 不读取也不更新用户级长期记忆。
+    #[serde(default)]
+    pub memory_global_enabled: Option<bool>,
+    /// 记忆行为 (设置 → 记忆): None/Some(true) = 项目记忆可用，Some(false) =
+    /// 关闭——内置引擎 (mireai) 启动时注入 MAVIS_MEMORY_PROJECT=0，CLI 侧
+    /// 不读取也不更新当前工作区的项目记忆。
+    #[serde(default)]
+    pub memory_project_enabled: Option<bool>,
     /// Beta entry points (设置 → 其他 → 内测功能): feature id -> enabled.
     /// Empty/missing = the entry stays hidden; every id is off by default.
     #[serde(default)]
@@ -419,6 +429,8 @@ impl Default for AppSettings {
             decrease_ui_scale_shortcut: default_decrease_ui_scale_shortcut(),
             reset_ui_scale_shortcut: default_reset_ui_scale_shortcut(),
             thinking_auto_collapse: None,
+            memory_global_enabled: None,
+            memory_project_enabled: None,
             beta_features: HashMap::new(),
             terminal_shell_path: None,
             dsh_host: None,

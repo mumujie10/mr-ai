@@ -1,7 +1,7 @@
 import type { PluginContext } from "./context";
 
 /**
- * manifest（ccgui.plugin.json / release 的 manifest.json，plan §5.1）与
+ * manifest（ccgui.plugin.json / release 的 manifest.json，）与
  * 基础类型。零运行时依赖（纯类型），Node 校验脚本可直接 import。
  */
 
@@ -9,10 +9,10 @@ import type { PluginContext } from "./context";
  *  order of registration (cordis-style effect/dispose). */
 export type Disposer = () => void;
 
-/** Trust tiers (ADR-1). "declarative" bundles carry no JS. */
+/** Trust tiers. "declarative" bundles carry no JS. */
 export type PluginTier = "declarative" | "js";
 
-/** 插件入口唯一约定（ADR-5）：宿主动态 import main.js 后调用默认导出。 */
+/** 插件入口唯一约定：宿主动态 import main.js 后调用默认导出。 */
 export type PluginActivate = (ctx: PluginContext) => void | (() => void);
 /** Safe stable plugin id: total length 2..=64 bytes, dot-separated segments
  *  each matching `[a-z0-9][a-z0-9-]*` (first byte lowercase alphanumeric,
@@ -52,7 +52,7 @@ export interface PluginManifest {
   contributes?: {
     themes?: { name?: string; tokens: { light?: Record<string, string>; dark?: Record<string, string> } }[];
     i18n?: { lang: string; ns?: string; resources: Record<string, unknown> }[];
-    /** Tier-0 static status-bar text chips (plan §5.1). Localize by
+    /** Tier-0 static status-bar text chips. Localize by
      *  pairing with an i18n bundle; JS plugins render their own component
      *  via ctx.ui.registerStatusBarItem instead. */
     statusBarItems?: { key?: string; text: string }[];

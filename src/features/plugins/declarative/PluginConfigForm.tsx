@@ -92,7 +92,7 @@ function PropertyEditor({
 }
 
 /**
- * configSchema-driven settings form (plan §5.3): declarative plugins get a
+ * configSchema-driven settings form: declarative plugins get a
  * real settings page without shipping JS. Values persist through the
  * plugin's KV namespace; every write emits `plugin-config://changed` on the
  * plugin bus (payload carries pluginId) so a co-loaded JS companion (or the

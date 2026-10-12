@@ -14,7 +14,7 @@
  * - context.ts     PluginContext 门面接口（纯类型）
  *
  * 权限/授权形状的单一事实源是 spec/permissions.json（TS/Rust/模板三方消费）。
- * 分层信任模型见 .omx/plans/plugin-system-plan.md ADR-1。
+ * 分层信任模型见 docs/plugin-development-guide.zh-CN.md（§2 三层信任模型）。
  */
 
 export * from "./manifest";

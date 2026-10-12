@@ -11,8 +11,9 @@ import {
   SESSION_ACTIVATED_TOPIC,
 } from "@/features/plugins/runtime/events";
 import { setPluginSessionEffort, useChatStore } from "./store";
+import i18n from "@/lib/i18n";
 import { useConversationMode } from "./conversation-mode";
-import { ENGINE_PREF_KEY, OPEN_TABS_KEY } from "./store/persistence";
+import { OPEN_TABS_KEY } from "./store/persistence";
 import { EMPTY_SESSION } from "./store/stream";
 import { handleEngineEvents, type EngineEventDeps } from "./store/engine-events";
 import { registerSessionHooks, registerTurnHooks } from "@/features/plugins/runtime/hooks";
@@ -148,6 +149,26 @@ describe("per-session composer selection", () => {
     expect(vi.mocked(ipc.sendMessage)).toHaveBeenCalledWith(
       expect.objectContaining({ model: "kimi-k3", effort: null }),
     );
+  });
+
+  it("send carries the GUI language so the CLI replies in it", async () => {
+    useChatStore.setState({ activeEngine: "mireai" });
+    useChatStore.getState().startNewChat(WS);
+
+    await useChatStore.getState().send("hi", []);
+    expect(vi.mocked(ipc.sendMessage)).toHaveBeenCalledWith(
+      expect.objectContaining({ uiLanguage: "zh" }),
+    );
+
+    await i18n.changeLanguage("en");
+    try {
+      await useChatStore.getState().send("hi", []);
+      expect(vi.mocked(ipc.sendMessage)).toHaveBeenLastCalledWith(
+        expect.objectContaining({ uiLanguage: "en" }),
+      );
+    } finally {
+      await i18n.changeLanguage("zh");
+    }
   });
 
   it("retargeting a pending tab to another engine drops the old overrides", async () => {
@@ -936,13 +957,21 @@ describe("setPluginSessionEffort (ctx.sessions.setEffort backend)", () => {
 describe("which engine the composer defaults to", () => {
   beforeEach(resetStore);
 
-  it("a profile with no stored preference starts on the bundled CLI", async () => {
-    // The store reads the preference once, at creation, so this asserts
-    // against a freshly created instance rather than the shared one.
-    localStorage.removeItem(ENGINE_PREF_KEY);
+  it("every launch starts on the bundled CLI, even with a stale stored preference", async () => {
+    // The default is fixed at store creation, so assert against a freshly
+    // created instance rather than the shared one. "ccgui-next.enginePref" is
+    // the key older builds persisted the last-used CLI under; it must stay
+    // inert — the bundled engine is the default on every launch.
+    localStorage.setItem("ccgui-next.enginePref", "claude");
     vi.resetModules();
     const { useChatStore: fresh } = (await import("./store")) as typeof import("./store");
     expect(fresh.getState().activeEngine).toBe(BUNDLED_ENGINE_ID);
+  });
+
+  it("switching engines lasts for the launch only and is not persisted", () => {
+    useChatStore.getState().setActiveEngine("kimi");
+    expect(useChatStore.getState().activeEngine).toBe("kimi");
+    expect(localStorage.getItem("ccgui-next.enginePref")).toBeNull();
   });
 
   it("a pref naming a CLI that is not in the list lands on the bundled one", async () => {

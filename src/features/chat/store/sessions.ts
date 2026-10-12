@@ -8,7 +8,6 @@ import {
 import type { EffortLevel } from "@/components/application/ai-chat/cli-menu";
 import { listenEngineEvents, listenSessionsChanged, listenComputerUseEscape } from "@/lib/events";
 import { errorText } from "@/lib/errors";
-import { writeStored } from "@/lib/storage";
 import { subscribeTauriEvent } from "@/hooks/use-tauri-event";
 import {
   BUNDLED_ENGINE_ID,
@@ -16,7 +15,6 @@ import {
   engineCurrents,
 } from "@/features/settings/providers";
 import {
-  ENGINE_PREF_KEY,
   persistTabs,
   readPersistedActive,
   readPersistedTabs,
@@ -400,8 +398,6 @@ export function createSessionActions(
       if (rememberedProvider && !get().bySession[key]?.activeProvider) {
         patchSession(set, key, { activeProvider: rememberedProvider });
       }
-      const syncEngine = engine !== get().activeEngine;
-      if (syncEngine) writeStored(ENGINE_PREF_KEY, engine);
       set((s) => {
         // Native sessions read effort from SessionState/database. Strip the
         // legacy per-tab field so an old localStorage value cannot shadow it.
