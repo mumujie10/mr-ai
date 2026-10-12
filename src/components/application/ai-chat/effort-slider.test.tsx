@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@/lib/i18n";
+import i18n from "@/lib/i18n";
 import { EngineModelPanel } from "./engine-model-panel";
 import { effortChoices, effortLabel } from "./effort-levels";
 
@@ -78,9 +79,7 @@ describe("effort stops follow what the engine advertises", () => {
     setup();
     renderPanel(root, { mireai: [] });
     expect(stops(container)).toBe(0);
-    expect(container.textContent).toContain(
-      "这个模型没有可切换的推理档位，由 CLI 自己决定",
-    );
+    expect(container.textContent).toContain(i18n.t("chat.effortNoneForModel"));
   });
 
   it("trims only the engine that reported", () => {

@@ -63,6 +63,8 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - **中文输入法选字后不再需要按两次回车**：IME 组合期间的按键全部交给输入法（跟 composition 事件走，不是时间窗判断），选字确认的那次回车不再被输入区拦截，同一次组合里的方向键也不会再误触历史召回。
 - **中转开关不再被写进设置文件**：外网中转的启停是会话内状态，此前被持久化成 webRelayOn 键，重启后顶掉真实的运行状态，而且每次保存设置都被原样回写；现在这个键在下次保存设置时被清掉，持久化语义只留给「无人值守」。
 - **dsh 渠道里同一个模型不再显示两行**：渠道存的是裸模型 id、目录里是 provider/model 复合 id，此前两行并列；现在裸 id 只在能唯一对上一个复合 id 时才并成一行，对不上（同尾缀多渠道）仍分开列——不猜。
+- **模型设置的行不再跨渠道联动**：分段列出所有渠道后，会话当前模型仍被追加进每个渠道的行列表，同一个模型在几段里各有一行、共享同一个设置键——动一段的上下文窗口滑块，另一段的同一行跟着动。现在每个渠道段只放自己的行，选择器仍在当前渠道的行尾补回正在用的模型，胶囊不因切渠道变空。
+- **「没有可切换的推理档位」从死胡同改成指路**：这句说明现在带上出路——在渠道设置里声明「推理档位」后开关才会出现，未声明时由 CLI 自己决定。实测内置 CLI 对只带开关式思考（无档位列表）的模型不广播 thinkingEffort、也拒绝去掉思考变体的纯模型值，所以声明档位是让开关出现的唯一路径。
 
 🧹 内部优化
 - ui-ux-spec 更新至 v0.106：全局形态开关、右侧栏任务面板、引擎委派树与未知状态词、模型设置、渠道推理档位与「测试连接」、引擎胶囊与左下角三件套的排布、会话标题三条链路，以及官方配置与供应商渠道分组、按渠道收窄模型列表、模型设置分段不隐藏等规则同步，刷新入口清单随之更新
@@ -102,6 +104,8 @@ export const CHANGELOG_DATA: ChangelogEntry[] = [
 - **IME users no longer press Enter twice after picking a candidate**: keydowns during an IME composition all go to the input method (driven by composition events, not a time window), so the Enter that confirms a candidate is no longer swallowed by the composer, and arrow keys inside a composition no longer trigger history recall.
 - **The relay switch is no longer written into the settings file**: starting and stopping the outbound relay is session state, but it used to persist as a webRelayOn key that overrode the real running state after a restart and was written back on every settings save; the key is now discarded on the next save, with Unattended carrying the persistence instead.
 - **dsh no longer shows the same model twice**: a channel stores the bare model id while the catalog carries provider/model composites, and the two used to render as two rows; the bare id now merges into one row only when it matches exactly one composite — with several channels sharing the suffix it stays separate, because guessing is worse than showing both.
+- **Model settings rows no longer link across channels**: with every channel listed at once, the session's current model was still appended to each channel's row list, so the same model rendered once per section sharing a single setting key — moving one section's context-window slider moved the same row everywhere else. Each section now carries only its own rows; the picker still appends the model in use at the end of its channel's rows, so the pill never blanks on a channel switch.
+- **"No reasoning levels to switch" now points somewhere**: the line explains that the control appears once the channel declares levels in its settings, and that the CLI decides until then. Verified against the bundled CLI: a model carrying only switchable thinking (no level list) broadcasts no thinkingEffort option and rejects the plain model value, so declaring levels is the only path to a control.
 
 🧹 Internal
 - ui-ux-spec updated to v0.106: the global mode switch, the Tasks panel, the engine delegation tree and unknown status words, model settings, channel-declared reasoning levels and Test connection, the engine pill and bottom-left cluster layout, the three session-title chains, and the channel split with per-channel model filtering and the unhidden channel sections in model settings — rules and the refresh-entry inventory updated together

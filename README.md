@@ -79,7 +79,8 @@ MiniMax Code（命令 `mcode`）走它的原生 ACP 传输（`mcode acp`）：�
 - **供应商渠道**直接写入各 CLI 自己的原生配置文件（不搞平行的凭证存储），内置 GLM、Kimi、DeepSeek、MiniMax、MiMo、百炼、LongCat、OpenCode Go、OpenRouter、Requesty、[API Route](https://www.api-route.com) 等精选预设；Claude / Codex / Grok 的渠道还能从 [CC Switch](https://github.com/farion1231/cc-switch) 一键导入。
 
   使用 API Route 时，在其控制台创建 API Key，然后在设置中的 Claude 或 Codex 渠道选择 **API Route** 预设。Claude 使用兼容 Anthropic 的根地址，Codex 使用 `/v1` 与 Responses 协议。模型名称可按密钥可用的模型调整，详见 [API Route 接入指南](https://www.api-route.com/zh/docs/quickstart)。
-- Pi 系引擎（Pi / OMP）支持在设置页内完成 API Key 与 OAuth 登录。
+- 内置引擎的渠道分「官方配置」与「供应商渠道」两段摆：模型列表按当前渠道收窄，模型设置也按渠道分段保存偏好——切了渠道，模型菜单就跟着换。
+- Pi 系引擎（Pi / OMP）支持在设置页内完成 API Key 与 OAuth 登录，列表行内还能直接改渠道名与接口地址。
 - 支持**按标签页覆盖模型与 effort 档位**：同一个窗口里，不同标签页可以跑不同模型或思考强度。
 - 会话历史不丢：历史扫描器直接读取各 CLI 的原生会话文件并保持标题同步，关掉应用再打开还能接着聊。
 
@@ -89,7 +90,8 @@ MiniMax Code（命令 `mcode`）走它的原生 ACP 传输（`mcode acp`）：�
 - **思考流**与正文合并展示，结束后自动折叠，需要时一键展开看全文。
 - 工具调用以实时行呈现，参数与结果可展开查看，内置美化的 **Git Diff**、**Bash** 查看器和每次运行的完成元数据。
 - **运行状态条**实时镜像引擎进度（含 todo 快照），消息**锚点导航栏**让你在用户消息之间快速跳转。
-- 粘贴图片自动转附件；`@` 文件引用基于感知 `.gitignore` 的项目文件索引；回复中的文件链接能处理 URL 编码路径，并支持右键菜单。
+- 界面分「对话 / 工作」两种形态：侧栏顶部的全局开关一切，会话列表、右侧栏页签与 ⌘L 搜索面板跟着同筛；子代理与任务清单实时呈现在右侧栏的「任务」面板里。
+- 粘贴图片自动转附件，从 Finder / Explorer 粘贴的文件自动转成 `@` 路径引用；`@` 文件引用基于感知 `.gitignore` 的项目文件索引；回复中的文件链接能处理 URL 编码路径，并支持右键菜单。
 - 权限被拒时可以在对话内直接为引擎追加授权目录；输入框还内置提示词历史与可选的 **Codex Fast** 开关。
 
 ### 不只是聊天，是一整套开发面板
@@ -108,7 +110,8 @@ MiniMax Code（命令 `mcode`）走它的原生 ACP 传输（`mcode acp`）：�
 ### 设置、网络与更新
 
 - **代理设置**：为应用与引擎流量配置代理。
-- **局域网网页访问**：通过 token 鉴权的 WebSocket 桥接，把界面共享给局域网内其他设备，设置页提供二维码入口。
+- **局域网网页访问**：通过 token 鉴权的 WebSocket 桥接，把界面共享给局域网内其他设备，设置页提供二维码入口；「无人值守」开关决定应用重启后是否自动拉起中转。
+- **界面排版**：界面、聊天内容、代码三处字号与界面字重独立设置，启动即生效；「宽幕布」开关让时间线与输入区用上更宽的内容列。
 - **工作区管理**：给项目分组，快速切换。
 - 应用内**自动更新**（Tauri updater，对接 GitHub Releases）、版本记录对话框、macOS 签名构建。
 - 中英双语界面。
@@ -224,7 +227,7 @@ mr-ai/                      # 仓库根 = MireAI 桌面客户端本体
 ├── packages/plugin-sdk/    # @ccgui/plugin-sdk —— 插件开发套件
 ├── tests/                  # 前端集成向测试（Vitest + 浏览器夹具）
 ├── scripts/                # 构建、打包与 runtime staging 脚本
-├── docs/                   # 插件开发指南、界面规范、方案文档
+├── docs/                   # 新成员从0到1、项目地图、团队规范、插件开发指南、界面规范、计划任务
 └── cli/                    # 随应用打包的 agent runtime（自带 package.json 与 lockfile）
 ```
 
@@ -243,13 +246,16 @@ mr-ai/                      # 仓库根 = MireAI 桌面客户端本体
 | `pnpm dev` | 启动完整应用（Tauri 开发模式） |
 | `pnpm build` | TypeScript 类型检查 + 前端生产构建 |
 | `pnpm test` | 跑 Vitest 测试套件 |
+| `pnpm runtime:build` | 构建随包的内置 runtime（`cli/` 构建 + staging 进 `src-tauri/resources/runtime/`） |
+| `node --experimental-strip-types --test tests/*.test.ts` | 流式调度 / Markdown / store 的确定性回归（Node ≥ 22.6） |
 | `pnpm preview` | 预览生产构建的前端 |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | 跑 Rust 测试 |
 
 ### 测试怎么写
 
 - 前端测试用 [Vitest](https://vitest.dev/)——源码旁边放 `xxx.test.ts(x)` 同位测试，较重的套件统一放 `tests/` 目录。
-- Rust 端测试照常写在模块里，用 `cargo test --manifest-path src-tauri/Cargo.toml` 跑。
+- 流式调度、Markdown 解析与 store 回归是 Node 确定性测试（`tests/*.test.ts`，用 `node --test` 跑）；真实 React 提交时序、滚动跟随与界面布局用 `tests/browser/` 的浏览器夹具核对，逐个夹具的打开方式见 [tests/browser/README.md](tests/browser/README.md)。
+- Rust 端测试照常写在模块里，用 `cargo test --manifest-path src-tauri/Cargo.toml` 跑；发送与中断链路可按过滤跑，如 `cargo test --test send_path`。
 
 ---
 
@@ -301,6 +307,7 @@ perf(chat): reveal streamed text per frame without reparsing markdown
 
 ### 想深入了解项目内部？
 
+- [docs/README.md](docs/README.md) — 文档索引。新成员从 [从0到1](docs/00-新成员从0到1.md) 开始，模块归属在[项目地图](docs/01-项目地图.md)，架构与数据流在 [02](docs/02-架构与数据流.md)，日常命令与测试分层在 [03](docs/03-开发环境与日常命令.md) / [04](docs/04-测试与验收分层.md)，协作规矩在 [docs/团队规范/](docs/团队规范/README.md)。
 - [插件开发指南](docs/plugin-development-guide.zh-CN.md) — SDK、manifest、权限模型与信任边界。
 - [界面与交互规范](docs/ui-ux-spec.zh-CN.md) — 设计 token、状态与动作反馈、刷新入口清单。
 - [docs/omp-fast-mode.md](docs/omp-fast-mode.md) — Codex Fast / OMP 快速模式说明。

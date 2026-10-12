@@ -476,6 +476,35 @@ describe("useEngineModels 渠道分组", () => {
     expect(byChannel["ch-probe"].map((m) => m.id)).toEqual(["probe-a/model-alpha"]);
   });
 
+  it("会话当前模型只留在选择器,不抄进每个渠道段(模型设置联动回归)", async () => {
+    vi.mocked(ipc.getCliConfig).mockResolvedValue({
+      ...baseConfig(),
+      mireai: {
+        current: "ch-llm",
+        providers: { "ch-llm": { name: "llm" }, "ch-probe": { name: "probe-a" } },
+      },
+    });
+    vi.mocked(ipc.listEngineModels).mockResolvedValue(threeChannelCatalog);
+    vi.mocked(ipc.mireaiChannelSlugs).mockResolvedValue([
+      { name: "llm", slug: "llm-2" },
+      { name: "probe-a", slug: "probe-a" },
+    ]);
+    // 会话正跑着 probe-a 的模型而选择器停在 ch-llm:选择器把它补在尾部(胶囊
+    // 不能空),但模型设置按渠道分段后同一 id 出现在多段就会共享同一个设置键
+    // ——上下文窗口滑块互相联动就是这么来的,每个渠道段必须只有自己的行。
+    engines = [engineInfo("mireai", true)];
+    await render({ models: { mireai: "probe-a/model-alpha" }, pinModels: noopPin });
+    await settle();
+    expect((latest.modelsByEngine.mireai ?? []).map((m) => m.id)).toEqual([
+      "llm-2/MiniMax-M3",
+      "probe-a/model-alpha",
+    ]);
+    const byChannel = latest.modelsByChannel.mireai ?? {};
+    expect(byChannel["ch-llm"].map((m) => m.id)).toEqual(["llm-2/MiniMax-M3"]);
+    expect(byChannel["ch-probe"].map((m) => m.id)).toEqual(["probe-a/model-alpha"]);
+    expect(byChannel[PSEUDO_LOCAL].map((m) => m.id)).toEqual(["minimax/MiniMax-M2.7"]);
+  });
+
   it("内置引擎恒列出官方渠道,其他引擎照旧", async () => {
     vi.mocked(ipc.getCliConfig).mockResolvedValue(baseConfig());
     await show([engineInfo("mireai", true), engineInfo("omp", true)]);

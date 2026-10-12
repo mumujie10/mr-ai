@@ -362,7 +362,7 @@ export const en: Messages = {
     effortUltra: "ultra",
     effortFaster: "Faster",
     effortSmarter: "Smarter",
-    effortNoneForModel: "This model has no reasoning levels to switch — the CLI decides",
+    effortNoneForModel: "This model has no reasoning levels to switch — declare them in the channel's settings to get the control; the CLI decides for now",
     modelSettings: "Model settings",
     modelSettingsEntry: "Configure this engine's models",
     modelSettingsHint:

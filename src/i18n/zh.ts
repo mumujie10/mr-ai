@@ -347,7 +347,7 @@ export const zh = {
     effortUltra: "ultra",
     effortFaster: "更快",
     effortSmarter: "更深入",
-    effortNoneForModel: "这个模型没有可切换的推理档位，由 CLI 自己决定",
+    effortNoneForModel: "这个模型没有可切换的推理档位——在渠道设置里声明「推理档位」后才会出现开关；当前由 CLI 自己决定",
     modelSettings: "模型设置",
     modelSettingsEntry: "配置这个引擎的模型",
     modelSettingsHint:

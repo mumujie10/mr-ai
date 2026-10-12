@@ -307,6 +307,31 @@ export function useEngineModels(
         engine.id === BUNDLED_ENGINE_ID
           ? channelCatalog(catalog, id, name, channelSlugs) ?? catalog
           : catalog;
+      const current = resolveCompositeId(models[engine.id]?.trim() ?? "", catalogIds);
+      const byId = new Map(catalog.map((m) => [m.id, m]));
+      const mapRow = (m: string, families: Record<string, string>) => {
+        const entry = byId.get(m);
+        // The CLI's alias rows (Default/Opus/…) describe the CLI's OWN
+        // settings — the official channel's. Under another channel the alias
+        // runs that channel's mapped id (spawn injects its env), so the row
+        // has to name it; without this the list kept showing the official
+        // mapping after a channel switch.
+        const mapped = families[m];
+        return {
+          id: m,
+          label: mapped ?? (entry?.name || m),
+          description: mapped
+            ? // The CLI menu's own row shape ("Custom Opus model"): family is
+              // the alias id, capitalized the way the CLI displays it.
+              t("chat.customFamilyModel", {
+                family: m.charAt(0).toUpperCase() + m.slice(1),
+              })
+            : entry?.description ?? undefined,
+          // Channel/override ids keep the "provider/model" shape, so the
+          // prefix stands in when the catalog doesn't name the provider.
+          provider: entry?.provider ?? (m.includes("/") ? m.slice(0, m.indexOf("/")) : undefined),
+        };
+      };
       const rowsFor = (menu: typeof catalog, forChannel: string) => {
         const configured = resolveCompositeId(
           configuredModel(engine.id, cliConfig, forChannel),
@@ -316,43 +341,20 @@ export function useEngineModels(
           engine.id,
           channelRaw(engine.id, cliConfig, forChannel),
         );
-        const providerModels = configured ? [configured] : [];
-        const current = resolveCompositeId(models[engine.id]?.trim() ?? "", catalogIds);
-        // Channel model leads (it is what the CLI would run unprompted), the
-        // current channel's catalog rows follow, then engine-level custom models,
-        // and the current-override append last so the selection never vanishes.
+        // Channel model leads (it is what the CLI would run unprompted), then
+        // the channel's catalog rows, then engine-level custom models. The
+        // session's current model is NOT part of a channel's rows: 模型设置
+        // renders these lists side by side and rows of the same id share one
+        // setting key, so appending it to every channel linked every channel's
+        // sliders together. The picker re-adds it for the channel in use only.
         const known = [
           ...new Set([
-            ...providerModels,
+            ...(configured ? [configured] : []),
             ...menu.map((m) => m.id),
             ...(customModels[engine.id] ?? []),
-            ...(current ? [current] : []),
           ]),
         ];
-        const byId = new Map(catalog.map((m) => [m.id, m]));
-        return known.map((m) => {
-          const entry = byId.get(m);
-          // The CLI's alias rows (Default/Opus/…) describe the CLI's OWN
-          // settings — the official channel's. Under another channel the alias
-          // runs that channel's mapped id (spawn injects its env), so the row
-          // has to name it; without this the list kept showing the official
-          // mapping after a channel switch.
-          const mapped = families[m];
-          return {
-            id: m,
-            label: mapped ?? (entry?.name || m),
-            description: mapped
-              ? // The CLI menu's own row shape ("Custom Opus model"): family is
-                // the alias id, capitalized the way the CLI displays it.
-                t("chat.customFamilyModel", {
-                  family: m.charAt(0).toUpperCase() + m.slice(1),
-                })
-              : entry?.description ?? undefined,
-            // Channel/override ids keep the "provider/model" shape, so the
-            // prefix stands in when the catalog doesn't name the provider.
-            provider: entry?.provider ?? (m.includes("/") ? m.slice(0, m.indexOf("/")) : undefined),
-          };
-        });
+        return known.map((m) => mapRow(m, families));
       };
       // Remote workspace (WSL distro): local channel/custom models cannot
       // run there — the distro CLI's own list is the entire menu.
@@ -390,12 +392,28 @@ export function useEngineModels(
       // record for (deleted elsewhere) falls back to the **whole** menu rather
       // than to 官方配置: showing another channel's models would silently
       // misattribute what the user is about to run.
-      result[engine.id] = visible(
-        engine.id,
+      const rows =
         byChannel[engine.id]?.[channelId] ??
-          rowsFor(scoped(channelId, channelName), channelId),
-        resolveCompositeId(models[engine.id]?.trim() ?? "", catalogIds),
-      );
+        rowsFor(scoped(channelId, channelName), channelId);
+      // The session's current model stays reachable in the picker even when it
+      // is not the channel's own row (a mid-session channel switch must not
+      // blank the pill) — but only here. The per-channel lists that 模型设置
+      // reads carry a channel's own rows, or one model ends up in several
+      // sections sharing a single setting key.
+      const pickerRows =
+        current && !rows.some((row) => row.id === current)
+          ? [
+              ...rows,
+              mapRow(
+                current,
+                providerFamilyModels(
+                  engine.id,
+                  channelRaw(engine.id, cliConfig, channelId),
+                ),
+              ),
+            ]
+          : rows;
+      result[engine.id] = visible(engine.id, pickerRows, current);
     }
     return [result, byChannel] as const;
   }, [
